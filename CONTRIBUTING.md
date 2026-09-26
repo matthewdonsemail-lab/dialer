@@ -40,20 +40,39 @@ automatically once lefthook is installed:
 
 | Check | Fails when |
 |---|---|
-| `scripts/check-docs.mjs` | a documented file is missing, a diagram is unlisted in `docs/diagrams/README.md`, the README's embedded diagram has drifted from its `.mmd` source, or a relative link is broken |
+| `scripts/check-docs.mjs` | a documented file is missing, a diagram is unlisted in `docs/diagrams/README.md`, a diagram is invalid Mermaid, the README's embedded diagram has drifted from its `.mmd` source, or a relative link is broken |
+| `scripts/test-diagram-lint.mjs` | the Mermaid linter stops catching the footguns it claims to catch |
 | `scripts/check-scope.mjs` | anything outside the application's scope is tracked in git |
 | `scripts/check-no-emojis.mjs` | an emoji appears in a tracked file |
+| `scripts/check-secrets.mjs` | a credential is committed: a JWT, a private key, a cloud or provider key, or a connection string with a real password |
 
 Run them by hand:
 
 ```bash
 bun run check:docs
 bun run check:scope
+bun run check:secrets
 node scripts/check-no-emojis.mjs
+node scripts/test-diagram-lint.mjs
 ```
 
-Emergency bypass: `SKIP_DOCS_CHECK=1`, `SKIP_SCOPE_CHECK=1`, or
-`SKIP_EMOJI_CHECK=1`.
+Emergency bypass: `SKIP_DOCS_CHECK=1`, `SKIP_SCOPE_CHECK=1`,
+`SKIP_EMOJI_CHECK=1`, or `SKIP_SECRET_CHECK=1`.
+
+### Credentials
+
+A live Twenty workspace API key was once committed in `backend/scripts/` and
+pasted into ad-hoc probes under `ops/`. Both are gone, and
+`check-secrets.mjs` now fails the push if anything like that comes back.
+
+Read keys from the environment. `scripts/check-secrets.mjs` has one reviewed
+exception, Twenty's published localhost:2020 fixture key in
+`twenty-native-app/vitest.config.ts`, and it matches on the decoded workspace
+id, so swapping in a real token still fails.
+
+If you find a leaked key: rotate it in Twenty **first**. Removing the file does
+not un-leak a key that was ever committed, because it stays in git history.
+
 
 ### Editing a diagram
 

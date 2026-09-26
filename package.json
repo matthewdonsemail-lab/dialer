@@ -12,6 +12,7 @@
     "start": "cd ./backend && bun run start",
     "check:docs": "node scripts/check-docs.mjs",
     "check:scope": "node scripts/check-scope.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "docs:telnyx": "node scripts/pull-telnyx-docs.mjs",
     "docs:twenty": "node scripts/pull-twenty-docs.mjs"
   },

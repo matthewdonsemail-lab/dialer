@@ -828,21 +828,47 @@ dependencies:
 
 | Check | Fails when |
 |---|---|
-| `check-docs.mjs` | a documented file is missing, a diagram is unlisted, the README does not link a diagram, or a relative link is broken |
+| `check-docs.mjs` | a documented file is missing, a diagram is unlisted, a diagram is invalid Mermaid, the README does not embed it, or a relative link is broken |
 | `check-scope.mjs` | anything outside the application's scope is tracked in git |
 | `check-no-emojis.mjs` | an emoji appears in a tracked file |
+| `check-secrets.mjs` | a credential is committed: a JWT, a private key, a cloud or provider key, or a connection string with a real password |
 
 Run them by hand any time:
 
 ```bash
 bun run check:docs
 bun run check:scope
+bun run check:secrets
 node scripts/check-no-emojis.mjs
+node scripts/test-diagram-lint.mjs
 ```
 
-Bypass an emergency with `SKIP_DOCS_CHECK=1`, `SKIP_SCOPE_CHECK=1`, or
-`SKIP_EMOJI_CHECK=1`.
+Bypass an emergency with `SKIP_DOCS_CHECK=1`, `SKIP_SCOPE_CHECK=1`,
+`SKIP_EMOJI_CHECK=1`, or `SKIP_SECRET_CHECK=1`.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+---
+
+<!-- footer:offer-set:start -->
+## Support
+
+If this is useful, a star helps someone else find it.
+
+[![Stars](https://img.shields.io/github/stars/matthewdonsemail-lab/dialer?style=flat-square)](https://github.com/matthewdonsemail-lab/dialer/stargazers)
+[![Forks](https://img.shields.io/github/forks/matthewdonsemail-lab/dialer?style=flat-square)](https://github.com/matthewdonsemail-lab/dialer/network/members)
+[![Watchers](https://img.shields.io/github/watchers/matthewdonsemail-lab/dialer?style=flat-square)](https://github.com/matthewdonsemail-lab/dialer/watchers)
+[![Last commit](https://img.shields.io/github/last-commit/matthewdonsemail-lab/dialer?style=flat-square)](https://github.com/matthewdonsemail-lab/dialer/commits)
+[![License](https://img.shields.io/github/license/matthewdonsemail-lab/dialer?style=flat-square)](https://github.com/matthewdonsemail-lab/dialer/blob/main/LICENSE)
+
+[![GitHub](https://img.shields.io/badge/GitHub-matthewdonsemail-lab/dialer-181717?style=flat-square&logo=github&link=https://github.com/matthewdonsemail-lab/dialer)](https://github.com/matthewdonsemail-lab/dialer)
+[![X](https://img.shields.io/badge/X-matthewdonsemail-000000?style=flat-square&logo=x&link=https://x.com/matthewdonsemail)](https://x.com/matthewdonsemail)
+[![Issues](https://img.shields.io/github/issues/matthewdonsemail-lab/dialer?style=flat-square)](https://github.com/matthewdonsemail-lab/dialer/issues)
+[![Pull requests](https://img.shields.io/github/issues-pr/matthewdonsemail-lab/dialer?style=flat-square)](https://github.com/matthewdonsemail-lab/dialer/pulls)
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/image?repos=matthewdonsemail-lab/dialer&type=Date)](https://star-history.com/#matthewdonsemail-lab/dialer&Date)
+<!-- footer:offer-set:end -->
