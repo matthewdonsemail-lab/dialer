@@ -2,13 +2,12 @@
 %% How a single user action becomes rows in Twenty, for each of the three
 %% server implementations. The three paths are independent code against the
 %% same six agency* objects; none of them calls another.
-%%
 %% See docs/architecture.md for the endpoint tables.
 
 flowchart TB
     UI["Agent clicks<br/>a record, a number, or the dial button"]
 
-    subgraph read["Read path"]
+    subgraph read ["Read path"]
         direction LR
         hooks["React Query hooks<br/>staleTime: Infinity for CRM data,<br/>30s for calls, 15s poll for phones"]
         client["apiClient<br/>VITE_API_URL or same-origin"]
@@ -17,7 +16,7 @@ flowchart TB
 
     client -->|"GET /api/leads<br/>GET /api/prospects<br/>GET /api/campaigns<br/>GET /api/scripts<br/>GET /api/twenty/phones<br/>GET /api/calls"| servers
 
-    subgraph servers["Server (exactly one of these)"]
+    subgraph servers ["Server (exactly one of these)"]
         direction TB
         express["Express routers<br/>backend/src/routes/*<br/>authMiddleware, JWT"]
         hono["Hono worker<br/>railcode/server/index.ts<br/>ctx.user, platform session"]
@@ -26,7 +25,7 @@ flowchart TB
 
     servers -->|"listTwentyAll / listTwentyPage<br/>keyset walk, id strictly ascending"| walk["Twenty REST<br/>orderBy=id[AscNullsFirst]<br/>filter=id[gt]:lastId, limit 200/page"]
 
-    subgraph write["Write path"]
+    subgraph write ["Write path"]
         direction LR
         mutate["useMutation / api.* directly<br/>no optimistic updates:<br/>onSuccess then invalidateQueries"]
     end

@@ -82,7 +82,7 @@ script and the offer follow it.
 <!-- mermaid:agent-workflow.mmd -->
 ```mermaid
 flowchart TB
-    subgraph pathA["A - calling from the dialer"]
+    subgraph pathA ["A - calling from the dialer"]
         direction TB
         A1["Open a lead or prospect<br/>the script for its campaign loads next to the dialer"]
         A2["Claim a number<br/>POST /phones/:id/claim<br/>IDLE to DIALING, 409 if someone holds it"]
@@ -93,7 +93,7 @@ flowchart TB
         A1 --> A2 --> A3 --> A4 --> A5 --> A6
     end
 
-    subgraph pathB["B - logging inside Twenty"]
+    subgraph pathB ["B - logging inside Twenty"]
         direction TB
         B1["Open the Queue tab<br/>prospects with their current status"]
         B2["Call from your own handset<br/>the native app has no softphone"]
@@ -168,7 +168,7 @@ the other.
 <!-- mermaid:integration-paths.mmd -->
 ```mermaid
 flowchart TB
-    subgraph pathA["Path A - the repo hosts a server"]
+    subgraph pathA ["Path A - the repo hosts a server"]
         direction TB
         spa["frontend/<br/>Vite SPA, browser softphone"]
         express["backend/<br/>Express on :4000<br/>JWT_SECRET, bcrypt"]
@@ -177,7 +177,7 @@ flowchart TB
         hono -.->|"same UI, different base URL"| spa
     end
 
-    subgraph pathB["Path B - the dialer runs inside Twenty"]
+    subgraph pathB ["Path B - the dialer runs inside Twenty"]
         direction TB
         widget["DialerApp front component<br/>Remote-DOM sandbox, 5 tabs"]
         apilayer["front-components/dialer/api.ts<br/>RestApiClient"]
@@ -227,7 +227,7 @@ flowchart TB
 flowchart TB
     actor["Agent<br/>a sales rep on a desk"]
 
-    subgraph surfaces["Deployment surfaces (pick one or run several)"]
+    subgraph surfaces ["Deployment surfaces (pick one or run several)"]
         direction TB
         native["Twenty native app<br/>twenty-native-app/<br/>in-workspace page + 33 logic functions"]
         spa["Standalone SPA<br/>frontend/<br/>Vite + React, browser softphone"]
@@ -236,7 +236,7 @@ flowchart TB
         hook["Webhook receiver<br/>frontend/api/telnyx-webhook.ts<br/>Vercel serverless"]
     end
 
-    subgraph twenty["Twenty CRM (system of record)"]
+    subgraph twenty ["Twenty CRM (system of record)"]
         objects["agency* custom objects<br/>prospects, leads, campaigns,<br/>scripts, phones, calls"]
         meta["Metadata API<br/>SELECT options, schema bootstrap"]
         rest["REST API<br/>/rest/agency*"]
@@ -282,7 +282,7 @@ auth model, and the places where the security is thinner than it looks.
 flowchart TB
     UI["Agent clicks<br/>a record, a number, or the dial button"]
 
-    subgraph read["Read path"]
+    subgraph read ["Read path"]
         direction LR
         hooks["React Query hooks<br/>staleTime: Infinity for CRM data,<br/>30s for calls, 15s poll for phones"]
         client["apiClient<br/>VITE_API_URL or same-origin"]
@@ -291,7 +291,7 @@ flowchart TB
 
     client -->|"GET /api/leads<br/>GET /api/prospects<br/>GET /api/campaigns<br/>GET /api/scripts<br/>GET /api/twenty/phones<br/>GET /api/calls"| servers
 
-    subgraph servers["Server (exactly one of these)"]
+    subgraph servers ["Server (exactly one of these)"]
         direction TB
         express["Express routers<br/>backend/src/routes/*<br/>authMiddleware, JWT"]
         hono["Hono worker<br/>railcode/server/index.ts<br/>ctx.user, platform session"]
@@ -300,7 +300,7 @@ flowchart TB
 
     servers -->|"listTwentyAll / listTwentyPage<br/>keyset walk, id strictly ascending"| walk["Twenty REST<br/>orderBy=id[AscNullsFirst]<br/>filter=id[gt]:lastId, limit 200/page"]
 
-    subgraph write["Write path"]
+    subgraph write ["Write path"]
         direction LR
         mutate["useMutation / api.* directly<br/>no optimistic updates:<br/>onSuccess then invalidateQueries"]
     end
@@ -356,7 +356,7 @@ sequenceDiagram
     API-->>SP: call row id
 
     SP->>API: GET /api/netcheck?host&port
-    Note over SP,API: best effort; a failure only warns, the dial proceeds
+    Note over SP,API: best effort, a failure only warns and the dial proceeds
 
     SP->>TX: WebSocket connect, then REGISTER
     SP->>SP: getUserMedia audio

@@ -1,16 +1,14 @@
 %% Dialer - the agent's workflow
 %% Two workflows that share the same six objects.
-%%
 %%   A. Calling. Needs a softphone, so it is the standalone path only
 %%      (frontend/ or railcode/). The browser holds the SIP call.
 %%   B. Logging in Twenty. No softphone, so the agent calls from their own
 %%      handset and writes the result back. This is the native app.
-%%
 %% The claim lock in the middle is what both depend on: one number, one agent,
 %% for the length of one call.
 
 flowchart TB
-    subgraph pathA["A - calling from the dialer"]
+    subgraph pathA ["A - calling from the dialer"]
         direction TB
         A1["Open a lead or prospect<br/>the script for its campaign loads next to the dialer"]
         A2["Claim a number<br/>POST /phones/:id/claim<br/>IDLE to DIALING, 409 if someone holds it"]
@@ -21,7 +19,7 @@ flowchart TB
         A1 --> A2 --> A3 --> A4 --> A5 --> A6
     end
 
-    subgraph pathB["B - logging inside Twenty"]
+    subgraph pathB ["B - logging inside Twenty"]
         direction TB
         B1["Open the Queue tab<br/>prospects with their current status"]
         B2["Call from your own handset<br/>the native app has no softphone"]

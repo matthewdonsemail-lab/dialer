@@ -2,7 +2,6 @@
 %% The concurrency primitive that stops two agents dialing from the same
 %% number. State lives on the agencyPhones row in Twenty, not in memory, so it
 %% survives a server restart and is visible to every surface at once.
-%%
 %% Implemented three times, independently:
 %%   backend/src/routes/twentyPhones.ts
 %%   railcode/server/index.ts

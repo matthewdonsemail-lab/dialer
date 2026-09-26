@@ -1,13 +1,12 @@
 %% Dialer - system context
 %% Every runtime surface the dialer can be deployed as, and every external
 %% system it talks to. Solid arrows are request paths, dashed are events.
-%%
 %% Source of truth for the component boundaries. See docs/architecture.md.
 
 flowchart TB
     actor["Agent<br/>a sales rep on a desk"]
 
-    subgraph surfaces["Deployment surfaces (pick one or run several)"]
+    subgraph surfaces ["Deployment surfaces (pick one or run several)"]
         direction TB
         native["Twenty native app<br/>twenty-native-app/<br/>in-workspace page + 33 logic functions"]
         spa["Standalone SPA<br/>frontend/<br/>Vite + React, browser softphone"]
@@ -16,7 +15,7 @@ flowchart TB
         hook["Webhook receiver<br/>frontend/api/telnyx-webhook.ts<br/>Vercel serverless"]
     end
 
-    subgraph twenty["Twenty CRM (system of record)"]
+    subgraph twenty ["Twenty CRM (system of record)"]
         objects["agency* custom objects<br/>prospects, leads, campaigns,<br/>scripts, phones, calls"]
         meta["Metadata API<br/>SELECT options, schema bootstrap"]
         rest["REST API<br/>/rest/agency*"]

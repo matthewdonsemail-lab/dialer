@@ -3,7 +3,6 @@
 %% Implemented in frontend/src/components/softphone/Softphone.tsx (startCall,
 %% maybeStartServerRecording, finalizeCall, handleSaveOutcome) and
 %% backend/src/routes/calls.ts.
-%%
 %% The two steps that are easy to get wrong are marked: the call-control-id
 %% must be read from the requestDelegate, and it must be stamped on the row
 %% before /record is called.
@@ -27,7 +26,7 @@ sequenceDiagram
     API-->>SP: call row id
 
     SP->>API: GET /api/netcheck?host&port
-    Note over SP,API: best effort; a failure only warns, the dial proceeds
+    Note over SP,API: best effort, a failure only warns and the dial proceeds
 
     SP->>TX: WebSocket connect, then REGISTER
     SP->>SP: getUserMedia audio

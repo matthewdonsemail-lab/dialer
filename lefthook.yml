@@ -8,6 +8,8 @@ pre-push:
   jobs:
     - name: documentation map and diagrams are current
       run: node scripts/check-docs.mjs
+    - name: diagram linter catches what it claims
+      run: node scripts/test-diagram-lint.mjs
     - name: no emojis (brand rule)
       run: node scripts/check-no-emojis.mjs
     - name: no out-of-scope paths are tracked

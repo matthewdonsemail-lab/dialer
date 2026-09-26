@@ -163,6 +163,135 @@ for (const file of diagrams) {
   }
 }
 
+// --- 4b. every .mmd is structurally valid Mermaid -------------------------
+// This is not a full Mermaid parse (that needs mermaid + a DOM), but it
+// catches the footguns that have actually broken a render here, none of which
+// a "does the README match the source" check would ever notice.
+const DIAGRAM_TYPES = [
+  'flowchart', 'graph', 'sequenceDiagram', 'stateDiagram-v2', 'stateDiagram',
+  'erDiagram', 'classDiagram', 'journey', 'gantt', 'pie', 'timeline',
+  'quadrantChart', 'requirementDiagram', 'gitGraph', 'mindmap', 'sankey-beta',
+  'xychart-beta', 'block-beta', 'packet-beta', 'C4Context', 'architecture-beta',
+];
+
+/** Blank out %% comment tails and the contents of quoted labels. */
+function codeOnly(source) {
+  return source
+    .split('\n')
+    .map((line) => {
+      if (line.trimStart().startsWith('%%')) return '';
+      // Remove "..." label contents so brackets inside them are not counted.
+      return line.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+    })
+    .join('\n');
+}
+
+for (const file of diagrams) {
+  const raw = fs.readFileSync(path.join(diagramDir, file), 'utf8');
+
+  // 1. A diagram type must be declared on the first non-comment line.
+  const firstReal = raw
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0 && !l.startsWith('%%'));
+  if (!firstReal || !DIAGRAM_TYPES.some((t) => firstReal.startsWith(t))) {
+    fail(
+      `docs/diagrams/${file}: first non-comment line must declare a diagram type ` +
+        `(one of ${DIAGRAM_TYPES.join(', ')}), got ${JSON.stringify(firstReal ?? '')}`,
+    );
+  }
+
+  // 2. A semicolon terminates a statement in a sequence diagram, so any ";"
+  //    in the message or note text splits the line and breaks the parse.
+  //    This is the exact bug that broke the call-lifecycle render on GitHub.
+  if (firstReal === 'sequenceDiagram') {
+    raw.split('\n').forEach((line, i) => {
+      const t = line.trim();
+      if (t.startsWith('%%')) return;
+      if (t.includes(';')) {
+        fail(
+          `docs/diagrams/${file}:${i + 1}: ";" terminates a statement in a ` +
+            `sequenceDiagram and will break the render. Use a comma. -> ${t}`,
+        );
+      }
+    });
+  }
+
+  // 2b. A bare "%%" line with nothing after it breaks the Mermaid parser.
+  //     Use a blank line to separate paragraphs in the header comment.
+  raw.split('\n').forEach((line, i) => {
+    if (line.trim() === '%%') {
+      fail(
+        `docs/diagrams/${file}:${i + 1}: a bare "%%" line breaks the Mermaid ` +
+          `parser. Use a blank line, or put text after the %% (e.g. "%% -").`,
+      );
+    }
+  });
+
+  // 2c. "subgraph id[\\"label\\"]" with no space is read as the identifier
+  //     `id[`, and the diagram will not render.
+  raw.split('\n').forEach((line, i) => {
+    if (/^\s*subgraph\s+\w+\[/.test(line)) {
+      fail(
+        `docs/diagrams/${file}:${i + 1}: subgraph needs a space before its ` +
+          `bracketed label: 'subgraph id ["label"]'. -> ${line.trim()}`,
+      );
+    }
+  });
+
+  // 2d. An unquoted subgraph label cannot contain parentheses; the parser
+  //     reads them as a shape suffix and fails.
+  raw.split('\n').forEach((line, i) => {
+    const m = /^\s*subgraph\s+\w+\s+\[(.+)\]\s*$/.exec(line);
+    if (m && !/^["'].*["']$/.test(m[1].trim()) && /[()]/.test(m[1])) {
+      fail(
+        `docs/diagrams/${file}:${i + 1}: unquoted subgraph label contains ` +
+          `parentheses. Wrap the label in quotes. -> ${line.trim()}`,
+      );
+    }
+  });
+
+  // 3. Unbalanced brackets, and unterminated quoted labels.
+  //    Braces are only counted when they stand alone on a line, because
+  //    `||--o{` in an erDiagram is cardinality syntax, not an opening brace.
+  const code = codeOnly(raw);
+  for (const [open, close] of [['(', ')'], ['[', ']']]) {
+    const opens = (code.match(new RegExp(`\\${open}`, 'g')) || []).length;
+    const closes = (code.match(new RegExp(`\\${close}`, 'g')) || []).length;
+    if (opens !== closes) {
+      fail(
+        `docs/diagrams/${file}: unbalanced "${open}${close}" ` +
+          `(${opens} open, ${closes} close)`,
+      );
+    }
+  }
+  let braceOpen = 0;
+  let braceClose = 0;
+  for (const line of code.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    // erDiagram relationship lines carry cardinality, not structure:
+    // `agencyPhones ||--o{ agencyCalls : "label"`. The `--` or `..` skips them.
+    if (/[-.]{2}/.test(t)) continue;
+    if (t.endsWith('{')) braceOpen += 1;
+    else if (t === '}') braceClose += 1;
+  }
+  if (braceOpen !== braceClose) {
+    fail(
+      `docs/diagrams/${file}: unbalanced block braces ` +
+        `(${braceOpen} opening, ${braceClose} closing)`,
+    );
+  }
+
+  for (const [i, line] of raw.split('\n').entries()) {
+    if (line.trimStart().startsWith('%%')) continue;
+    const quotes = (line.match(/"/g) || []).length;
+    if (quotes % 2 !== 0) {
+      fail(`docs/diagrams/${file}:${i + 1}: odd number of quotes, unterminated label -> ${line.trim()}`);
+    }
+  }
+}
+
 // --- 5. relative markdown links resolve ------------------------------------
 function walkMarkdown(dir) {
   const out = [];

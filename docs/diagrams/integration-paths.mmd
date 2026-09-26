@@ -2,17 +2,15 @@
 %% The dialer reaches Twenty two different ways, and they do not call each
 %% other. This is the single most confusing thing about the codebase, so it
 %% gets its own diagram.
-%%
 %% Path A: a server the repo hosts, holding a workspace API key.
 %%   backend/          Express, port 4000, JWT auth
 %%   railcode/      Hono worker on Railcode, platform session, org connector
 %% Path B: logic functions running inside the Twenty server process.
 %%   twenty-native-app/
-%%
 %% Same six agency* objects at the bottom of both. Nothing is shared above it.
 
 flowchart TB
-    subgraph pathA["Path A - the repo hosts a server"]
+    subgraph pathA ["Path A - the repo hosts a server"]
         direction TB
         spa["frontend/<br/>Vite SPA, browser softphone"]
         express["backend/<br/>Express on :4000<br/>JWT_SECRET, bcrypt"]
@@ -21,7 +19,7 @@ flowchart TB
         hono -.->|"same UI, different base URL"| spa
     end
 
-    subgraph pathB["Path B - the dialer runs inside Twenty"]
+    subgraph pathB ["Path B - the dialer runs inside Twenty"]
         direction TB
         widget["DialerApp front component<br/>Remote-DOM sandbox, 5 tabs"]
         apilayer["front-components/dialer/api.ts<br/>RestApiClient"]
