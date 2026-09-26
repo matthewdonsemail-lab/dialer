@@ -271,7 +271,7 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
                   const other = heldByOther(p);
                   const mine = heldByMe(p);
                   const suffix = other
-                    ? ` · 🔒 ${p.claimedByEmail || "in use"}`
+                    ? ` · held by ${p.claimedByEmail || "another member"}`
                     : mine
                       ? " · in use by you"
                       : "";

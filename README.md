@@ -1,885 +1,848 @@
-# twenty-dialer
+<p align="center">
+  <img src="banner.png" alt="Dialer" width="100%">
+</p>
 
-A browser-based cold calling dialer with direct integration to Twenty CRM. Designed for sales teams to manage outbound calling campaigns with prospects and leads.
+# dialer
+
+**Need telephony working with your CRM, and one clean place for all the
+information it collects? [Talk to Matthew on X](https://x.com/matthewdonsemail).**
+
+A cold calling dialer that keeps every record in Twenty CRM and puts the phone
+in the browser.
+
+There is no separate database. Prospects, leads, campaigns, scripts, phone
+numbers and calls are all `agency*` custom objects in Twenty, and every server
+in this repository is a thin translator between an HTTP client and the Twenty
+REST API. The call itself is SIP over WebRTC straight from the browser to
+Telnyx; the recording is Telnyx server-side.
 
 [![License: MIT](https://img.shields.io/badge/LICENSE-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org/)
 
 ---
 
-## Overview
+## Contents
 
-twenty-dialer is a self-hosted cold calling application that integrates directly with Twenty CRM via REST API. It provides:
-
-- Browser-based softphone via SIP/WebRTC
-- Prospect and lead lifecycle management
-- Campaign organization with dynamic status options
-- Call logging and script management
-- Industry tracking for prospects and leads
-
-**Key distinction:** twenty-dialer uses Twenty's `coldCallStatus` field for manual cold calling workflows, separate from the automated SMS/video pipeline.
-
----
-
-## Features
-
-- **Browser Softphone** — WebRTC/SIP calling directly from the browser
-- **Prospect Management** — Full CRUD for cold call targets with industry tracking
-- **Lead Management** — Track converted prospects with detailed history
-- **Campaign Organization** — Group calls by campaign with status management
-- **Call Logging** — Record outcomes, durations, and notes
-- **Script Templates** — Objection handling for common scenarios
-- **Twenty CRM Sync** — Direct REST API integration with Twenty
-- **Dynamic Status Options** — Statuses fetched from Twenty metadata API
-- **REST API** — Full API for integrations
+- [The workflow](#the-workflow)
+- [What it does](#what-it-does)
+- [The three surfaces](#the-three-surfaces)
+- [Architecture](#architecture)
+- [Data flow](#data-flow)
+- [The call](#the-call)
+- [Data model](#data-model)
+- [Running it](#running-it)
+- [Configuration](#configuration)
+- [Repository layout](#repository-layout)
+- [API reference](#api-reference)
+- [Documentation map](#documentation-map)
+- [Checks](#checks)
+- [License](#license)
 
 ---
+
+## The workflow
+
+Two ways to work, depending on whether you need the browser softphone.
+
+### A. Calling from the dialer
+
+Needs a softphone, so this is the standalone path (`frontend/` or `railcode/`).
+The browser holds the SIP call itself.
+
+1. **Open a lead or prospect.** The script for its campaign loads next to the
+   dialer, with its objection handling.
+2. **Claim a number.** `POST /phones/:id/claim` moves it `IDLE` to `DIALING`. If
+   another member holds it you get a 409 naming them, and the dial aborts
+   before any SIP traffic.
+3. **Dial.** The call row opens as `IN_PROGRESS` *before* the INVITE, so a call
+   that fails to connect is still on record.
+4. **Talk.** Hold, mute and redial from the softphone. Telnyx is already
+   recording server-side from the moment it connects.
+5. **Save a disposition.** One action patches the call status, runs the
+   recording reconcile, releases the number, and moves the prospect or lead
+   status.
+6. **Review.** The recording and transcript are on the call row, attached by
+   webhook a few seconds after you hang up. Play them from call history.
+
+### B. Logging inside Twenty
+
+The native app has no softphone, so you call from your own handset and write the
+result back. No second login, no extra host.
+
+1. **Open the Queue tab** - prospects with their current status.
+2. **Call from your own handset.**
+3. **Log the call inline** - select rows, set the outcome, and it creates the
+   `agencyCalls` row for you.
+4. **Claim a number** only if you are also sending an SMS or a website link.
+
+Both paths read and write the same six objects, so status carries forward in
+either direction. A prospect that showed interest becomes a lead, and the
+script and the offer follow it.
+
+<!-- mermaid:agent-workflow.mmd -->
+```mermaid
+flowchart TB
+    subgraph pathA["A - calling from the dialer"]
+        direction TB
+        A1["Open a lead or prospect<br/>the script for its campaign loads next to the dialer"]
+        A2["Claim a number<br/>POST /phones/:id/claim<br/>IDLE to DIALING, 409 if someone holds it"]
+        A3["Dial<br/>SIP INVITE from the browser<br/>call row opens as IN_PROGRESS"]
+        A4["Talk<br/>hold, mute, redial<br/>Telnyx is already recording"]
+        A5["Save a disposition<br/>patch status, reconcile the recording,<br/>release the number"]
+        A6["Review<br/>play the recording, read the transcript,<br/>update the prospect or lead status"]
+        A1 --> A2 --> A3 --> A4 --> A5 --> A6
+    end
+
+    subgraph pathB["B - logging inside Twenty"]
+        direction TB
+        B1["Open the Queue tab<br/>prospects with their current status"]
+        B2["Call from your own handset<br/>the native app has no softphone"]
+        B3["Log the call inline<br/>select rows, set the outcome,<br/>create the agencyCalls row"]
+        B4["Claim a number only if you<br/>are sending SMS or a website link"]
+        B1 --> B2 --> B3 --> B4
+    end
+
+    A6 -.->|"status carries forward"| B1
+    B3 -.->|"becomes a lead when it sticks"| A1
+
+    shared[("Shared state in Twenty<br/>agencyProspects agencyLeads agencyCalls<br/>agencyPhones agencyCampaigns agencyScripts")]
+    A5 --> shared
+    A6 --> shared
+    B3 --> shared
+    B4 --> shared
+
+    note["The claim lock is the only thing preventing<br/>two agents dialing out of the same number.<br/>It lives on the agencyPhones row, so it holds<br/>across servers, restarts and all three surfaces."]
+    A2 -.-> note
+    B4 -.-> note
+
+    classDef store fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b
+    classDef note fill:#fffbeb,stroke:#d97706,color:#451a03
+    class shared store
+    class note note
+```
+
+> Source: [`docs/diagrams/agent-workflow.mmd`](docs/diagrams/agent-workflow.mmd).
+
+The claim lock is the only thing stopping two agents dialing out of the same
+number. It lives on the `agencyPhones` row rather than in server memory, so it
+holds across servers, restarts, and all three surfaces. Read
+[architecture.md](docs/architecture.md) before changing it: it is also the
+thinnest security in the codebase.
+
+## What it does
+
+- **Browser softphone.** SIP over WebRTC, dial from a lead or a prospect record,
+  hold, mute, redial, and take inbound calls.
+- **Number locking.** One member holds a number for the duration of a call, so
+  two agents cannot dial from the same line. Enforced in Twenty, so it holds
+  across servers and restarts.
+- **Call recording and transcription.** Started server-side through Telnyx
+  Call Control, attached to the call row by webhook, playable from the call
+  history.
+- **Prospect and lead lifecycle.** Status, notes, industry, campaign assignment,
+  CSV import, and conversion from prospect to lead.
+- **Campaigns and scripts.** Organise calling effort, attach a script and its
+  objection handling to a campaign, and surface it while a call is up.
+- **Runs inside Twenty.** A native app gives an agent the queue, the numbers and
+  the call log without a second login.
+
+## The three surfaces
+
+Same product, same six objects, three independent code paths. None calls
+another.
+
+| | Directory | Server | Use it for |
+|---|---|---|---|
+| Standalone | `frontend/` + `backend/` | Express on `:4000` | the softphone, Telnyx, recording |
+| Workspace | `railcode/` | Hono on Railcode | a private, org-only deployment |
+| Native | `twenty-native-app/` | none, runs inside Twenty | dialing without a second host |
+
+The native app is the newest and the direction of travel. The standalone path
+is the only one with a real softphone: the native app does not implement
+SIP/WebRTC, recording, or audio playback.
+
+`railcode/` is a hand-maintained port of `frontend/`. The softphone is
+byte-identical between them; when you fix a bug in one, expect to apply it in
+the other.
+
+<!-- mermaid:integration-paths.mmd -->
+```mermaid
+flowchart TB
+    subgraph pathA["Path A - the repo hosts a server"]
+        direction TB
+        spa["frontend/<br/>Vite SPA, browser softphone"]
+        express["backend/<br/>Express on :4000<br/>JWT_SECRET, bcrypt"]
+        hono["railcode/<br/>Hono worker on Railcode<br/>org connector, no API key in the worker"]
+        spa -->|"VITE_API_URL, or same-origin"| express
+        hono -.->|"same UI, different base URL"| spa
+    end
+
+    subgraph pathB["Path B - the dialer runs inside Twenty"]
+        direction TB
+        widget["DialerApp front component<br/>Remote-DOM sandbox, 5 tabs"]
+        apilayer["front-components/dialer/api.ts<br/>RestApiClient"]
+        logic["33 logic functions<br/>/dialer/*<br/>isAuthRequired, 15s timeout"]
+        client["lib/dialer-client.ts<br/>lazy RestApiClient + MetadataApiClient"]
+        widget --> apilayer --> logic --> client
+    end
+
+    keyA["Auth: the repo's own JWT, or the Railcode platform session.<br/>Twenty is called with a static workspace API key."]
+    keyB["Auth: the Twenty workspace session.<br/>TWENTY_APP_ACCESS_TOKEN, refreshed on 401."]
+
+    express --> keyA
+    hono --> keyA
+    client --> keyB
+
+    hop1{{"Hop 1: /s/dialer/*<br/>functions host"}}
+    hop2{{"Hop 2: /rest/agency*<br/>record host"}}
+    apilayer -->|"RestApiClient, path starts with /s/<br/>routes to TWENTY_FUNCTIONS_URL"| hop1
+    logic --> hop1
+    logic --> hop2
+    client --> hop2
+
+    express --> store
+    hono --> store
+    hop2 --> store[("Twenty records<br/>agencyProspects agencyLeads agencyCampaigns<br/>agencyScripts agencyPhones agencyCalls")]
+
+    onlyB["Only Path A has: SIP/WebRTC softphone,<br/>Telnyx record_start and reconcile,<br/>audio proxy, call logs, profiles,<br/>CSV import, schema bootstrap, offers"]
+    onlyA["Only Path B has: in-workspace UI,<br/>no second login, no extra host"]
+
+    express -.-> onlyB
+    logic -.-> onlyA
+
+    classDef hop fill:#fdf4ff,stroke:#a21caf,color:#4a044e
+    classDef note fill:#fffbeb,stroke:#d97706,color:#451a03
+    class hop1,hop2 hop
+    class onlyA,onlyB,keyA,keyB note
+```
+
+> Source: [`docs/diagrams/integration-paths.mmd`](docs/diagrams/integration-paths.mmd).
+> It records what only each path can do, which is the question this repository
+> gets asked most.
 
 ## Architecture
 
+<!-- mermaid:system-context.mmd -->
 ```mermaid
 flowchart TB
-    subgraph frontend [Frontend - React/Vite]
-        ProspectsPage[Prospects Page]
-        LeadsPage[Leads Page]
-        CampaignsPage[Campaigns Page]
-        Softphone[Softphone UI]
-        CallHistory[Call History]
+    actor["Agent<br/>a sales rep on a desk"]
+
+    subgraph surfaces["Deployment surfaces (pick one or run several)"]
+        direction TB
+        native["Twenty native app<br/>twenty-native-app/<br/>in-workspace page + 33 logic functions"]
+        spa["Standalone SPA<br/>frontend/<br/>Vite + React, browser softphone"]
+        api["Express API<br/>backend/<br/>port 4000, JWT auth"]
+        worker["Railcode worker<br/>railcode/<br/>Hono, platform session"]
+        hook["Webhook receiver<br/>frontend/api/telnyx-webhook.ts<br/>Vercel serverless"]
     end
 
-    subgraph backend [Backend - Express/TypeScript]
-        API[REST API]
-        TwentyClient[Twenty Client]
-        Auth[Auth Middleware]
-        TelnyxLib[Telnyx SDK Client]
+    subgraph twenty["Twenty CRM (system of record)"]
+        objects["agency* custom objects<br/>prospects, leads, campaigns,<br/>scripts, phones, calls"]
+        meta["Metadata API<br/>SELECT options, schema bootstrap"]
+        rest["REST API<br/>/rest/agency*"]
+        pg[("Postgres<br/>core.user<br/>password check only")]
     end
 
-    subgraph twenty [Twenty CRM]
-        agencyProspects[agencyProspects]
-        agencyLeads[agencyLeads]
-        agencyCampaigns[agencyCampaigns]
-        agencyScripts[agencyScripts]
-        agencyPhones[agencyPhones]
-        agencyCalls[agencyCalls]
-        Metadata[Metadata API]
-    end
+    telnyx["Telnyx<br/>SIP trunk + Call Control<br/>recording + transcription"]
 
-    subgraph telnyx [Telnyx]
-        SIP[SIP Trunking]
-        VoiceAPI[Call Control + Recordings]
-        Webhooks[Voice Webhooks]
-    end
+    actor --> native
+    actor --> spa
+    actor --> worker
 
-    ProspectsPage -->|HTTP| API
-    LeadsPage -->|HTTP| API
-    CampaignsPage -->|HTTP| API
-    CallHistory -->|HTTP| API
-    Softphone -->|SIP/WebRTC| SIP
-    Softphone -->|claim/release| API
+    spa -->|"HTTPS /api/*"| api
+    worker -->|"HTTPS /api/*"| worker
+    spa <-->|"WSS SIP over WebRTC"| telnyx
 
-    API -->|CRUD| TwentyClient
-    API -->|record/reconcile| TelnyxLib
-    TwentyClient -->|REST API| agencyProspects
-    TwentyClient -->|REST API| agencyLeads
-    TwentyClient -->|REST API| agencyCampaigns
-    TwentyClient -->|REST API| agencyScripts
-    TwentyClient -->|REST API| agencyPhones
-    TwentyClient -->|REST API| agencyCalls
-    TwentyClient -->|Metadata| Metadata
-    TelnyxLib -->|record_start + recordings| VoiceAPI
-    Webhooks -->|recording/transcript saved| Receiver[Vercel Receiver]
-    Receiver -->|attach recording| agencyCalls
+    api -->|"Bearer API key"| rest
+    worker -->|"org connector 'twenty'"| rest
+    native -->|"logic functions"| rest
+    api --> meta
+    worker --> meta
+    native --> meta
+
+    api -->|"bcrypt verify"| pg
+    hook -->|"Bearer API key"| rest
+    telnyx -.->|"webhook events"| hook
+
+    classDef ext fill:#f4f4f5,stroke:#71717a,color:#18181b
+    classDef store fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b
+    class telnyx,actor ext
+    class objects,pg store
 ```
 
-### Data Flow
+> Source: [`docs/diagrams/system-context.mmd`](docs/diagrams/system-context.mmd).
 
-```
-User Action (Prospect/Lead/Campaign)
-         ↓
-    Frontend React UI
-         ↓
-    REST API (Express)
-         ↓
-    Twenty Client
-         ↓
-    Twenty CRM (REST API)
-```
+Read [docs/architecture.md](docs/architecture.md) for the route tables, the
+auth model, and the places where the security is thinner than it looks.
 
-### Call Flow (dial → talk → log → recording)
+## Data flow
 
-```
-Dial → POST /api/twenty/phones/:id/claim (409 if held)
-  → agencyCalls row created (IN_PROGRESS)
-  → SIP INVITE via Telnyx (wss://sip.telnyx.com:7443)
-  → 200 OK: capture X-Telnyx-Call-Control-ID
-  → POST /api/calls/:id/record (Telnyx record_start + transcription)
-  → state ACTIVE → talk → BYE → row COMPLETED + debugLog
-  → Save disposition → PATCH status → POST /api/twenty/phones/:id/release
-  → Telnyx call.recording.saved → Vercel receiver attaches mp3
-  → call.recording.transcription.saved → transcript attached
-  → play any time via GET /api/calls/:id/audio (fresh Telnyx URL, key stays server-side)
-```
-
-### Deployments
-
-| Piece | Where | Notes |
-|---|---|---|
-| SPA (+ Telnyx webhook receiver) | Vercel (`open-twenty-dialer`) | Auto-deploys on push to `main`. Needs project envs: `VITE_API_URL`, `VITE_SIP_*`, `TWENTY_BASE_URL`, `TWENTY_API_KEY`, `TELNYX_WEBHOOK_TOKEN`. `VITE_*` bake in at build time. |
-| Express backend | node01 Docker (`dialer-backend`), public via Tailscale Funnel | `~/services/dialer` on node01, same repo. Needs `TWENTY_*`, `TELNYX_API_KEY`, `JWT_SECRET` in its `.env`. |
-| Self-contained app | Railcode (`cold-dialer`) | Hono worker + UI in `cold-dialer/`, mirrors the Express routes. |
-| Telnyx wiring | Mission Control | Number → messaging profile + voice connection; connection `webhook_event_url` → Vercel receiver; `conversation_persistence: true` for transcripts. |
-
----
-
-## Isolated Workspaces via Railcode
-
-### What Railcode is
-
-Railcode (https://railcode.dev) is a secure cloud for **internal software**:
-every app is a static frontend plus a backend worker deployed and versioned
-as one unit, and every viewer must be a signed-in org member — no anonymous
-access, no public endpoints. The worker (not the browser) holds authority:
-it sees a verified caller (`ctx.user`), keeps per-app secrets, and reaches
-the outside world through declared `egress` hosts or org **connectors**.
-Cron, KV/file stores, LLM gateway, and email are platform primitives the
-worker calls with `@railcode/sdk`.
-
-### How we've implemented it here
-
-`cold-dialer/` is a Railcode apps-v2 app (`hono+vite`) — the isolated,
-always-on workspace for this repo. Live (private, owner-only):
-`https://cold-dialer.listeningkit.railcode.app/`, embedded in the Twenty
-dashboard as an iframe widget.
-
+<!-- mermaid:data-flow.mmd -->
 ```mermaid
-flowchart LR
-    Browser["Browser (org member)"]
-    App["Railcode app<br/>static frontend + Hono worker"]
-    Conn["org connector 'twenty'<br/>HTTP + bearer"]
-    Twenty["Twenty CRM<br/>REST"]
-    Dash["Twenty dashboard<br/>iframe widget"]
+flowchart TB
+    UI["Agent clicks<br/>a record, a number, or the dial button"]
 
-    Browser --> App
-    App -->|"connector('twenty').fetch()"| Conn
-    Conn --> Twenty
-    Dash -.->|"embeds /dashboard?embed=1"| App
+    subgraph read["Read path"]
+        direction LR
+        hooks["React Query hooks<br/>staleTime: Infinity for CRM data,<br/>30s for calls, 15s poll for phones"]
+        client["apiClient<br/>VITE_API_URL or same-origin"]
+        hooks --> client
+    end
+
+    client -->|"GET /api/leads<br/>GET /api/prospects<br/>GET /api/campaigns<br/>GET /api/scripts<br/>GET /api/twenty/phones<br/>GET /api/calls"| servers
+
+    subgraph servers["Server (exactly one of these)"]
+        direction TB
+        express["Express routers<br/>backend/src/routes/*<br/>authMiddleware, JWT"]
+        hono["Hono worker<br/>railcode/server/index.ts<br/>ctx.user, platform session"]
+        logic["Logic functions<br/>twenty-native-app/src/logic-functions/*<br/>isAuthRequired, 15s timeout"]
+    end
+
+    servers -->|"listTwentyAll / listTwentyPage<br/>keyset walk, id strictly ascending"| walk["Twenty REST<br/>orderBy=id[AscNullsFirst]<br/>filter=id[gt]:lastId, limit 200/page"]
+
+    subgraph write["Write path"]
+        direction LR
+        mutate["useMutation / api.* directly<br/>no optimistic updates:<br/>onSuccess then invalidateQueries"]
+    end
+
+    mutate -->|"POST / PATCH / DELETE /api/*"| servers
+    servers -->|"createTwenty / updateTwenty / deleteTwenty<br/>field allow-list per route"| rest["Twenty REST<br/>/rest/agency*"]
+
+    walk --> rest
+    rest --> store[("Twenty records")]
+
+    note["Keyset pagination note:<br/>this Twenty build ignores startingAfter,<br/>offset and page, and caps limit at 200,<br/>so every list walks id ascending."] -.-> walk
+
+    classDef note fill:#fffbeb,stroke:#d97706,color:#451a03
+    class note note
 ```
 
-- **Twenty access goes through the org `twenty` HTTP connector**
-  (`connectors: { twenty: ["*"] }` in `manifest.yaml`, `run_as: app`).
-  The worker holds no API key. Critical detail: the connector's base URL
-  already ends in `/rest`, so worker paths must NOT add the prefix
-  (`/metadata/objects`, never `/rest/metadata/objects` — the doubled path
-  400s). See `server/lib/twenty.ts`.
-- **Auth is the platform session.** The old JWT/password flow is gone:
-  `GET /api/auth/me` returns `ctx.user`; the frontend signs in via the org.
-- **Listing the whole collection.** This Twenty version ignores cursor
-  params (`startingAfter`/`offset`/`page` all return page 1) and caps pages
-  at 200 records. The worker therefore walks `id` strictly ascending
-  (`orderBy=id[AscNullsFirst]` + `filter=id[gt]:<last id>`, 200/page,
-  bounded) and returns full arrays — the client never paginates. Verified:
-  741/741 prospects, zero dupes. See `listTwentyPage()` in
-  `server/lib/twenty.ts`.
-- **Twenty-grade tables.** Headers reorder with dnd-kit sortable locked to
-  the x-axis (Name pinned first, 6px drag activation so clicks keep
-  working), drop commits on release with a blue insertion edge and a
-  floating overlay, and persist per page. Edge resize handles mutate
-  `--col-<key>` CSS variables on the `<table>` directly — zero React
-  re-renders mid-drag, 80px min width, persisted on pointer-up. Status
-  filtering uses a floating Twenty-style panel (search + dot/check rows),
-  not a native select.
-- **Styling gotcha (fixed, documented so it stays fixed).** Tailwind
-  resolves `content` globs and its config relative to the **process cwd**
-  (the app root), not the Vite root — so `tailwind.config.js` lives at
-  `cold-dialer/tailwind.config.js` with `./frontend/...` globs. With the
-  config inside `frontend/`, Tailwind silently emitted preflight only
-  (6.8KB, zero utilities).
+> Source: [`docs/diagrams/data-flow.mmd`](docs/diagrams/data-flow.mmd).
 
-```bash
-cd cold-dialer
-npm install
-railcode dev --port 5235      # local frontend + worker
-railcode manifest validate
-railcode deploy --private     # railcode apps set-access to open to the org
-railcode logs app --app cold-dialer   # worker invocations
+The one thing to know: this Twenty build ignores `startingAfter`, `offset` and
+`page`, and caps `limit` at 200. Cursor pagination does not work, so every list
+is a keyset walk over `id`, ascending, 200 per page, bounded.
+
+```
+GET /rest/agencyProspects
+      ?limit=200
+      &orderBy=id[AscNullsFirst]
+      &filter=id[gt]:"<last id seen>"
 ```
 
-What stays off Railcode: the node01 Express backend (`backend/`, local/dev
-use) and anything anonymous — Railcode cannot serve public traffic, so
-public funnels live elsewhere (e.g. Vercel).
+More on this, and on the read and write paths, in
+[docs/data-flow.md](docs/data-flow.md).
 
----
+## The call
 
-## Twenty CRM Objects
+<!-- mermaid:call-lifecycle.mmd -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Agent
+    participant SP as Softphone.tsx
+    participant API as API (Express / Hono)
+    participant TW as Twenty CRM
+    participant TX as Telnyx
 
-The following custom objects are used in Twenty CRM:
+    A->>SP: press dial
+    SP->>API: POST /api/twenty/phones/:id/claim {memberId}
+    API->>TW: PATCH agencyPhones callState=DIALING, claimedBy*
+    API-->>SP: 200, or 409 heldBy when another member holds it
+    Note over SP,API: a 409 aborts the dial before any SIP traffic
 
-### agencyProspects
+    SP->>API: POST /api/calls (IN_PROGRESS, from, to, agencyPhoneId, agencyProspectId or agencyLeadId)
+    API->>TW: POST /rest/agencyCalls
+    API-->>SP: call row id
 
-Template-site prospect rows. Represents discovered business targets for cold calling.
+    SP->>API: GET /api/netcheck?host&port
+    Note over SP,API: best effort; a failure only warns, the dial proceeds
 
-**Key Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | TEXT | Full company name |
-| `phone` | TEXT | Primary phone number |
-| `email` | TEXT | Business email address |
-| `website` | TEXT | Company website URL |
-| `fullAddress` | TEXT | Full address (comma-separated) |
-| `city` | TEXT | City name |
-| `region` | TEXT | State/region |
-| `country` | TEXT | Country code (US) |
-| `niche` | TEXT | Industry/type (e.g., "Auto Paint & Body Shops") |
-| `rating` | NUMBER | Google review rating |
-| `reviewCount` | NUMBER | Number of reviews |
-| `coldCallStatus` | SELECT | Call status (see Status Mapping below) |
-| `outboundState` | TEXT | Call outcome tracking |
-| `outboundLabel` | TEXT | Call notes/label |
-| `externalId` | TEXT | Source system identifier |
-| `utmSource` | TEXT | Campaign source (outbound/inbound) |
-| `campaignId` | RELATION | Link to agencyCampaign |
+    SP->>TX: WebSocket connect, then REGISTER
+    SP->>SP: getUserMedia audio
+    SP->>TX: INVITE sip:target@domain, P-Asserted-Identity header
 
-### agencyLeads
+    TX-->>SP: 200 OK
+    Note over SP,TX: STEP 1 of 2 - read X-Telnyx-Call-Control-ID<br/>in inviter.invite requestDelegate.onAccept.<br/>The Inviter constructor delegate does not fire this in sip.js 0.21.
 
-Converted prospects that have shown interest.
+    SP->>API: PATCH /api/calls/:id {telnyxCallId}
+    Note over SP,API: STEP 2 of 2 - stamp the id BEFORE /record,<br/>otherwise /record reads a row with no telnyxCallId and 400s
 
-**Key Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | TEXT | Full contact name |
-| `contactName` | TEXT | Alternative contact name |
-| `email` | TEXT | Email address |
-| `phone` | TEXT | Phone number |
-| `company` | TEXT | Company name |
-| `source` | TEXT | Lead source |
-| `note` | TEXT | Call notes |
-| `status` | TEXT | Lead status |
-| `coldCallStatus` | SELECT | Cold call status |
-| `createdById` | TEXT | Campaign ID reference |
-| `campaignId` | RELATION | Link to agencyCampaign |
+    SP->>API: POST /api/calls/:id/record
+    API->>TX: calls.actions.startRecording {mp3, dual, transcription:true}
+    TX-->>API: recording_id
+    API->>TW: PATCH agencyCalls telnyxRecordingId, transcriptionStatus=PENDING
+    API-->>SP: ok
 
-### agencyCampaigns
+    TX-->>SP: SIP 200, media flowing
+    SP->>API: POST /api/twenty/phones/:id/state {memberId, state:ACTIVE}
+    API->>TW: PATCH agencyPhones callState=ACTIVE
 
-Campaign definitions for organizing calling efforts.
+    TX-->>SP: call.recording.saved
+    TX-->>SP: call.recording.transcription.saved
+    Note over TX,SP: delivered to the webhook receiver, not the API.<br/>receiver PATCHes recordingUrl then transcript + transcriptionStatus=READY
 
-**Key Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | TEXT | Campaign name |
-| `status` | SELECT | Campaign status (see Status Mapping below) |
-| `campaignType` | SELECT | Campaign type (see Status Mapping below) |
-| `note` | TEXT | Campaign notes/settings (JSON) |
-| `utmSource` | TEXT | Campaign source tracking |
+    A->>SP: hang up
+    SP->>TX: BYE
+    SP->>API: PATCH /api/calls/:id {status, endedAt, durationSeconds, telnyxCallId, debugLog}
+    API->>TW: PATCH agencyCalls
 
-### agencyScripts
+    A->>SP: save disposition
+    SP->>API: PATCH /api/calls/:id {status}
+    SP->>API: POST /api/calls/:id/reconcile
+    Note over SP,API: repair path. Matches a Telnyx recording by<br/>from/to within a 15 minute window when the<br/>call-control-id was never captured.
+    SP->>API: POST /api/twenty/phones/:id/release {memberId, callId}
+    API->>TW: PATCH agencyPhones callState=IDLE, claimedBy* cleared
 
-Call scripts linked to campaigns.
-
-**Key Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | TEXT | Script name |
-| `scriptData` | TEXT | JSON with script content + objection responses |
-| `campaignId` | RELATION | Link to agencyCampaign (uses `campaignIdId` in REST API) |
-
-### agencyPhones
-
-Sending numbers (Telnyx inventory mirrored into Twenty). One member holds a
-number for the duration of a call — enforced by claim endpoints, visible live
-in the dial UI and on Phone Numbers.
-
-**Key Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `phoneNumber` | TEXT | E.164 number |
-| `name` | TEXT | Display name (e.g. "ListeningKit Philly") |
-| `countryCode` | TEXT | ISO alpha-2 (IE/US) |
-| `numberType` | SELECT | LONG_CODE / TOLL_FREE / SHORT_CODE |
-| `state` | SELECT | ACTIVE / PAUSED / DEGRADED / RETIRED (provisioning) |
-| `messagingProfileId` | TEXT | Telnyx messaging profile for SMS |
-| `callState` | SELECT | **Claim state:** IDLE / DIALING / ACTIVE |
-| `claimedByMemberId` | TEXT | Twenty user id holding the number |
-| `claimedByEmail` | TEXT | Holder email (shown in UI) |
-| `claimedAt` | DATE_TIME | When the claim started |
-| `currentCallId` | TEXT | Latest agencyCalls row for traceability |
-| `lastSyncedAt` | TEXT | Last backend sync timestamp |
-
-Claim protocol: `claim` (IDLE → DIALING, 409 `heldBy` when taken) →
-`state` (DIALING → ACTIVE on SIP Established) → `release` (→ IDLE, holder-only
-unless `force`). Same member may re-claim (idempotent redial).
-
-### agencyCalls
-
-One row per dialed call, from first ring to wrap-up and beyond.
-
-**Key Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `direction` | SELECT | INBOUND / OUTBOUND / MISSED |
-| `status` | SELECT | IN_PROGRESS / COMPLETED / FAILED / NO_ANSWER / BUSY |
-| `fromNumber` / `toNumber` | TEXT | E.164 parties |
-| `startedAt` / `endedAt` | DATE_TIME | Call window |
-| `durationSeconds` | NUMBER | Talk time |
-| `telnyxCallId` | TEXT | Telnyx call-control-id (captured from 200 OK) |
-| `telnyxRecordingId` | TEXT | Telnyx recording id |
-| `recordingUrl` | TEXT | Last known mp3 URL (expires — play via `/api/calls/:id/audio`) |
-| `transcript` | TEXT | Telnyx transcription |
-| `transcriptionStatus` | SELECT | NONE / PENDING / READY / FAILED |
-| `summary` | TEXT | Agent/AI notes |
-| `debugLog` | TEXT | SIP event trail JSON (post-mortem) |
-| `meetingUrl` / `meetingProvider` / `meetingAt` / `meetingStatus` / `meetingBookingId` | TEXT / SELECT / DATE_TIME / SELECT / TEXT | Future meeting booked from the call |
-| `agencyPhone` / `agencyProspect` / `agencyLead` | RELATION | MANY_TO_ONE links (write via `agencyPhoneId` etc.) |
-
-> Relations via REST metadata must be created with `POST /rest/metadata/fields`
-> (the GraphQL path rejects `relationCreationPayload`).
-
----
-
-## Relations Between Objects
-
-### Campaign Relations
-
-All three custom objects (`agencyProspects`, `agencyLeads`, `agencyScripts`) can be linked to campaigns via the `campaignId` relation field.
-
-### Call Relations
-
-Each `agencyCalls` row links to the number used plus the record dialed:
-
-```typescript
-// At dial time (row created IN_PROGRESS):
-{ agencyPhoneId: "<agencyPhones id>", agencyProspectId: "<id>" /* or agencyLeadId */ }
-
-// After answer (correlation for recordings + webhooks):
-{ telnyxCallId: "v3:..." }
+    A->>SP: play recording
+    SP->>API: GET /api/calls/:id/audio
+    API->>TX: recordings.retrieve(telnyxRecordingId)
+    TX-->>API: download_urls.mp3 (expires in about 10 minutes)
+    API-->>SP: 302 to the fresh URL
+    Note over API,TX: the Telnyx API key never leaves the server
 ```
 
-**Important:** Twenty uses the `{fieldName}Id` pattern for relation fields in REST API operations:
+> Source: [`docs/diagrams/call-lifecycle.mmd`](docs/diagrams/call-lifecycle.mmd).
 
-```typescript
-// To link a prospect to a campaign:
-{ campaignIdId: "0181d430-880f-4c9e-b919-e224a39df574" }
+Two steps in that sequence are load-bearing, and both have broken the recording
+before:
 
-// To unlink:
-{ campaignIdId: null }
+1. The Telnyx call-control id has to be read in the `requestDelegate` passed to
+   `inviter.invite()`. The `Inviter` constructor delegate does not fire
+   `onAccept` in sip.js 0.21.
+2. That id has to be stamped onto the row with a `PATCH` **before**
+   `POST /api/calls/:id/record`, because `/record` re-reads the row and returns
+   400 when `telnyxCallId` is empty.
+
+`POST /api/calls/:id/reconcile` is the repair path when the id was never
+captured: it matches a Telnyx recording by from and to within a 15 minute
+window.
+
+Telnyx download URLs expire in about ten minutes, so `GET /api/calls/:id/audio`
+re-resolves a fresh URL and 302s to it. The API key never leaves the server.
+
+### The number lock
+
+<!-- mermaid:phone-claim.mmd -->
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> IDLE
+
+    IDLE --> DIALING: POST /phones/:id/claim<br/>writes callState=DIALING,<br/>claimedByMemberId, claimedByEmail, claimedAt
+    note right of IDLE
+        claim is refused with 409
+        when callState is not IDLE and
+        the holder is a different member.
+        The 409 body carries heldBy.
+    end note
+
+    DIALING --> DIALING: re-claim by the same member<br/>idempotent, refreshes claimedAt
+    DIALING --> ACTIVE: POST /phones/:id/state {ACTIVE}<br/>fired on SIP Established
+    DIALING --> IDLE: POST /phones/:id/release<br/>on hang up, on failure, on unmount
+    DIALING --> IDLE: POST /phones/:id/release {force:true}<br/>admin override, skips the holder check
+
+    ACTIVE --> DIALING: POST /phones/:id/state {DIALING}
+    ACTIVE --> IDLE: POST /phones/:id/release
+
+    IDLE --> [*]
+
+    note left of DIALING
+        release writes currentCallId so the
+        number still points at the call it
+        was last used for.
+    end note
 ```
 
-### Frontend Integration
+> Source: [`docs/diagrams/phone-claim.mmd`](docs/diagrams/phone-claim.mmd).
 
-The `CallScriptViewer` component automatically loads scripts based on the campaign ID from the lead or prospect:
+The claim state lives on the `agencyPhones` row in Twenty rather than in server
+memory, so it survives a restart and every surface sees the same answer. The
+full state machine, including the 409 and `force` paths, is in the diagram.
 
-```tsx
-// LeadDetailPage.tsx
-<CallScriptViewer 
-  onClose={() => setShowScript(false)} 
-  campaignId={lead?.campaignIdId ?? null} 
-/>
+## Data model
 
-// ProspectDetailPage.tsx
-<CallScriptViewer 
-  onClose={() => setShowScript(false)} 
-  campaignId={prospect?.campaignIdId ?? null} 
- />
-```
+<!-- mermaid:data-model.mmd -->
+```mermaid
+erDiagram
+    agencyCampaigns ||--o{ agencyProspects : "campaignIdId"
+    agencyCampaigns ||--o{ agencyLeads : "campaignIdId"
+    agencyCampaigns ||--o{ agencyScripts : "campaignIdId"
+    agencyCampaigns ||--o{ agencyOffers : "urlKey, industryId"
 
-### Creating Relation Fields
+    agencyPhones ||--o{ agencyCalls : "agencyPhoneId"
+    agencyProspects ||--o{ agencyCalls : "agencyProspectId"
+    agencyLeads ||--o{ agencyCalls : "agencyLeadId"
+    agencyProspects ||--o| agencyLeads : "agencyProspectId"
 
-To add a new relation field via GraphQL:
+    agencyLeads ||--o{ agencyCallLogs : "leadId, legacy"
 
-```graphql
-mutation {
-  createOneField(input: {
-    field: {
-      objectMetadataId: "<object-id>"
-      type: RELATION
-      name: "campaignId"
-      label: "Campaign"
-      isNullable: true
-      settings: {
-        relationType: "MANY_TO_ONE"
-        onDelete: "SET_NULL"
-        joinColumnName: "campaignIdId"
-      }
-      relationCreationPayload: {
-        targetObjectMetadataId: "<campaign-object-id>"
-        targetFieldLabel: "Scripts"
-        targetFieldIcon: "IconFileText"
-        type: "MANY_TO_ONE"
-      }
+    agencyCampaigns {
+        text name
+        select status "ACTIVE INACTIVE DRAFT"
+        select campaignType "OUTBOUND INBOUND BLENDED REFERRAL COLD_CALL WEBSITE TWENTY_IMPORT OTHER"
+        text note "JSON settings blob"
+        text utmSource
+        text industryId
+        text urlKey
+        text funnelBaseUrl
+        text templateBaseUrl
     }
-  }) {
-    id
-    name
-  }
-}
-```
 
----
-
-## Status Mapping
-
-### agencyProspects.coldCallStatus
-
-| Value | Display | Meaning |
-|-------|---------|---------|
-| `NEW` | New | Fresh prospect, no contact made |
-| `CONTACTED` | Contacted | Initial contact made |
-| `INTERESTED` | Interested | Prospect showed interest |
-| `NOT_INTERESTED` | Not Interested | Prospect declined |
-| `CALLBACK` | Callback | Scheduled callback needed |
-| `CONVERTED` | Converted | Became a lead |
-| `DO_NOT_CONTACT` | Do Not Contact | DNC flagged |
-
-### agencyCampaigns.status
-
-| Value | Display | Meaning |
-|-------|---------|---------|
-| `ACTIVE` | Active | Campaign is running |
-| `INACTIVE` | Paused | Campaign is paused |
-| `DRAFT` | Draft | Campaign not yet started |
-
-### agencyCampaigns.campaignType
-
-| Value | Display |
-|-------|---------|
-| `OUTBOUND` | Outbound |
-| `INBOUND` | Inbound |
-| `BLENDED` | Blended |
-| `REFERRAL` | Referral |
-| `COLD_CALL` | Cold Call |
-| `WEBSITE` | Website |
-| `TWENTY_IMPORT` | Twenty Import |
-| `OTHER` | Other |
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+
-- npm or pnpm
-- Twenty CRM instance with custom objects configured
-- SIP provider (SignalWire, Telnyx, Twilio, or any SIP server)
-
-### Installation
-
-```bash
-git clone https://github.com/matthewdonsemail-lab/open-twenty-dialer.git
-cd open-twenty-dialer
-```
-
-### Backend Setup
-
-```bash
-cd backend
-npm install
-cp .env.example .env.local
-# Edit .env.local with your configuration
-npm run dev
-```
-
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-cp .env.example .env.local
-# Edit .env.local with VITE_API_URL=http://localhost:4000
-npm run dev
-```
-
-Open http://localhost:3000
-
-### Docker Deployment
-
-```bash
-docker compose up -d
-docker compose exec backend npm run seed
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-Create `.env.local` in the respective directory:
-
-**Backend (.env.local):**
-```env
-# Twenty CRM (required)
-TWENTY_BASE_URL=https://twenty.inferencesaver.com
-TWENTY_API_KEY=your-api-key-here
-
-# Twenty Postgres — for user verification (local dev goes through the SSH
-# tunnel because the tailnet ACL blocks direct 5432: localhost:5433 -> node01)
-# Tunnel: ssh -L 5433:localhost:5432 -N deepman@100.98.241.63
-TWENTY_DATABASE_URL=postgres://twenty:xxx@127.0.0.1:5433/twenty
-
-# Sync settings
-SYNC_POLL_INTERVAL_MS=30000
-
-# Backend
-PORT=4000
-JWT_SECRET=your-jwt-secret-here
-
-# Telnyx (SMS/Voice/Call Control — server-side only, never VITE_)
-TELNYX_API_KEY=...
-TELNYX_MESSAGING_PROFILE_ID=...
-TELNYX_MESSAGING_PROFILE_US=...
-TELNYX_WEBHOOK_TOKEN=...   # shared gate for the Vercel receiver (?token=)
-
-# Twenty member login (local testing + scripts)
-TWENTY_USER_EMAIL=...
-TWENTY_USER_PASSWORD=...
-```
-
-**Frontend (.env.local):**
-```env
-VITE_API_URL=http://localhost:4000
-# Telnyx SIP (baked into the SPA bundle at build time)
-VITE_SIP_URI=sip:username@sip.telnyx.com
-VITE_SIP_PASSWORD=your-sip-password
-VITE_SIP_WS_URL=wss://sip.telnyx.com:7443
-VITE_SIP_CALLER_ID=+1XXXXXXXXXX
-VITE_SIP_PROVIDER=telnyx
-```
-
-### SIP Configuration
-
-Works with SignalWire, Telnyx, Twilio, Asterisk, FreeSWITCH, or any SIP server.
-
-See [SIP Providers Guide](docs/sip-providers.md) for detailed setup.
-
----
-
-## Project Structure
-
-```
-open-twenty-dialer/
-├── backend/                    # Express API server
-│   ├── src/
-│   │   ├── lib/               # Twenty client, logger
-│   │   ├── middleware/        # Auth middleware
-│   │   └── routes/            # REST API routes
-│   │       ├── auth.ts
-│   │       ├── campaigns.ts
-│   │       ├── leads.ts
-│   │       ├── prospects.ts
-│   │       ├── scripts.ts
-│   │       ├── twentyMeta.ts
-│   │       └── twentyPhones.ts
-│   └── .env.example
-├── frontend/                   # React/Vite SPA
-│   └── src/
-│       ├── components/        # UI components
-│       ├── hooks/             # React Query hooks
-│       ├── lib/               # API client, utilities
-│       └── pages/             # Route pages
-│           ├── CampaignPage.tsx
-│           ├── LeadDetailPage.tsx
-│           ├── LeadsPage.tsx
-│           ├── ProspectDetailPage.tsx
-│           ├── ProspectPage.tsx
-│           └── ScriptsPage.tsx
-├── docs/
-├── .env.example
-├── .gitignore
-└── README.md
-```
-
----
-
-## API Endpoints
-
-### Authentication
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/signup` | Create account |
-| POST | `/api/auth/login` | Sign in |
-| GET | `/api/auth/me` | Get current user |
-
-### Prospects
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/prospects` | List all prospects |
-| GET | `/api/prospects/:id` | Get single prospect |
-| POST | `/api/prospects` | Create prospect |
-| PATCH | `/api/prospects/:id` | Update prospect |
-| DELETE | `/api/prospects/:id` | Delete prospect |
-
-### Leads
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/leads` | List all leads |
-| GET | `/api/leads/:id` | Get single lead |
-| POST | `/api/leads` | Create lead |
-| PATCH | `/api/leads/:id` | Update lead |
-| DELETE | `/api/leads/:id` | Delete lead |
-
-### Campaigns
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/campaigns` | List all campaigns |
-| GET | `/api/campaigns/:id` | Get single campaign |
-| POST | `/api/campaigns` | Create campaign |
-| PATCH | `/api/campaigns/:id` | Update campaign |
-| DELETE | `/api/campaigns/:id` | Delete campaign |
-
-### Scripts
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/scripts` | List all scripts |
-| GET | `/api/scripts/:id` | Get single script |
-| POST | `/api/scripts` | Create script |
-| PATCH | `/api/scripts/:id` | Update script |
-| DELETE | `/api/scripts/:id` | Delete script |
-
-### Twenty Integration
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/twenty/meta/:object` | Get field metadata for object |
-| GET | `/api/twenty/phones` | List available phone numbers (with live claim state) |
-| POST | `/api/twenty/phones/:id/claim` | Claim a number (`memberId`, `memberEmail`; 409 `heldBy` when taken) |
-| POST | `/api/twenty/phones/:id/state` | Set DIALING/ACTIVE (holder only) |
-| POST | `/api/twenty/phones/:id/release` | Release to IDLE (holder only, unless `force`) |
-
-### Calls
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/calls` | List calls, newest first |
-| GET | `/api/calls/:id` | Get single call |
-| POST | `/api/calls` | Log a call (creates `agencyCalls` row) |
-| PATCH | `/api/calls/:id` | Update (disposition, recording, transcript, meeting link, debugLog) |
-| POST | `/api/calls/:id/record` | Start Telnyx server recording + transcription |
-| POST | `/api/calls/:id/reconcile` | Match Telnyx recording by from/to/time when no call-control-id |
-| GET | `/api/calls/:id/audio` | Redirect to a fresh Telnyx mp3 (key stays server-side) |
-
-### Diagnostics
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Health + Twenty config flags |
-| GET | `/api/netcheck?host=&port=` | SIP reachability probe (allowlisted hosts only) |
-| POST | `/api/telnyx-webhook?token=` | Telnyx events (Vercel serverless, not Express) |
-
----
-
-## Twenty CRM Setup
-
-### Option 1: Via API (Recommended)
-
-The backend provides an endpoint to automatically create all required Twenty CRM objects and fields:
-
-```bash
-# Setup Twenty CRM objects and fields
-curl.exe -X POST "http://localhost:4000/api/setup/twenty" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json"
-```
-
-This will create:
-- `agencyProspects` object with `coldCallStatus` and `utmSource` fields
-- `agencyLeads` object
-- `agencyCampaigns` object with `status` and `campaignType` fields
-- `agencyScripts` object
-
-### Option 2: Via GraphQL (Manual)
-
-To set up the required custom objects in Twenty CRM, use the GraphQL metadata API:
-
-```graphql
-mutation {
-  createOneObject(input: {
-    object: {
-      nameSingular: "agencyProspect"
-      namePlural: "agencyProspects"
-      labelSingular: "Prospect"
-      labelPlural: "Prospects"
-      description: "Cold call prospects"
-      icon: "IconBuildingSkyscraper"
-      isLabelSyncedWithName: false
+    agencyProspects {
+        text name
+        text phone
+        text email
+        text website
+        text fullAddress
+        text city
+        text region
+        text country
+        text niche
+        number rating
+        number reviewCount
+        select coldCallStatus "NEW CONTACTED INTERESTED NOT_INTERESTED CALLBACK CONVERTED DO_NOT_CONTACT"
+        text outboundState
+        text outboundLabel
+        text utmSource
+        text campaignIdId "relation to agencyCampaigns"
     }
-  }) {
-    id
-    nameSingular
-  }
-}
-```
 
-Repeat for `agencyLeads`, `agencyCampaigns`, and `agencyScripts`.
-
-### Adding SELECT Fields
-
-Create SELECT fields using the metadata API. Example for campaign status:
-
-```graphql
-mutation {
-  createOneField(input: {
-    field: {
-      objectMetadataId: "<campaign-object-id>"
-      type: SELECT
-      name: "status"
-      label: "Status"
-      isNullable: true
-      options: [
-        { label: "Active", value: "ACTIVE", color: "green", position: 0 }
-        { label: "Inactive", value: "INACTIVE", color: "gray", position: 1 }
-        { label: "Draft", value: "DRAFT", color: "amber", position: 2 }
-      ]
+    agencyLeads {
+        text name
+        text contactName
+        text email
+        text phone
+        text company
+        text source
+        text status
+        text note
+        select coldCallStatus
+        text createdById
+        text campaignIdId "relation to agencyCampaigns"
     }
-  }) {
-    id
-    name
-  }
-}
+
+    agencyScripts {
+        text name
+        text scriptData "JSON: script body plus objection responses"
+        text campaignIdId "relation to agencyCampaigns"
+    }
+
+    agencyPhones {
+        text phoneNumber "E.164"
+        text name
+        text countryCode "ISO alpha-2"
+        select numberType "LONG_CODE TOLL_FREE SHORT_CODE"
+        select state "ACTIVE PAUSED DEGRADED RETIRED"
+        text messagingProfileId
+        select callState "IDLE DIALING ACTIVE - the claim lock"
+        text claimedByMemberId
+        text claimedByEmail
+        datetime claimedAt
+        text currentCallId
+        text lastSyncedAt
+    }
+
+    agencyCalls {
+        text name "generated"
+        select direction "INBOUND OUTBOUND MISSED"
+        select status "IN_PROGRESS COMPLETED FAILED NO_ANSWER BUSY"
+        text fromNumber
+        text toNumber
+        datetime startedAt
+        datetime endedAt
+        number durationSeconds
+        text telnyxCallId "X-Telnyx-Call-Control-ID, captured from the 200 OK"
+        text telnyxRecordingId
+        text recordingUrl "expires, play via /api/calls/:id/audio"
+        text transcript
+        select transcriptionStatus "NONE PENDING READY FAILED"
+        text summary
+        text debugLog "SIP event trail, 8KB cap"
+        text meetingUrl
+        text meetingProvider
+        datetime meetingAt
+        select meetingStatus
+        text meetingBookingId
+        text agencyPhoneId "relation to agencyPhones"
+        text agencyProspectId "relation to agencyProspects"
+        text agencyLeadId "relation to agencyLeads"
+    }
+
+    agencyOffers {
+        text name "INDUSTRY:urlKey"
+        select status
+        select videoMode "PROSPECT"
+    }
+
+    agencyCallLogs {
+        text name "direction: outcome"
+        text leadId
+        text userId
+        text campaignId
+        text recordingUrl
+        number duration_seconds
+    }
 ```
 
-See [Twenty Metadata API Reference](docs/twenty-workflows/metadata-operations.md) for full details.
+> Source: [`docs/diagrams/data-model.mmd`](docs/diagrams/data-model.mmd).
 
----
+`POST /api/setup/twenty` creates four of these idempotently:
+`agencyProspects`, `agencyLeads`, `agencyCampaigns`, `agencyScripts`, plus the
+`coldCallStatus` and `utmSource` selects and the `campaignId` relations. It does
+**not** create `agencyPhones`, `agencyCalls`, or `agencyOffers`; those have to
+exist in the workspace already.
 
-## License
+One API rule worth memorising: Twenty writes relation fields as
+`{fieldName}Id`, so a relation declared as `campaignId` is sent as
+`campaignIdId`.
 
-MIT License — see [LICENSE](LICENSE) for details.
+### Key status values
 
----
+`agencyProspects.coldCallStatus`
 
-## Troubleshooting
+| Value | Meaning |
+|---|---|
+| `NEW` | no contact made |
+| `CONTACTED` | initial contact made |
+| `INTERESTED` | showed interest |
+| `NOT_INTERESTED` | declined |
+| `CALLBACK` | needs a callback |
+| `CONVERTED` | became a lead |
+| `DO_NOT_CONTACT` | do not call again |
 
-### Twenty CRM API 401/403 Errors
+`agencyCalls.status`
 
-**Problem:** Getting `401 Authorization Required` or `403 Missing authentication token` from Twenty CRM endpoints.
+| Value | Meaning |
+|---|---|
+| `IN_PROGRESS` | dialled, not yet wrapped up |
+| `COMPLETED` | answered, or a wrap-up status the UI does not distinguish |
+| `NO_ANSWER` | rang out |
+| `BUSY` | busy |
+| `FAILED` | transport or setup failure |
 
-**Solution:** This is almost always an nginx proxy misconfiguration on the server. Check these common issues:
+`agencyPhones.callState`
 
-#### 1. Nginx Proxy Port Mismatch (Most Common)
+| Value | Meaning |
+|---|---|
+| `IDLE` | free |
+| `DIALING` | claimed, call not yet up |
+| `ACTIVE` | answered |
 
-The `auth-guard` container (nginx) must proxy Twenty requests to the correct port.
+Full field tables are in [docs/okf/datamodel/dialer.md](docs/okf/datamodel/dialer.md).
 
-```nginx
-# CORRECT - actual Twenty server port
-proxy_pass http://127.0.0.1:3005;
-```
-
-**Fix:** Update the nginx config in `/home/deepman/services/auth-guard/nginx.conf` and restart:
+## Running it
 
 ```bash
-tailscale ssh deepman@node01 "docker restart auth-guard"
+git clone https://github.com/matthewdonsemail-lab/dialer.git
+cd dialer
+
+bun install
+bun run install:all          # root, backend, frontend
+
+cp .env.example .env.local   # then fill it in; see below
+cp backend/.env.example backend/.env.local
+cp frontend/.env.example frontend/.env.local
+
+bun run dev                  # backend on :4000, frontend on :3000
 ```
 
-#### 2. Verify API Key is Valid
+Open http://localhost:3000 and sign in with an account that already exists in
+Twenty. Signup is disabled: the dialer verifies credentials against Twenty's
+`core."user"` table rather than keeping its own.
 
-Test your API key directly against Twenty:
-
-```bash
-curl.exe -s "https://twenty.inferencesaver.com/rest/agencyProspects?limit=1" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-Should return `200 OK` with data or empty array, NOT `401` or `403`.
-
-#### 3. Check Twenty Server Status
-
-Ensure Twenty containers are running:
-
-```bash
-docker ps | grep twenty
-# Should show: twenty-server, twenty-worker, twenty-postgres, twenty-redis
-```
-
-If server is down:
-
-```bash
-cd /home/deepman/services/twenty
-docker compose up -d server
-```
-
-### Common Error Messages
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `401 Authorization Required` | Wrong API key or expired token | Generate new key in Twenty UI |
-| `403 Missing authentication token` | Nginx not forwarding Authorization header | Check nginx proxy-params.conf |
-| `502 Bad Gateway` | Nginx pointing to wrong port | Update proxy_pass to port 3005 |
-| `504 Gateway Timeout` | Twenty server not responding | Check if twenty-server container is running |
-
----
-
-## Documentation
-
-- [SIP Providers Guide](docs/sip-providers.md) — Configure your SIP provider
-- [Twenty CRM Integration](docs/twenty-integration.md) — Sync configuration guide
-- [Twenty Troubleshooting](docs/twenty-troubleshooting.md) — Common issues and fixes
-
----
-
-## Native Twenty App (`twenty-native-app/`)
-
-The dialer is now shipped **natively inside Twenty** as an installable app, not just a
-standalone SPA. `twenty-native-app/` is scaffolded from `create-twenty-app` (Twenty 2.41.0)
-and installed into the workspace at `https://twenty.inferencesaver.com` via the
-Twenty CLI. It lives at `src/` in that folder and is published/installed like this:
+The native app is a separate build with its own toolchain:
 
 ```bash
 cd twenty-native-app
 yarn install
-# remote is pre-configured in .twenty/remote.json (production = twenty.inferencesaver.com)
-yarn twenty app:publish --private   # build + upload tarball to the workspace registry
-yarn twenty app:install             # install into the live workspace
+yarn twenty app:publish --private
+yarn twenty app:install
 ```
 
-What the native app contains:
+`twenty-native-app/AGENTS.md` is the Twenty team's own guide for this project
+structure, and it is worth reading before changing anything under
+`twenty-native-app/src/`.
 
-- **33 dialer logic functions** (`src/logic-functions/*.logic-function.ts`) — the full
-  CRUD + phone-claim protocol exposed as `/dialer/*` HTTP routes, running *inside* the
-  Twenty server with its own key-value store (no sidecar Express needed for dialer CRUD).
-  Each is a thin wrapper over `src/lib/dialer-client.ts`, which talks to the workspace
-  via `RestApiClient` (record access) and `MetadataApiClient` (SELECT options, claim
-  state). This is the *second* integration path: the first is the standalone `backend/`
-  Express API in this same repo.
-- **A native front component** (`src/front-components/main-page.tsx`) — a sidebar page
-  with Queue / Numbers / Calls / Campaigns / Scripts tabs, record-row selection
-  (select-all + per-row), status pills, claim/release actions, and inline call logging.
-  Built on `twenty-ui` primitives (`Status`, `Tag`, `SelectDisplay`) + theme tokens,
-  no hand-rolled styling.
-- **Role + permissions** (`src/roles/default-role.ts`) — declares what the app may read
-  and write; the app's default role is what `runAgent`/logic functions run under.
+More in [docs/quick-start.md](docs/quick-start.md) and [SETUP.md](SETUP.md).
 
-### Deploying a change to the native app
+## Configuration
+
+Full reference in [SETUP.md](SETUP.md). The shape of it:
+
+```env
+# Twenty CRM. Required by every server.
+TWENTY_BASE_URL=https://twenty.example.com
+TWENTY_API_KEY=
+
+# Only for backend/. Used for exactly one query: verify a password
+# against core."user". Locally this goes through an SSH tunnel
+# because the tailnet ACL blocks direct 5432:
+#   ssh -L 5433:localhost:5432 -N <host>
+TWENTY_DATABASE_URL=postgres://twenty:xxx@127.0.0.1:5433/twenty
+
+# backend/ only. Signs its own JWTs.
+JWT_SECRET=
+PORT=4000
+
+# Telnyx. Server-side only, never VITE_.
+TELNYX_API_KEY=
+TELNYX_WEBHOOK_TOKEN=        # shared gate for the webhook receiver (?token=)
+```
+
+```env
+# frontend/. Baked into the bundle at build time.
+VITE_API_URL=http://localhost:4000
+VITE_SIP_URI=sip:username@sip.telnyx.com
+VITE_SIP_PASSWORD=
+VITE_SIP_WS_URL=wss://sip.telnyx.com:7443
+VITE_SIP_CALLER_ID=+15551234567
+VITE_SIP_PROVIDER=telnyx
+```
+
+`VITE_SIP_*` values are compiled in, so changing one needs a rebuild. That is
+also why a redeploy can serve a bundle with stale SIP config if the CDN is
+cached; the app detects a stale chunk and reloads with a cache buster.
+
+SIP is not Telnyx-specific. See [docs/sip-providers.md](docs/sip-providers.md).
+
+## Repository layout
+
+```
+dialer/
+├── backend/                  Express API, port 4000
+│   └── src/
+│       ├── lib/              twenty-client, twenty-object-service, telnyx
+│       ├── middleware/       auth (JWT)
+│       ├── db/               twenty-pg (the one password query); schema.ts is dead
+│       └── routes/           one file per resource
+├── frontend/                 Vite SPA, the browser softphone
+│   ├── api/telnyx-webhook.ts  Telnyx webhook receiver (Vercel function)
+│   └── src/
+│       ├── components/softphone/  the dial path
+│       ├── sip/              config, diagnostics, failure classification
+│       ├── hooks/            React Query hooks
+│       └── pages/            routes
+├── railcode/              same UI, Hono worker, Railcode deployment
+│   ├── server/               worker, twenty connector access
+│   └── frontend/             the ported UI
+├── twenty-native-app/        the dialer as a Twenty app
+│   └── src/
+│       ├── logic-functions/  33 /dialer/* routes
+│       ├── front-components/ DialerApp, api.ts, FieldCell
+│       └── lib/              dialer-client
+├── docker/                   Dockerfiles, compose, nginx configs
+├── docs/                     everything below
+│   ├── diagrams/             six .mmd files, the source of the diagrams above
+│   ├── telnyx/               Telnyx notes; upstream/ is a gitignored mirror
+│   ├── plans/                scoped but unbuilt design work
+│   └── marketing/            launch copy, not documentation
+└── scripts/                  deploy, setup, doc mirrors, pre-push checks
+```
+
+Deliberately **not** tracked: host-specific infrastructure, unrelated apps,
+vendored third-party skills, deploy staging output, and credentials. See
+[.gitignore](.gitignore) and
+[scripts/twenty-schema/README.md](scripts/twenty-schema/README.md).
+`scripts/check-scope.mjs` fails the push if any of them comes back.
+
+## API reference
+
+Mounted by `backend/src/index.ts`, mirrored in `railcode/server/index.ts`, and
+served inside Twenty at `/dialer/*`.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/auth/login` | Twenty `core."user"` + bcrypt. Signup is disabled. |
+| GET | `/api/auth/me` | Current user from the JWT. |
+| GET POST PATCH DELETE | `/api/leads` | CRUD. |
+| GET POST PATCH DELETE | `/api/prospects` | CRUD. |
+| GET | `/api/prospects/:id/website-status` | Resolves the industry funnel and offer URLs. |
+| POST | `/api/prospects/:id/website-sent` | Advances `outboundLabel` to `SMS_IN_PROGRESS`. |
+| POST | `/api/prospects/:id/ensure-offer` | Idempotently creates the `INDUSTRY:<key>` offer. |
+| GET POST PATCH DELETE | `/api/campaigns` | CRUD. |
+| GET POST PATCH DELETE | `/api/scripts` | CRUD. `scriptData` is a JSON string. |
+| GET | `/api/twenty/phones` | Inventory with live claim state. |
+| POST | `/api/twenty/phones/:id/claim` | `IDLE` to `DIALING`. 409 with `heldBy` when taken. |
+| POST | `/api/twenty/phones/:id/state` | `DIALING` or `ACTIVE`. Holder only. |
+| POST | `/api/twenty/phones/:id/release` | Back to `IDLE`. Holder only unless `force`. |
+| GET | `/api/twenty/meta/:object` | SELECT options, from the Twenty metadata API. |
+| POST | `/api/setup/twenty` | Idempotent schema bootstrap. |
+| GET | `/api/calls` | Newest first. |
+| GET | `/api/calls/:id/audio` | 302 to a freshly resolved Telnyx mp3. |
+| POST | `/api/calls/:id/record` | `record_start` with transcription. Needs `telnyxCallId`. |
+| POST | `/api/calls/:id/reconcile` | Repair path: match a recording by from and to. |
+| POST | `/api/calls` | Creates the row. Best effort, also stamps `currentCallId`. |
+| PATCH | `/api/calls/:id` | Disposition, recording, transcript, meeting, `debugLog`. |
+| GET | `/api/health` | Config flags. |
+| GET | `/api/netcheck` | Allowlisted TCP probe. Best effort. |
+
+`/api/call-logs` and `/api/profiles` are legacy, read the old call log object,
+and are **not** behind `authMiddleware`. Everything else is.
+
+## Documentation map
+
+Full index with descriptions: [docs/README.md](docs/README.md).
+
+**Understand it**
+
+- [Architecture](docs/architecture.md) - the three surfaces, the servers, the auth model
+- [Data flow](docs/data-flow.md) - reads, writes, keyset pagination, the schema
+- [Diagrams](docs/diagrams/README.md) - all six, with the source that implements each
+
+**Run it**
+
+- [Quick start](docs/quick-start.md)
+- [Setup reference](SETUP.md)
+- [Design system](docs/design-system.md) - tokens, table primitives, the Tailwind gotcha
+- [SIP providers](docs/sip-providers.md)
+
+**Ship it**
+
+- [Deployment](docs/deployment.md)
+- [Contributing](CONTRIBUTING.md) - hooks, checks, commit convention
+- [Changelog](CHANGELOG.md)
+
+**When it breaks**
+
+- [Twenty troubleshooting](docs/twenty-troubleshooting.md)
+- [Telnyx reference](docs/telnyx/README.md)
+
+**Reference, not documentation**
+
+- [Plans](docs/plans/) - scoped but unbuilt design work
+- [Marketing](docs/marketing/) - launch copy
+- [Data model snapshot](docs/okf/datamodel/dialer.md)
+- [Twenty schema helpers](scripts/twenty-schema/README.md) - local only, gitignored
+- `docs/telnyx/upstream/`, `docs/twenty/upstream/` - mirrored vendor docs, gitignored.
+  Fetch with `bun run docs:telnyx` and `bun run docs:twenty`.
+
+## Checks
 
 ```bash
-cd twenty-native-app
-yarn twenty app:publish --private && yarn twenty app:install
+bunx lefthook install     # once, after cloning
 ```
 
-The publish step builds the app (TypeScript typecheck runs automatically) and uploads a
-tarball to the workspace's app registry; install then applies it to the live server.
-To preview before installing, `yarn twenty plan` shows the metadata diff without
-touching the workspace.
+Three pre-push gates, each a plain `node scripts/check-*.mjs` with no
+dependencies:
 
-### Standalone SPA (legacy, still works)
+| Check | Fails when |
+|---|---|
+| `check-docs.mjs` | a documented file is missing, a diagram is unlisted, the README does not link a diagram, or a relative link is broken |
+| `check-scope.mjs` | anything outside the application's scope is tracked in git |
+| `check-no-emojis.mjs` | an emoji appears in a tracked file |
 
-The original browser-based softphone SPA lives in `frontend/` and the Express API in
-`backend/` — both still deploy independently (Vercel + node01 Funnel). Use the native
-app for in-Twenty dialing (no separate login, no extra host); use the SPA when you need
-the browser softphone UI or to test SIP/WebRTC outside the workspace.
+Run them by hand any time:
 
-## Troubleshooting
+```bash
+bun run check:docs
+bun run check:scope
+node scripts/check-no-emojis.mjs
+```
 
-### Native app install: "No application with this universalIdentifier"
-Run `yarn twenty remote:use production` first, then `yarn twenty app:publish --private`.
-The CLI must know which workspace registry to push to.
+Bypass an emergency with `SKIP_DOCS_CHECK=1`, `SKIP_SCOPE_CHECK=1`, or
+`SKIP_EMOJI_CHECK=1`.
 
-### Native app: logic function 500 "Record not found"
-The `RestApiClient` in `src/lib/dialer-client.ts` resolves its base URL from the
-workspace env at runtime — confirm `STORAGE_S3_PRESIGNED_URL_ENABLED=false` is set on the
-Twenty server (it must proxy files through the app origin, not redirect to R2, or the
-front component's bundle fetch 404s → "Failed to fetch" in the widget).
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Railcode Agent"
-  short_description: "Build and operate managed Railcode agents"
-  default_prompt: "Use $create-railcode-agent to build and test a managed Railcode agent."

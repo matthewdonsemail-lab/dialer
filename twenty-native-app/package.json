@@ -1,6 +1,7 @@
 {
-  "name": "open-twenty-dialer",
+  "name": "dialer-twenty-app",
   "version": "0.1.22",
+  "description": "The dialer, shipped natively inside Twenty as an installable app.",
   "license": "MIT",
   "engines": {
     "node": "^24.5.0",

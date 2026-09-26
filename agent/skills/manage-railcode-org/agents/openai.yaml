@@ -1,4 +1,0 @@
-interface:
-  display_name: "Manage Railcode Org"
-  short_description: "Administer a Railcode organization via CLI"
-  default_prompt: "Use $manage-railcode-org to manage my Railcode organization from the CLI."

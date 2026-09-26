@@ -1,0 +1,128 @@
+%% Dialer - Twenty data model
+%% The six objects the dialer writes, plus two it reads. Only the first four
+%% are created by POST /api/setup/twenty, which is idempotent. agencyPhones,
+%% agencyCalls, agencyOffers, agencyCallLogs and agencyProfiles must already
+%% exist in the workspace.
+%%
+%% Relation fields are written as {fieldName}Id in the REST API, so a relation
+%% named campaignId is sent as campaignIdId.
+
+erDiagram
+    agencyCampaigns ||--o{ agencyProspects : "campaignIdId"
+    agencyCampaigns ||--o{ agencyLeads : "campaignIdId"
+    agencyCampaigns ||--o{ agencyScripts : "campaignIdId"
+    agencyCampaigns ||--o{ agencyOffers : "urlKey, industryId"
+
+    agencyPhones ||--o{ agencyCalls : "agencyPhoneId"
+    agencyProspects ||--o{ agencyCalls : "agencyProspectId"
+    agencyLeads ||--o{ agencyCalls : "agencyLeadId"
+    agencyProspects ||--o| agencyLeads : "agencyProspectId"
+
+    agencyLeads ||--o{ agencyCallLogs : "leadId, legacy"
+
+    agencyCampaigns {
+        text name
+        select status "ACTIVE INACTIVE DRAFT"
+        select campaignType "OUTBOUND INBOUND BLENDED REFERRAL COLD_CALL WEBSITE TWENTY_IMPORT OTHER"
+        text note "JSON settings blob"
+        text utmSource
+        text industryId
+        text urlKey
+        text funnelBaseUrl
+        text templateBaseUrl
+    }
+
+    agencyProspects {
+        text name
+        text phone
+        text email
+        text website
+        text fullAddress
+        text city
+        text region
+        text country
+        text niche
+        number rating
+        number reviewCount
+        select coldCallStatus "NEW CONTACTED INTERESTED NOT_INTERESTED CALLBACK CONVERTED DO_NOT_CONTACT"
+        text outboundState
+        text outboundLabel
+        text utmSource
+        text campaignIdId "relation to agencyCampaigns"
+    }
+
+    agencyLeads {
+        text name
+        text contactName
+        text email
+        text phone
+        text company
+        text source
+        text status
+        text note
+        select coldCallStatus
+        text createdById
+        text campaignIdId "relation to agencyCampaigns"
+    }
+
+    agencyScripts {
+        text name
+        text scriptData "JSON: script body plus objection responses"
+        text campaignIdId "relation to agencyCampaigns"
+    }
+
+    agencyPhones {
+        text phoneNumber "E.164"
+        text name
+        text countryCode "ISO alpha-2"
+        select numberType "LONG_CODE TOLL_FREE SHORT_CODE"
+        select state "ACTIVE PAUSED DEGRADED RETIRED"
+        text messagingProfileId
+        select callState "IDLE DIALING ACTIVE - the claim lock"
+        text claimedByMemberId
+        text claimedByEmail
+        datetime claimedAt
+        text currentCallId
+        text lastSyncedAt
+    }
+
+    agencyCalls {
+        text name "generated"
+        select direction "INBOUND OUTBOUND MISSED"
+        select status "IN_PROGRESS COMPLETED FAILED NO_ANSWER BUSY"
+        text fromNumber
+        text toNumber
+        datetime startedAt
+        datetime endedAt
+        number durationSeconds
+        text telnyxCallId "X-Telnyx-Call-Control-ID, captured from the 200 OK"
+        text telnyxRecordingId
+        text recordingUrl "expires, play via /api/calls/:id/audio"
+        text transcript
+        select transcriptionStatus "NONE PENDING READY FAILED"
+        text summary
+        text debugLog "SIP event trail, 8KB cap"
+        text meetingUrl
+        text meetingProvider
+        datetime meetingAt
+        select meetingStatus
+        text meetingBookingId
+        text agencyPhoneId "relation to agencyPhones"
+        text agencyProspectId "relation to agencyProspects"
+        text agencyLeadId "relation to agencyLeads"
+    }
+
+    agencyOffers {
+        text name "INDUSTRY:urlKey"
+        select status
+        select videoMode "PROSPECT"
+    }
+
+    agencyCallLogs {
+        text name "direction: outcome"
+        text leadId
+        text userId
+        text campaignId
+        text recordingUrl
+        number duration_seconds
+    }

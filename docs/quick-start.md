@@ -11,8 +11,8 @@ Get Cold Dialer running in 5 minutes.
 
 ```bash
 # Clone the repository
-git clone https://github.com/matthewdonsemail-lab/open-twenty-dialer.git
-cd open-twenty-dialer
+git clone https://github.com/matthewdonsemail-lab/dialer.git
+cd dialer
 
 # Setup backend
 cd backend
@@ -32,8 +32,8 @@ Open http://localhost:3000
 ## Docker
 
 ```bash
-git clone https://github.com/matthewdonsemail-lab/open-twenty-dialer.git
-cd open-twenty-dialer
+git clone https://github.com/matthewdonsemail-lab/dialer.git
+cd dialer
 
 # Copy environment file
 cp .env.example .env.local

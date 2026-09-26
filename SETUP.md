@@ -1,4 +1,4 @@
-# twenty-dialer Setup Guide
+# dialer Setup Guide
 
 ## Quick Start
 

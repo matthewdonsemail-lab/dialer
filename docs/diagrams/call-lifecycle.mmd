@@ -1,0 +1,73 @@
+%% Dialer - call lifecycle
+%% The exact ordered sequence from pressing dial to a playable recording.
+%% Implemented in frontend/src/components/softphone/Softphone.tsx (startCall,
+%% maybeStartServerRecording, finalizeCall, handleSaveOutcome) and
+%% backend/src/routes/calls.ts.
+%%
+%% The two steps that are easy to get wrong are marked: the call-control-id
+%% must be read from the requestDelegate, and it must be stamped on the row
+%% before /record is called.
+
+sequenceDiagram
+    autonumber
+    participant A as Agent
+    participant SP as Softphone.tsx
+    participant API as API (Express / Hono)
+    participant TW as Twenty CRM
+    participant TX as Telnyx
+
+    A->>SP: press dial
+    SP->>API: POST /api/twenty/phones/:id/claim {memberId}
+    API->>TW: PATCH agencyPhones callState=DIALING, claimedBy*
+    API-->>SP: 200, or 409 heldBy when another member holds it
+    Note over SP,API: a 409 aborts the dial before any SIP traffic
+
+    SP->>API: POST /api/calls (IN_PROGRESS, from, to, agencyPhoneId, agencyProspectId or agencyLeadId)
+    API->>TW: POST /rest/agencyCalls
+    API-->>SP: call row id
+
+    SP->>API: GET /api/netcheck?host&port
+    Note over SP,API: best effort; a failure only warns, the dial proceeds
+
+    SP->>TX: WebSocket connect, then REGISTER
+    SP->>SP: getUserMedia audio
+    SP->>TX: INVITE sip:target@domain, P-Asserted-Identity header
+
+    TX-->>SP: 200 OK
+    Note over SP,TX: STEP 1 of 2 - read X-Telnyx-Call-Control-ID<br/>in inviter.invite requestDelegate.onAccept.<br/>The Inviter constructor delegate does not fire this in sip.js 0.21.
+
+    SP->>API: PATCH /api/calls/:id {telnyxCallId}
+    Note over SP,API: STEP 2 of 2 - stamp the id BEFORE /record,<br/>otherwise /record reads a row with no telnyxCallId and 400s
+
+    SP->>API: POST /api/calls/:id/record
+    API->>TX: calls.actions.startRecording {mp3, dual, transcription:true}
+    TX-->>API: recording_id
+    API->>TW: PATCH agencyCalls telnyxRecordingId, transcriptionStatus=PENDING
+    API-->>SP: ok
+
+    TX-->>SP: SIP 200, media flowing
+    SP->>API: POST /api/twenty/phones/:id/state {memberId, state:ACTIVE}
+    API->>TW: PATCH agencyPhones callState=ACTIVE
+
+    TX-->>SP: call.recording.saved
+    TX-->>SP: call.recording.transcription.saved
+    Note over TX,SP: delivered to the webhook receiver, not the API.<br/>receiver PATCHes recordingUrl then transcript + transcriptionStatus=READY
+
+    A->>SP: hang up
+    SP->>TX: BYE
+    SP->>API: PATCH /api/calls/:id {status, endedAt, durationSeconds, telnyxCallId, debugLog}
+    API->>TW: PATCH agencyCalls
+
+    A->>SP: save disposition
+    SP->>API: PATCH /api/calls/:id {status}
+    SP->>API: POST /api/calls/:id/reconcile
+    Note over SP,API: repair path. Matches a Telnyx recording by<br/>from/to within a 15 minute window when the<br/>call-control-id was never captured.
+    SP->>API: POST /api/twenty/phones/:id/release {memberId, callId}
+    API->>TW: PATCH agencyPhones callState=IDLE, claimedBy* cleared
+
+    A->>SP: play recording
+    SP->>API: GET /api/calls/:id/audio
+    API->>TX: recordings.retrieve(telnyxRecordingId)
+    TX-->>API: download_urls.mp3 (expires in about 10 minutes)
+    API-->>SP: 302 to the fresh URL
+    Note over API,TX: the Telnyx API key never leaves the server

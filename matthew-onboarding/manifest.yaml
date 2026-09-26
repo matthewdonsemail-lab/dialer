@@ -1,8 +1,0 @@
-run_as: app
-llm: true
-email: true
-# crons:
-#   - schedule: "0 6 * * *"
-#     path: /api/cron/daily
-# egress:
-#   - api.example.com

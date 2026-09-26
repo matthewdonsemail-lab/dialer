@@ -1,5 +1,5 @@
 {
-  "name": "cold-dialer-backend",
+  "name": "dialer-backend",
   "version": "1.0.0",
   "type": "module",
   "scripts": {

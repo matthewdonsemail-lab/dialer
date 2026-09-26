@@ -70,8 +70,8 @@ jobs:
 
       - name: Build Docker images
         run: |
-          docker build -f docker/Dockerfile.frontend -t cold-dialer-frontend .
-          docker build -f docker/Dockerfile.backend -t cold-dialer-backend .
+          docker build -f docker/Dockerfile.frontend -t dialer-frontend .
+          docker build -f docker/Dockerfile.backend -t dialer-backend .
 
       - name: Test Docker Compose
         run: |

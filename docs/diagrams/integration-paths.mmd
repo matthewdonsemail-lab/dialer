@@ -1,0 +1,60 @@
+%% Dialer - the two integration paths
+%% The dialer reaches Twenty two different ways, and they do not call each
+%% other. This is the single most confusing thing about the codebase, so it
+%% gets its own diagram.
+%%
+%% Path A: a server the repo hosts, holding a workspace API key.
+%%   backend/          Express, port 4000, JWT auth
+%%   railcode/      Hono worker on Railcode, platform session, org connector
+%% Path B: logic functions running inside the Twenty server process.
+%%   twenty-native-app/
+%%
+%% Same six agency* objects at the bottom of both. Nothing is shared above it.
+
+flowchart TB
+    subgraph pathA["Path A - the repo hosts a server"]
+        direction TB
+        spa["frontend/<br/>Vite SPA, browser softphone"]
+        express["backend/<br/>Express on :4000<br/>JWT_SECRET, bcrypt"]
+        hono["railcode/<br/>Hono worker on Railcode<br/>org connector, no API key in the worker"]
+        spa -->|"VITE_API_URL, or same-origin"| express
+        hono -.->|"same UI, different base URL"| spa
+    end
+
+    subgraph pathB["Path B - the dialer runs inside Twenty"]
+        direction TB
+        widget["DialerApp front component<br/>Remote-DOM sandbox, 5 tabs"]
+        apilayer["front-components/dialer/api.ts<br/>RestApiClient"]
+        logic["33 logic functions<br/>/dialer/*<br/>isAuthRequired, 15s timeout"]
+        client["lib/dialer-client.ts<br/>lazy RestApiClient + MetadataApiClient"]
+        widget --> apilayer --> logic --> client
+    end
+
+    keyA["Auth: the repo's own JWT, or the Railcode platform session.<br/>Twenty is called with a static workspace API key."]
+    keyB["Auth: the Twenty workspace session.<br/>TWENTY_APP_ACCESS_TOKEN, refreshed on 401."]
+
+    express --> keyA
+    hono --> keyA
+    client --> keyB
+
+    hop1{{"Hop 1: /s/dialer/*<br/>functions host"}}
+    hop2{{"Hop 2: /rest/agency*<br/>record host"}}
+    apilayer -->|"RestApiClient, path starts with /s/<br/>routes to TWENTY_FUNCTIONS_URL"| hop1
+    logic --> hop1
+    logic --> hop2
+    client --> hop2
+
+    express --> store
+    hono --> store
+    hop2 --> store[("Twenty records<br/>agencyProspects agencyLeads agencyCampaigns<br/>agencyScripts agencyPhones agencyCalls")]
+
+    onlyB["Only Path A has: SIP/WebRTC softphone,<br/>Telnyx record_start and reconcile,<br/>audio proxy, call logs, profiles,<br/>CSV import, schema bootstrap, offers"]
+    onlyA["Only Path B has: in-workspace UI,<br/>no second login, no extra host"]
+
+    express -.-> onlyB
+    logic -.-> onlyA
+
+    classDef hop fill:#fdf4ff,stroke:#a21caf,color:#4a044e
+    classDef note fill:#fffbeb,stroke:#d97706,color:#451a03
+    class hop1,hop2 hop
+    class onlyA,onlyB,keyA,keyB note

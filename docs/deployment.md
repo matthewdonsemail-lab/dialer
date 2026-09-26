@@ -6,8 +6,8 @@
 
 ```bash
 # Clone and configure
-git clone https://github.com/matthewdonsemail-lab/open-twenty-dialer.git
-cd open-twenty-dialer
+git clone https://github.com/matthewdonsemail-lab/dialer.git
+cd dialer
 cp .env.example .env.local
 
 # Configure environment
@@ -48,8 +48,8 @@ curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 
 # Clone project
-git clone https://github.com/matthewdonsemail-lab/open-twenty-dialer.git
-cd open-twenty-dialer
+git clone https://github.com/matthewdonsemail-lab/dialer.git
+cd dialer
 
 # Configure
 cp .env.example .env.local

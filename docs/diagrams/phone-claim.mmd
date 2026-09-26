@@ -1,0 +1,37 @@
+%% Dialer - phone claim state machine
+%% The concurrency primitive that stops two agents dialing from the same
+%% number. State lives on the agencyPhones row in Twenty, not in memory, so it
+%% survives a server restart and is visible to every surface at once.
+%%
+%% Implemented three times, independently:
+%%   backend/src/routes/twentyPhones.ts
+%%   railcode/server/index.ts
+%%   twenty-native-app/src/logic-functions/dialer-phone-{claim,state,release}.logic-function.ts
+
+stateDiagram-v2
+    direction LR
+    [*] --> IDLE
+
+    IDLE --> DIALING: POST /phones/:id/claim<br/>writes callState=DIALING,<br/>claimedByMemberId, claimedByEmail, claimedAt
+    note right of IDLE
+        claim is refused with 409
+        when callState is not IDLE and
+        the holder is a different member.
+        The 409 body carries heldBy.
+    end note
+
+    DIALING --> DIALING: re-claim by the same member<br/>idempotent, refreshes claimedAt
+    DIALING --> ACTIVE: POST /phones/:id/state {ACTIVE}<br/>fired on SIP Established
+    DIALING --> IDLE: POST /phones/:id/release<br/>on hang up, on failure, on unmount
+    DIALING --> IDLE: POST /phones/:id/release {force:true}<br/>admin override, skips the holder check
+
+    ACTIVE --> DIALING: POST /phones/:id/state {DIALING}
+    ACTIVE --> IDLE: POST /phones/:id/release
+
+    IDLE --> [*]
+
+    note left of DIALING
+        release writes currentCallId so the
+        number still points at the call it
+        was last used for.
+    end note

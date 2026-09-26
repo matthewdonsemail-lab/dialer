@@ -1,0 +1,50 @@
+%% Dialer - system context
+%% Every runtime surface the dialer can be deployed as, and every external
+%% system it talks to. Solid arrows are request paths, dashed are events.
+%%
+%% Source of truth for the component boundaries. See docs/architecture.md.
+
+flowchart TB
+    actor["Agent<br/>a sales rep on a desk"]
+
+    subgraph surfaces["Deployment surfaces (pick one or run several)"]
+        direction TB
+        native["Twenty native app<br/>twenty-native-app/<br/>in-workspace page + 33 logic functions"]
+        spa["Standalone SPA<br/>frontend/<br/>Vite + React, browser softphone"]
+        api["Express API<br/>backend/<br/>port 4000, JWT auth"]
+        worker["Railcode worker<br/>railcode/<br/>Hono, platform session"]
+        hook["Webhook receiver<br/>frontend/api/telnyx-webhook.ts<br/>Vercel serverless"]
+    end
+
+    subgraph twenty["Twenty CRM (system of record)"]
+        objects["agency* custom objects<br/>prospects, leads, campaigns,<br/>scripts, phones, calls"]
+        meta["Metadata API<br/>SELECT options, schema bootstrap"]
+        rest["REST API<br/>/rest/agency*"]
+        pg[("Postgres<br/>core.user<br/>password check only")]
+    end
+
+    telnyx["Telnyx<br/>SIP trunk + Call Control<br/>recording + transcription"]
+
+    actor --> native
+    actor --> spa
+    actor --> worker
+
+    spa -->|"HTTPS /api/*"| api
+    worker -->|"HTTPS /api/*"| worker
+    spa <-->|"WSS SIP over WebRTC"| telnyx
+
+    api -->|"Bearer API key"| rest
+    worker -->|"org connector 'twenty'"| rest
+    native -->|"logic functions"| rest
+    api --> meta
+    worker --> meta
+    native --> meta
+
+    api -->|"bcrypt verify"| pg
+    hook -->|"Bearer API key"| rest
+    telnyx -.->|"webhook events"| hook
+
+    classDef ext fill:#f4f4f5,stroke:#71717a,color:#18181b
+    classDef store fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b
+    class telnyx,actor ext
+    class objects,pg store

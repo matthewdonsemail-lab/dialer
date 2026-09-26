@@ -25,7 +25,7 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Custom nginx config for iframe embedding
-COPY ops/node01/dialer/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.embed.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 3000
 

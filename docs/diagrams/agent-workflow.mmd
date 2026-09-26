@@ -1,0 +1,49 @@
+%% Dialer - the agent's workflow
+%% Two workflows that share the same six objects.
+%%
+%%   A. Calling. Needs a softphone, so it is the standalone path only
+%%      (frontend/ or railcode/). The browser holds the SIP call.
+%%   B. Logging in Twenty. No softphone, so the agent calls from their own
+%%      handset and writes the result back. This is the native app.
+%%
+%% The claim lock in the middle is what both depend on: one number, one agent,
+%% for the length of one call.
+
+flowchart TB
+    subgraph pathA["A - calling from the dialer"]
+        direction TB
+        A1["Open a lead or prospect<br/>the script for its campaign loads next to the dialer"]
+        A2["Claim a number<br/>POST /phones/:id/claim<br/>IDLE to DIALING, 409 if someone holds it"]
+        A3["Dial<br/>SIP INVITE from the browser<br/>call row opens as IN_PROGRESS"]
+        A4["Talk<br/>hold, mute, redial<br/>Telnyx is already recording"]
+        A5["Save a disposition<br/>patch status, reconcile the recording,<br/>release the number"]
+        A6["Review<br/>play the recording, read the transcript,<br/>update the prospect or lead status"]
+        A1 --> A2 --> A3 --> A4 --> A5 --> A6
+    end
+
+    subgraph pathB["B - logging inside Twenty"]
+        direction TB
+        B1["Open the Queue tab<br/>prospects with their current status"]
+        B2["Call from your own handset<br/>the native app has no softphone"]
+        B3["Log the call inline<br/>select rows, set the outcome,<br/>create the agencyCalls row"]
+        B4["Claim a number only if you<br/>are sending SMS or a website link"]
+        B1 --> B2 --> B3 --> B4
+    end
+
+    A6 -.->|"status carries forward"| B1
+    B3 -.->|"becomes a lead when it sticks"| A1
+
+    shared[("Shared state in Twenty<br/>agencyProspects agencyLeads agencyCalls<br/>agencyPhones agencyCampaigns agencyScripts")]
+    A5 --> shared
+    A6 --> shared
+    B3 --> shared
+    B4 --> shared
+
+    note["The claim lock is the only thing preventing<br/>two agents dialing out of the same number.<br/>It lives on the agencyPhones row, so it holds<br/>across servers, restarts and all three surfaces."]
+    A2 -.-> note
+    B4 -.-> note
+
+    classDef store fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b
+    classDef note fill:#fffbeb,stroke:#d97706,color:#451a03
+    class shared store
+    class note note

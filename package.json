@@ -1,14 +1,19 @@
 {
-  "name": "open-twenty-dialer",
+  "name": "dialer",
   "private": true,
   "type": "module",
+  "description": "Browser-based cold calling dialer with a native Twenty CRM integration.",
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"bun run dev:backend\" \"bun run dev:frontend\"",
     "dev:backend": "cd ./backend && bun run dev",
     "dev:frontend": "cd ./frontend && bun run dev",
     "install:all": "bun install && cd ./backend && bun install && cd ../frontend && bun install && cd ..",
     "build": "cd ./backend && bun run build && cd ../frontend && bun run build && cd ..",
-    "start": "cd ./backend && bun run start"
+    "start": "cd ./backend && bun run start",
+    "check:docs": "node scripts/check-docs.mjs",
+    "check:scope": "node scripts/check-scope.mjs",
+    "docs:telnyx": "node scripts/pull-telnyx-docs.mjs",
+    "docs:twenty": "node scripts/pull-twenty-docs.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4"

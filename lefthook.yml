@@ -1,0 +1,14 @@
+# Git hooks managed by lefthook (https://github.com/evilmartians/lefthook).
+# Install after cloning: bunx lefthook install
+#
+# Every job here is a plain `node scripts/check-*.mjs` with no dependencies, so
+# a hook failure is a real failure and not a missing toolchain.
+
+pre-push:
+  jobs:
+    - name: documentation map and diagrams are current
+      run: node scripts/check-docs.mjs
+    - name: no emojis (brand rule)
+      run: node scripts/check-no-emojis.mjs
+    - name: no out-of-scope paths are tracked
+      run: node scripts/check-scope.mjs

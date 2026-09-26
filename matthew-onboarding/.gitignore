@@ -1,5 +1,0 @@
-# Railcode: .railcode records which deploy this folder matches — local only.
-node_modules/
-dist/
-.dev.vars
-.railcode
