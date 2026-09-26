@@ -3,8 +3,15 @@
 #
 # Every job here is a plain `node scripts/check-*.mjs` with no dependencies, so
 # a hook failure is a real failure and not a missing toolchain.
+#
+# parallel: false is required, not cosmetic. test-diagram-lint.mjs proves the
+# Mermaid linter works by injecting each footgun into docs/diagrams/*.mmd and
+# checking that the right rule fires. It restores the files afterwards, but
+# while it runs, check-docs.mjs reading the same files sees the injected bug
+# and reports a failure that is not real. Run the jobs one at a time.
 
 pre-push:
+  parallel: false
   jobs:
     - name: documentation map and diagrams are current
       run: node scripts/check-docs.mjs
