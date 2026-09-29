@@ -163,7 +163,9 @@ export const api = {
     list: () => request<any[]>("/api/twenty/phones"),
     claim: (id: string, member: { memberId: string; memberEmail?: string }) =>
       request<any>(`/api/twenty/phones/${id}/claim`, { method: "POST", body: JSON.stringify(member) }),
-    setState: (id: string, data: { memberId: string; state: "DIALING" | "ACTIVE" }) =>
+    heartbeat: (id: string, member: { memberId: string }) =>
+      request<any>(`/api/twenty/phones/${id}/heartbeat`, { method: "POST", body: JSON.stringify(member) }),
+    setState: (id: string, data: { memberId: string; state: "DIALING" | "ACTIVE" | "IDLE" }) =>
       request<any>(`/api/twenty/phones/${id}/state`, { method: "POST", body: JSON.stringify(data) }),
     release: (id: string, data: { memberId: string; force?: boolean; callId?: string }) =>
       request<any>(`/api/twenty/phones/${id}/release`, { method: "POST", body: JSON.stringify(data) }),

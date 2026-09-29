@@ -3,13 +3,31 @@ import { authMiddleware, AuthRequest } from "../../../middleware/auth.js";
 import { getTwenty, updateTwenty } from "../../../lib/twenty-client.js";
 import { twentyGraphqlClient } from "../../../lib/twenty-graphql.js";
 import { createLogger } from "../../../lib/logger.js";
-import type { AgencyPhone, ClaimBody, CallStateBody, ReleaseBody } from "./types.js";
-import { mapPhone } from "./helpers/index.js";
+import type { AgencyPhone, ClaimBody, CallStateBody, ReleaseBody, HeartbeatBody } from "./types.js";
+import { mapPhone, isClaimStale } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
 
 const log = createLogger('phones');
+
+// In-memory mutex for atomic check-and-claim per phone ID
+const pendingClaims = new Map<string, Promise<void>>();
+
+async function acquirePhoneLock(phoneId: string): Promise<() => void> {
+  while (pendingClaims.has(phoneId)) {
+    await pendingClaims.get(phoneId);
+  }
+  let release: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  pendingClaims.set(phoneId, promise);
+  return () => {
+    pendingClaims.delete(phoneId);
+    release!();
+  };
+}
 
 router.get("/", async (_req, res) => {
   try {
@@ -18,6 +36,7 @@ router.get("/", async (_req, res) => {
     // Typed read via the generated client (packages/shared) — same rows
     // the REST list returned, verified field-for-field (see A/B notes in
     // docs/naming-conventions.md). Writes stay on the REST wrappers below.
+    // lastHeartbeatAt is selected because stale-claim masking needs it.
     const client = twentyGraphqlClient();
     const result = await client.query({
       agencyPhones: {
@@ -41,6 +60,7 @@ router.get("/", async (_req, res) => {
             claimedByMemberId: true,
             claimedByEmail: true,
             claimedAt: true,
+            lastHeartbeatAt: true,
             currentCallId: true,
             createdAt: true,
             updatedAt: true,
@@ -48,10 +68,11 @@ router.get("/", async (_req, res) => {
         },
       },
     });
-    const phones: AgencyPhone[] = (result.agencyPhones?.edges ?? []).map((e) => e.node);
+    // The generated client types custom DATE_TIME selections loosely
+    // (unknown); coerce to our precise AgencyPhone shape for the mappers.
+    const phones: AgencyPhone[] = (result.agencyPhones?.edges ?? []).map((e) => e.node as AgencyPhone);
 
     log.info(`Found ${phones.length} phones`);
-
     res.json(phones.map(mapPhone));
   } catch (err: any) {
     log.error("Failed to fetch phones from Twenty:", err.message);
@@ -61,67 +82,114 @@ router.get("/", async (_req, res) => {
 
 /**
  * POST /api/twenty/phones/:id/claim
- * Claim a number for the live call. Fails 409 when another member holds it.
+ * Claim a number for the live dialer session. Fails 409 when another active member holds it (non-stale).
  * Body: { memberId, memberEmail }
  */
 router.post("/:id/claim", async (req: AuthRequest, res) => {
+  const id = req.params.id as string;
+  const { memberId, memberEmail } = req.body as ClaimBody;
+  if (!memberId) {
+    res.status(400).json({ error: "memberId is required" });
+    return;
+  }
+
+  const unlock = await acquirePhoneLock(id);
+  try {
+    const phone = await getTwenty<AgencyPhone>('agencyPhones', id);
+    const holder = phone.claimedByMemberId || null;
+    const stale = isClaimStale(phone);
+
+    // Refuse claim if held by another member and NOT stale
+    if (holder && holder !== memberId && !stale) {
+      log.info(`Claim refused: ${id} held by ${phone.claimedByEmail || holder}`);
+      res.status(409).json({
+        error: "Number is in use",
+        heldBy: phone.claimedByEmail || holder,
+        callState: phone.callState || "IDLE",
+        claimedAt: phone.claimedAt || null,
+        lastHeartbeatAt: phone.lastHeartbeatAt || null,
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updated = await updateTwenty<AgencyPhone>('agencyPhones', id, {
+      callState: phone.callState || "IDLE",
+      claimedByMemberId: memberId,
+      claimedByEmail: memberEmail || "",
+      claimedAt: now,
+      lastHeartbeatAt: now,
+    });
+    log.info(`Number claimed: ${id} by ${memberEmail || memberId} (stale override: ${stale})`);
+    res.json(mapPhone(updated));
+  } catch (err: any) {
+    log.error("Failed to claim number:", err.message);
+    res.status(500).json({ error: "Failed to claim number", details: err.message });
+  } finally {
+    unlock();
+  }
+});
+
+/**
+ * POST /api/twenty/phones/:id/heartbeat
+ * Send 3-second heartbeat to refresh claim timestamp (holder only).
+ * Body: { memberId }
+ */
+router.post("/:id/heartbeat", async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string;
-    const { memberId, memberEmail } = req.body as ClaimBody;
+    const { memberId } = req.body as HeartbeatBody;
     if (!memberId) {
       res.status(400).json({ error: "memberId is required" });
       return;
     }
     const phone = await getTwenty<AgencyPhone>('agencyPhones', id);
-    const state = phone.callState || "IDLE";
     const holder = phone.claimedByMemberId || null;
-    if (state !== "IDLE" && holder && holder !== memberId) {
-      log.info(`Claim refused: ${id} held by ${phone.claimedByEmail || holder}`);
-      res.status(409).json({
-        error: "Number is in use",
-        heldBy: phone.claimedByEmail || holder,
-        callState: state,
-        claimedAt: phone.claimedAt || null,
-      });
+    const stale = isClaimStale(phone);
+
+    if (!holder || (holder !== memberId && !stale)) {
+      res.status(409).json({ error: "Claim lost or held by another member", heldBy: phone.claimedByEmail || holder });
       return;
     }
+
     const now = new Date().toISOString();
     const updated = await updateTwenty<AgencyPhone>('agencyPhones', id, {
-      callState: "DIALING",
-      claimedByMemberId: memberId,
-      claimedByEmail: memberEmail || "",
-      claimedAt: now,
-      lastSyncedAt: now,
+      lastHeartbeatAt: now,
+      claimedByMemberId: memberId, // Re-affirm claim if stale override
     });
-    log.info(`Number claimed: ${id} by ${memberEmail || memberId}`);
     res.json(mapPhone(updated));
   } catch (err: any) {
-    log.error("Failed to claim number:", err.message);
-    res.status(500).json({ error: "Failed to claim number", details: err.message });
+    log.error("Failed to update heartbeat:", err.message);
+    res.status(500).json({ error: "Failed to update heartbeat", details: err.message });
   }
 });
 
 /**
  * POST /api/twenty/phones/:id/state
- * Move the live call DIALING -> ACTIVE (holder only).
- * Body: { memberId, state: "DIALING" | "ACTIVE" }
+ * Move callState (DIALING, ACTIVE, IDLE) for the current session (holder only).
+ * Body: { memberId, state: "IDLE" | "DIALING" | "ACTIVE" }
  */
 router.post("/:id/state", async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string;
     const { memberId, state } = req.body as CallStateBody;
-    if (!memberId || (state !== "DIALING" && state !== "ACTIVE")) {
-      res.status(400).json({ error: "memberId and state (DIALING|ACTIVE) are required" });
+    if (!memberId || (state !== "IDLE" && state !== "DIALING" && state !== "ACTIVE")) {
+      res.status(400).json({ error: "memberId and state (IDLE|DIALING|ACTIVE) are required" });
       return;
     }
     const phone = await getTwenty<AgencyPhone>('agencyPhones', id);
-    if ((phone.claimedByMemberId || null) !== memberId) {
-      res.status(409).json({ error: "Number is held by another member", heldBy: phone.claimedByEmail || phone.claimedByMemberId || null });
+    const holder = phone.claimedByMemberId || null;
+    const stale = isClaimStale(phone);
+
+    if (holder && holder !== memberId && !stale) {
+      res.status(409).json({ error: "Number is held by another member", heldBy: phone.claimedByEmail || holder });
       return;
     }
+
+    const now = new Date().toISOString();
     const updated = await updateTwenty<AgencyPhone>('agencyPhones', id, {
       callState: state,
-      lastSyncedAt: new Date().toISOString(),
+      lastHeartbeatAt: now,
     });
     res.json(mapPhone(updated));
   } catch (err: any) {
@@ -132,37 +200,43 @@ router.post("/:id/state", async (req: AuthRequest, res) => {
 
 /**
  * POST /api/twenty/phones/:id/release
- * Release the number back to IDLE (holder only, unless force: true).
+ * Release the number back to IDLE and clear ownership (holder only, unless force: true).
  * Body: { memberId, force?: boolean, callId?: string }
  */
 router.post("/:id/release", async (req: AuthRequest, res) => {
+  const id = req.params.id as string;
+  const { memberId, force, callId } = req.body as ReleaseBody;
+  if (!memberId) {
+    res.status(400).json({ error: "memberId is required" });
+    return;
+  }
+
+  const unlock = await acquirePhoneLock(id);
   try {
-    const id = req.params.id as string;
-    const { memberId, force, callId } = req.body as ReleaseBody;
-    if (!memberId) {
-      res.status(400).json({ error: "memberId is required" });
-      return;
-    }
     const phone = await getTwenty<AgencyPhone>('agencyPhones', id);
     const holder = phone.claimedByMemberId || null;
-    if (holder && holder !== memberId && !force) {
+    const stale = isClaimStale(phone);
+
+    if (holder && holder !== memberId && !force && !stale) {
       res.status(409).json({ error: "Number is held by another member", heldBy: phone.claimedByEmail || holder });
       return;
     }
-    const now = new Date().toISOString();
+
     const updated = await updateTwenty<AgencyPhone>('agencyPhones', id, {
       callState: "IDLE",
       claimedByMemberId: "",
       claimedByEmail: "",
       claimedAt: null,
+      lastHeartbeatAt: null,
       currentCallId: callId || phone.currentCallId || "",
-      lastSyncedAt: now,
     });
     log.info(`Number released: ${id} by ${memberId}${force ? " (forced)" : ""}`);
     res.json(mapPhone(updated));
   } catch (err: any) {
     log.error("Failed to release number:", err.message);
     res.status(500).json({ error: "Failed to release number", details: err.message });
+  } finally {
+    unlock();
   }
 });
 
