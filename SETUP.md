@@ -51,6 +51,18 @@ The sync service is configured and will:
 TWENTY_BASE_URL=https://twenty.inferencesaver.com
 TWENTY_API_KEY=<your-key>
 SYNC_POLL_INTERVAL_MS=30000
+PORT=4000
+JWT_SECRET=<secret>
+
+# Identity — Twenty OAuth (see docs/identity.md; the client is public PKCE-only)
+TWENTY_OAUTH_CLIENT_ID=<registered-client-id>
+TWENTY_OAUTH_CLIENT_SECRET=
+TWENTY_OAUTH_REDIRECT_URI=http://localhost:5173/callback
+TWENTY_OAUTH_SCOPE=api profile
+
+# Only needed because this instance is behind an auth-guard nginx with basic auth:
+TWENTY_BASIC_USER=
+TWENTY_BASIC_PASSWORD=
 ```
 
 ### Frontend (.env.local)

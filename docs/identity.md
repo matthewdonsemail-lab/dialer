@@ -1,0 +1,128 @@
+---
+title: "Identity: signing in with Twenty"
+tags: [auth, oauth, identity, twenty]
+status: active
+created: 2026-09-29
+---
+
+# Identity: signing in with Twenty
+
+The dialer has no password database and no sign-up form. **Twenty is the
+identity provider**: the "Continue with Twenty" button on the dialer's
+login page signs you in through Twenty's own OAuth (PKCE) flow, and the
+dialer mints a short-lived JWT from the proven token so every existing
+`Authorization: Bearer` route keeps working.
+
+There is exactly one place the dialer still asks for credentials: your
+**Twenty** workspace account. The dialer itself never does.
+
+## What the user sees
+
+1. The dialer login page shows one button: **Continue with Twenty**.
+2. Clicking it redirects the browser to the Twenty instance
+   (`/authorize?...code_challenge=...`).
+3. Because this instance is fronted by an auth-guard nginx with HTTP
+   basic auth, the browser shows its **native `user:pass` prompt once**
+   (the `twenty` admin account configured on the instance). The browser
+   caches those credentials for the origin, so it only happens once per
+   browser profile/session.
+4. Twenty's normal sign-in/consent screen appears (email + workspace
+   password, or a second-factor step if your workspace has one). If you
+   are already signed in to Twenty in that browser, the consent screen
+   appears directly.
+5. Click **Authorize** and the browser lands back on the dialer
+   (`/callback?code=...&state=...`), which finishes in under a second
+   and takes you straight to **/dashboard**.
+
+No dialer password is ever created, stored, or asked for.
+
+## What happens underneath
+
+```
+dialer SPA                 dialer backend                Twenty (behind auth-guard)
+    |                            |                                  |
+    |-- GET /api/oauth/config -->|                                  |
+    |<-- {authorizeEndpoint,     |-- /.well-known/... (Basic) ----->|
+    |     clientId, ...}         <- (endpoints) --------------------|
+    |                            |                                  |
+    |-- save PKCE state+verifier (sessionStorage)                   |
+    |-- REDIRECT /authorize?... PKCE ... -------------------------->
+    |                            |                     | native basic-auth prompt (once)
+    |                            |                     | email+password in Twenty's UI
+    |                            |<-- user clicks Authorize         |
+    |<- REDIRECT /callback?code=...&state=... --------|             |
+    |                            |                                  |
+    |-- POST /api/oauth/token -->|-- POST /oauth/token (Basic) ---->|
+    |<-- {data: Twenty tokens}   <- {access, refresh, ...} --------|
+    |                            |                                  |
+    |-- POST /api/oauth/session ->|-- introspect token (Basic) ---->|
+    |<-- {dialer JWT (7d)}       <- {active, username} ------------|
+    |                            |                                  |
+    |-- navigate /dashboard      |                                  |
+```
+
+Route map (backend Hono sub-app at `/api/oauth`):
+
+| Endpoint            | Purpose                                                        |
+|---------------------|----------------------------------------------------------------|
+| `GET  /api/oauth/config`  | Public discovery for the SPA: authorize endpoint, client id, redirect URI, scope. |
+| `POST /api/oauth/token`   | Exchange `code` + PKCE `verifier` for Twenty tokens (server-side only). |
+| `POST /api/oauth/refresh`  | Refresh a Twenty access token from a refresh token (server-side, not yet called by the SPA). |
+| `GET  /api/oauth/me`      | Introspect a presented Bearer token; 401 if not active.        |
+| `POST /api/oauth/session` | Introspect a live Twenty token and mint the dialer JWT.        |
+
+## Tokens, and where they live
+
+| Token | Who holds it | Lifetime | Storage |
+|---|---|---|---|
+| PKCE `state` + `verifier` | browser | one sign-in (~15 min) | `sessionStorage` |
+| Twenty `access` / `refresh` | browser (+ backend memory) | per Twenty defaults | `sessionStorage` (cleared when the tab closes) |
+| Dialer JWT (minted) | browser | 7 days | `localStorage` (`cold-dialer-token`) |
+
+The dialer JWT is what every existing API route checks. It is minted from a
+token that Twenty's introspection just proved live, so a token stolen from
+`localStorage` is only worth what the presented Twenty token was.
+
+## Configuring it (operator)
+
+Everything lives in the **root** `.env.local` (the backend reads the root
+file; `backend/.env.local` is a mirror copy for running `bun` in that
+directory):
+
+```env
+TWENTY_BASE_URL=https://twenty.inferencesaver.com
+TWENTY_API_KEY=...                       # REST writes (bare /rest is exempt from the guard)
+
+TWENTY_OAUTH_CLIENT_ID=...               # public PKCE client, no secret needed
+TWENTY_OAUTH_CLIENT_SECRET=              # leave unset for a public PKCE client
+TWENTY_OAUTH_REDIRECT_URI=http://localhost:5173/callback
+TWENTY_OAUTH_SCOPE=api profile
+
+# Only if an auth-guard nginx (or similar) fronts the instance with basic auth:
+TWENTY_BASIC_USER=...
+TWENTY_BASIC_PASSWORD=...
+```
+
+The client is a **public PKCE-only** client (dynamic registration via
+`POST /oauth/register`, no `token_endpoint_auth`). Its registered redirect
+URI must match `TWENTY_OAUTH_REDIRECT_URI` exactly, so the frontend dev
+server is pinned to port **5173** (`--strictPort`) and the callback path is
+`/callback`.
+
+## When sign-in breaks
+
+| Symptom | Meaning | See |
+|---|---|---|
+| "OAuth state mismatch. Start sign-in again." | PKCE state didn't survive the redirect (tab closed, or an old frontend bundle still running — restart the dev server). | [oauth-migration-notes.md](./oauth-migration-notes.md) |
+| Native `user:pass` prompt loops / 401 at `/authorize` | Basic creds for the auth-guard are wrong or expired. | [twenty-troubleshooting.md](./twenty-troubleshooting.md) |
+| "Twenty OAuth is not configured" from `/api/oauth/*` | OAuth vars missing from the **root** `.env.local`. | This file's config section. |
+| Consent 302s to `/callback?error=...` | The redirect URI in the client record doesn't match `--port 5173`. | This file's config section. |
+
+## What the dialer deliberately does not do
+
+- Store or hash any dialer-side password (the old Postgres `users` path is gone).
+- Hold the client secret (the client is public; the secret column is empty).
+- Trust a token that does not pass Twenty introspection at session-mint time.
+- Keep the Twenty refresh-token flow wired to the SPA yet: the server route
+  exists and is exercised in tests, but the SPA presently finishes with a 7-day
+  dialer JWT and re-signs-in on expiry rather than silently refreshing.
