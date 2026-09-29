@@ -1,5 +1,6 @@
 import { createLogger } from "./logger.js";
 import { loadSyncConfig } from "./twenty-client.js";
+import { setupCallHistorySchema } from "./twenty-call-history-setup.js";
 
 const log = createLogger('twenty-object-service');
 
@@ -392,6 +393,13 @@ export async function setupTwentyCRM(): Promise<{
           throw err;
         }
       }
+    }
+
+    // 7. Create agencyCalls object + call-history fields (call log persistence)
+    const callsSchema = await setupCallHistorySchema();
+    results.objects.push({ name: "agencyCalls", id: callsSchema.objectId, isNew: callsSchema.objectIsNew });
+    for (const f of callsSchema.fields) {
+      results.fields.push({ object: "agencyCalls", name: f.name, isNew: f.isNew });
     }
 
     log.info(`Setup completed. Created ${results.objects.length} objects and ${results.fields.length} fields.`);

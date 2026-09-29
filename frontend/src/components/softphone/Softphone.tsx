@@ -238,6 +238,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         return callLogIdRef.current;
       } catch (err) {
         console.error("Failed to create agencyCalls row:", err);
+        sipLog.error("app", `call history persistence failed at dial time: ${(err as any)?.message || err}`);
         return null;
       } finally {
         creatingRowRef.current = null;
@@ -292,6 +293,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         });
       } catch (err) {
         console.error("Failed to close agencyCalls row:", err);
+        sipLog.error("app", `call history persistence failed at finalize: ${(err as any)?.message || err}`);
       }
       return;
     }
@@ -313,6 +315,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
       callLogIdRef.current = row?.id ?? null;
     } catch (err) {
       console.error("Failed to log call to agencyCalls:", err);
+      sipLog.error("app", `call history persistence failed at wrap-up: ${(err as any)?.message || err}`);
     }
   }, [callerId, phoneId, prospectId, leadId]);
 
