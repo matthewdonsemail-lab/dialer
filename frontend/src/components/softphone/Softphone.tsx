@@ -79,9 +79,10 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const [recWarning, setRecWarning] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Unanswered-call watchdog + ring heartbeat (PR3: configurable timeout).
-  // Armed once the outbound INVITE is sent; cleared on establish/terminate/
-  // manual end/unmount/redial. Never survives into another call.
+  // Unanswered-call watchdog + session heartbeat (PR3: configurable timeout).
+  // Armed once the outbound INVITE is sent. The watchdog dies on establish;
+  // the heartbeat survives into the answered call and dies on terminate/
+  // manual end/unmount/redial. Neither ever survives into another call.
   const unansweredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ringHeartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef<any>(null);
@@ -122,17 +123,24 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { directionRef.current = direction; }, [direction]);
 
-  // Stop the unanswered watchdog + ring heartbeat on every exit path.
-  const clearDialTimers = useCallback(() => {
+  // Stop the unanswered watchdog only (answered calls keep beating).
+  const clearUnansweredTimer = useCallback(() => {
     if (unansweredTimerRef.current) {
       clearTimeout(unansweredTimerRef.current);
       unansweredTimerRef.current = null;
     }
+  }, []);
+
+  // Stop the unanswered watchdog + session heartbeat on every exit path.
+  // NOTE: the Established branch must use clearUnansweredTimer instead —
+  // the heartbeat has to survive into the answered call.
+  const clearDialTimers = useCallback(() => {
+    clearUnansweredTimer();
     if (ringHeartbeatTimerRef.current) {
       clearInterval(ringHeartbeatTimerRef.current);
       ringHeartbeatTimerRef.current = null;
     }
-  }, []);
+  }, [clearUnansweredTimer]);
 
   // Unanswered timeout: the outbound INVITE went unanswered for the
   // configured duration. Cancel the unestablished session and mark NO_ANSWER.
@@ -630,8 +638,9 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
 
       inviter.stateChange.addListener((state: string) => {
         if (state === SessionState.Established) {
-          // Answered: the unanswered watchdog must never fire into a live call.
-          clearDialTimers();
+          // Answered: kill the unanswered watchdog, but KEEP the heartbeat —
+          // the claim must stay fresh for the whole established call.
+          clearUnansweredTimer();
           wasEstablishedRef.current = true;
           setCallState("active");
           setOutcome("answered");
@@ -705,8 +714,10 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         setCallState("ringing");
         sipLog.info("invite", `INVITE sent`, { to: phoneNumber });
 
-        // Arm the unanswered watchdog + ring heartbeat now that the outbound
-        // INVITE is on the wire. Both die on establish/terminate/manual end.
+        // Arm the unanswered watchdog + session heartbeat now that the
+        // outbound INVITE is on the wire. Single interval (cleared first, so
+        // no duplicates); the watchdog dies on establish, the heartbeat
+        // keeps beating until terminate/manual end (see its stop guard).
         clearDialTimers();
         const timeoutSeconds = getUnansweredTimeoutSeconds();
         sipLog.info("session", `unanswered watchdog armed (${timeoutSeconds}s)`);
@@ -719,16 +730,18 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
           // than the unanswered timeout — without ticks another agent could
           // claim this number mid-ring.
           ringHeartbeatTimerRef.current = setInterval(() => {
+            // Beat for the whole live session (connecting, ringing, active,
+            // muted, on hold). Stop only when the session is over or the
+            // claim is gone — never merely because the call was answered.
             const st = callStateRef.current;
-            if (st !== "ringing" && st !== "connecting") {
+            const hold = holdRef.current;
+            if (st === "idle" || st === "ended" || !hold) {
               if (ringHeartbeatTimerRef.current) {
                 clearInterval(ringHeartbeatTimerRef.current);
                 ringHeartbeatTimerRef.current = null;
               }
               return;
             }
-            const hold = holdRef.current;
-            if (!hold) return;
             api.twentyPhones.heartbeat(hold.phoneId, { memberId: hold.memberId }).catch(() => { });
           }, HEARTBEAT_INTERVAL_MS);
         }
