@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { getSipConfig, isSipConfigured, getSipDomain, getSipExtension } from "@/sip";
 import { sipLog, classifyFailure, getReport, type ClassifiedFailure } from "@/sip";
+import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/config/dialerConfig";
 import { Button } from "@/components/ui/Button";
 import { OutcomeSelect } from "@/components/common/OutcomeSelect";
 import { api } from "@/lib/apiClient";
@@ -78,6 +79,11 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const [recWarning, setRecWarning] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Unanswered-call watchdog + ring heartbeat (PR3: configurable timeout).
+  // Armed once the outbound INVITE is sent; cleared on establish/terminate/
+  // manual end/unmount/redial. Never survives into another call.
+  const unansweredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ringHeartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef<any>(null);
   const inboundSessionRef = useRef<any>(null);
   const wasEstablishedRef = useRef(false);
@@ -116,10 +122,52 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { directionRef.current = direction; }, [direction]);
 
+  // Stop the unanswered watchdog + ring heartbeat on every exit path.
+  const clearDialTimers = useCallback(() => {
+    if (unansweredTimerRef.current) {
+      clearTimeout(unansweredTimerRef.current);
+      unansweredTimerRef.current = null;
+    }
+    if (ringHeartbeatTimerRef.current) {
+      clearInterval(ringHeartbeatTimerRef.current);
+      ringHeartbeatTimerRef.current = null;
+    }
+  }, []);
+
+  // Unanswered timeout: the outbound INVITE went unanswered for the
+  // configured duration. Cancel the unestablished session and mark NO_ANSWER.
+  // Deliberately NOT failLoud (no banner, no claim release) and NOT
+  // handleSaveOutcome (manual disposition stays with the agent via Save &
+  // Next). The existing Terminated listener performs the normal finalize.
+  const handleUnansweredTimeout = useCallback(() => {
+    if (wasEstablishedRef.current) return;
+    const session = sessionRef.current;
+    if (!session) return;
+    const st = callStateRef.current;
+    if (st !== "ringing" && st !== "connecting") return;
+    const timeoutSeconds = getUnansweredTimeoutSeconds();
+    sipLog.warn("session", `unanswered timeout (${timeoutSeconds}s) — cancelling INVITE, marking NO_ANSWER`);
+    setOutcome("no_answer");
+    setCallState("ended");
+    clearDialTimers();
+    try {
+      // SIP.js Inviter.cancel() sends CANCEL for the early dialog; it rejects
+      // when the session already established/terminated (200-race), in which
+      // case the state listener below already owns the outcome.
+      const p = session.cancel?.();
+      if (p && typeof (p as any).catch === "function") {
+        (p as Promise<void>).catch(() => { });
+      }
+    } catch {
+      // Already terminating — the Terminated listener finishes the job.
+    }
+  }, [clearDialTimers]);
+
   // Cleanup media streams on unmount (release any held number)
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      clearDialTimers();
       stopLocalStream();
       const hold = holdRef.current;
       if (hold) {
@@ -131,7 +179,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         inboundSessionRef.current = null;
       }
     };
-  }, []);
+  }, [clearDialTimers]);
 
   // Duration timer
   useEffect(() => {
@@ -417,6 +465,8 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     setDuration(0);
     setNotes("");
     setOutcome("no_answer");
+    // Fresh call: no watchdog/heartbeat may survive from a previous dial.
+    clearDialTimers();
     wasEstablishedRef.current = false;
     callLogIdRef.current = null;
     creatingRowRef.current = null;
@@ -580,6 +630,8 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
 
       inviter.stateChange.addListener((state: string) => {
         if (state === SessionState.Established) {
+          // Answered: the unanswered watchdog must never fire into a live call.
+          clearDialTimers();
           wasEstablishedRef.current = true;
           setCallState("active");
           setOutcome("answered");
@@ -590,6 +642,9 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
           // trigger here (guarded — runs once).
           void maybeStartServerRecording();
         } else if (state === SessionState.Terminated) {
+          // Defensive: nothing may outlive the session (covers local CANCEL
+          // from the unanswered watchdog as well as remote BYE/rejects).
+          clearDialTimers();
           if (!wasEstablishedRef.current && callStateRef.current === "ringing") {
             setOutcome("no_answer");
           }
@@ -649,6 +704,34 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         } as any);
         setCallState("ringing");
         sipLog.info("invite", `INVITE sent`, { to: phoneNumber });
+
+        // Arm the unanswered watchdog + ring heartbeat now that the outbound
+        // INVITE is on the wire. Both die on establish/terminate/manual end.
+        clearDialTimers();
+        const timeoutSeconds = getUnansweredTimeoutSeconds();
+        sipLog.info("session", `unanswered watchdog armed (${timeoutSeconds}s)`);
+        unansweredTimerRef.current = setTimeout(() => {
+          handleUnansweredTimeout();
+        }, timeoutSeconds * 1000);
+        if (holdRef.current) {
+          // Keep the number claim fresh while ringing: the backend treats a
+          // claim as stale 15s after the last heartbeat, which is sooner
+          // than the unanswered timeout — without ticks another agent could
+          // claim this number mid-ring.
+          ringHeartbeatTimerRef.current = setInterval(() => {
+            const st = callStateRef.current;
+            if (st !== "ringing" && st !== "connecting") {
+              if (ringHeartbeatTimerRef.current) {
+                clearInterval(ringHeartbeatTimerRef.current);
+                ringHeartbeatTimerRef.current = null;
+              }
+              return;
+            }
+            const hold = holdRef.current;
+            if (!hold) return;
+            api.twentyPhones.heartbeat(hold.phoneId, { memberId: hold.memberId }).catch(() => { });
+          }, HEARTBEAT_INTERVAL_MS);
+        }
       } catch (err: any) {
         sipLog.error("invite", `invite() threw: ${err?.message || err}`);
         await failLoud(classifyFailure({
@@ -664,10 +747,12 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
       await failLoud(classifyFailure({ wsUrl: getSipConfig().wsUrl }));
       return;
     }
-  }, [phoneNumber, callerId, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow, maybeStartServerRecording]);
+  }, [phoneNumber, callerId, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow, maybeStartServerRecording, clearDialTimers, handleUnansweredTimeout]);
 
   const endCall = useCallback(async () => {
     stopLocalStream();
+    // Manual hangup wins over the watchdog: no timeout firing afterwards.
+    clearDialTimers();
 
     if (sessionRef.current) {
       try {
@@ -696,7 +781,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     // Covers simulated calls (no SIP Terminated event) and user hangup:
     // guarded, so the SIP listener path won't double-log.
     void finalizeCall(outcomeRef.current, durationRef.current, directionRef.current);
-  }, [stopLocalStream, finalizeCall]);
+  }, [stopLocalStream, finalizeCall, clearDialTimers]);
 
   const toggleMute = useCallback(() => {
     const isCurrentlyMuted = callState === "muted";
