@@ -3,7 +3,7 @@ import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
 import { createLogger } from "../../lib/logger.js";
 import type { AgencyCampaign, AgencyLead } from "./types.js";
-import { mapLeadToFrontend, frontendStatusToTwenty } from "./helpers/index.js";
+import { mapLeadToFrontend, frontendStatusToTwenty, toTwentyPhone, toTwentyEmail } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -75,13 +75,8 @@ router.post("/", async (req: AuthRequest, res) => {
     
     const payload = {
       contactName: fullName,
-      email: email,
-      phone: phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined,
+      email: toTwentyEmail(email),
+      phone: toTwentyPhone(phone),
       company: company,
       status: coldCallStatus === "DO_NOT_CONTACT" ? "LOST" : "NEW",
       coldCallStatus,
@@ -146,15 +141,16 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
     
     if (company !== undefined) payload.company = company;
+    // Empty phone/email means "no value": omit the key so Twenty keeps its
+    // validated state instead of rejecting an empty composite.
     if (phone !== undefined) {
-      payload.phone = phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined;
+      const twentyPhone = toTwentyPhone(phone);
+      if (twentyPhone !== undefined) payload.phone = twentyPhone;
     }
-    if (email !== undefined) payload.email = email;
+    if (email !== undefined) {
+      const twentyEmail = toTwentyEmail(email);
+      if (twentyEmail !== undefined) payload.email = twentyEmail;
+    }
     if (notes !== undefined) payload.note = notes;
     if (source !== undefined) payload.source = source;
 
