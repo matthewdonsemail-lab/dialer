@@ -1,18 +1,19 @@
 const API_URL = import.meta.env.VITE_API_URL || "";
 
-let authToken: string | null = localStorage.getItem("cold-dialer-token");
+export const AUTH_TOKEN_KEY = "cold-dialer-token";
 
 export function setAuthToken(token: string | null) {
-  authToken = token;
   if (token) {
-    localStorage.setItem("cold-dialer-token", token);
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
   } else {
-    localStorage.removeItem("cold-dialer-token");
+    localStorage.removeItem(AUTH_TOKEN_KEY);
   }
 }
 
+// Always read through localStorage: HMR/module re-evaluation must never lose
+// the token from memory.
 export function getAuthToken(): string | null {
-  return authToken;
+  return localStorage.getItem(AUTH_TOKEN_KEY);
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -21,8 +22,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
+  const token = getAuthToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -45,11 +47,6 @@ export const api = {
       request<{ user: any; token: string }>("/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({ email, password, fullName }),
-      }),
-    login: (email: string, password: string) =>
-      request<{ user: any; token: string }>("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
       }),
     me: () => request<any>("/api/auth/me"),
   },

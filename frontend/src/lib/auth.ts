@@ -1,4 +1,6 @@
-import { api, setAuthToken } from "@/lib/apiClient";
+import { setAuthToken } from "@/lib/apiClient";
+import { api } from "@/lib/apiClient";
+import { clearOperatorSession } from "@/lib/oauth";
 import type { DialerUser } from "@/components/auth/AuthProvider";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
@@ -10,20 +12,12 @@ const isApiMode = Boolean(API_URL);
  */
 export async function signUp(_email: string, _password: string, _fullName: string) {
   throw new Error(
-    "Sign up is disabled. Create the member in Twenty, then log in with their credentials.",
+    "Sign up is disabled. Create the member in Twenty, then sign in with Twenty SSO.",
   );
 }
 
-export async function signIn(email: string, password: string) {
-  if (!isApiMode) {
-    throw new Error("VITE_API_URL must be set — the dialer backend is required for login.");
-  }
-  const { user, token } = await api.auth.login(email, password);
-  setAuthToken(token);
-  return { user };
-}
-
 export async function signOut() {
+  clearOperatorSession();
   setAuthToken(null);
 }
 

@@ -1,0 +1,30 @@
+{
+  "name": "@dialer/shared",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "api:client": "bun scripts/emit-api-client.mjs",
+    "api:check": "bun scripts/emit-api-client.mjs --check"
+  },
+  "devDependencies": {
+    "graphql": "^16.10.0",
+    "twenty-client-sdk": "2.27.0",
+    "typescript": "~5.6.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./api": {
+      "types": "./dist/generated/client/index.d.ts",
+      "default": "./dist/generated/client/index.js"
+    }
+  }
+}

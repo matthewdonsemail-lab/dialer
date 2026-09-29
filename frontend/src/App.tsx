@@ -7,6 +7,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { Spokes } from "@/components/ui/Spinner";
 
 const LoginPage = React.lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })));
+const CallbackPage = React.lazy(() => import("@/pages/CallbackPage").then((m) => ({ default: m.CallbackPage })));
 const SignupPage = React.lazy(() => import("@/pages/SignupPage").then((m) => ({ default: m.SignupPage })));
 const DashboardPage = React.lazy(() => import("@/pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const LeadsPage = React.lazy(() => import("@/pages/LeadsPage").then((m) => ({ default: m.LeadsPage })));
@@ -47,6 +48,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Suspense fallback={<PageSpinner />}><LoginPage /></Suspense>} />
+      <Route path="/callback" element={<Suspense fallback={<PageSpinner />}><CallbackPage /></Suspense>} />
       <Route path="/signup" element={<Suspense fallback={<PageSpinner />}><SignupPage /></Suspense>} />
       <Route
         path="/*"

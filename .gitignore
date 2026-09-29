@@ -78,3 +78,6 @@ backend/scripts/
 # ---------------------------------------------------------------------------
 docs/telnyx/upstream/
 docs/twenty/upstream/
+
+.vercel
+.env*

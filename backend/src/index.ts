@@ -17,18 +17,20 @@ if (result.error) {
 
 import express from "express";
 import cors from "cors";
-import authRoutes from "./routes/auth.js";
-import leadsRoutes from "./routes/leads.js";
-import prospectsRoutes from "./routes/prospects.js";
-import campaignsRoutes from "./routes/campaigns.js";
-import scriptsRoutes from "./routes/scripts.js";
-import twentyPhonesRoutes from "./routes/twentyPhones.js";
-import twentyMetaRoutes from "./routes/twentyMeta.js";
-import twentySetupRoutes from "./routes/twentySetup.js";
-import { callLogsRouter } from "./routes/callLogs.js";
-import callsRouter from "./routes/calls.js";
-import { profilesRouter } from "./routes/profiles.js";
-import { getTwentyPgStatus } from "./db/twenty-pg.js";
+import { getRequestListener } from "@hono/node-server";
+import { oauthApp } from "./routes/twenty/oauth/index.js";
+import { loadOAuthConfig } from "./lib/twenty/oauth/index.js";
+import authRoutes from "./routes/auth/index.js";
+import leadsRoutes from "./routes/leads/index.js";
+import prospectsRoutes from "./routes/prospects/index.js";
+import campaignsRoutes from "./routes/campaigns/index.js";
+import scriptsRoutes from "./routes/scripts/index.js";
+import twentyPhonesRoutes from "./routes/twenty/phones/index.js";
+import twentyMetaRoutes from "./routes/twenty/meta/index.js";
+import twentySetupRoutes from "./routes/twenty/setup/index.js";
+import { callLogsRouter } from "./routes/call-logs/index.js";
+import callsRouter from "./routes/calls/index.js";
+import { profilesRouter } from "./routes/profiles/index.js";
 import { createLogger } from "./lib/logger.js";
 
 const log = createLogger('server');
@@ -56,17 +58,25 @@ const upload = multer({
 });
 
 app.use(cors({ origin: true, credentials: true }));
+
+// Hono owns /api/oauth (Twenty PKCE). Mounted before express.json() — the
+// node-server listener reads the raw request stream, which body parsing
+// would otherwise consume first.
+app.use("/api/oauth", getRequestListener(oauthApp.fetch));
+
 app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/health", (_req, res) => {
-  const twentyPg = getTwentyPgStatus();
+  const oauth = loadOAuthConfig();
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
     twentyCrm: {
       apiKeyConfigured: Boolean(process.env.TWENTY_API_KEY),
-      databaseUrlConfigured: twentyPg.configured,
-      databaseMessage: twentyPg.message,
+      oauthConfigured: Boolean(oauth),
+      oauthMessage: oauth
+        ? "Twenty OAuth PKCE is configured"
+        : "Set TWENTY_OAUTH_CLIENT_ID, TWENTY_OAUTH_CLIENT_SECRET and TWENTY_OAUTH_REDIRECT_URI — password login was removed.",
     },
   });
 });
@@ -164,14 +174,7 @@ app.get("/api/calls/recordings/:filename", (req, res) => {
   res.sendFile(filePath);
 });
 
-// Log whether Twenty Postgres is available for login
-const twentyPgStatus = getTwentyPgStatus();
-if (!twentyPgStatus.configured) {
-  log.warn("[auth] Twenty credential verification is unavailable:", twentyPgStatus.message);
-} else {
-  log.info("[auth] Twenty credential verification is configured.");
-}
-
+// Identity comes from Twenty OAuth now — no Postgres credential check.
 log.info(`Server running on http://localhost:${PORT}`);
 app.listen(PORT, "0.0.0.0", () => {
   log.info(`Server ready on port ${PORT}`);
