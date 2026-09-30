@@ -43,6 +43,7 @@ other.
 | [phone-claim.mmd](./phone-claim.mmd) | The `IDLE / DIALING / ACTIVE` state machine that stops two agents using one number. |
 | [data-model.mmd](./data-model.mmd) | The `agency*` objects, their fields, and their relations. |
 | [integration-paths.mmd](./integration-paths.mmd) | The two ways the dialer reaches Twenty, and what only each one can do. |
+| [bark-new-lead-notify.mmd](./bark-new-lead-notify.mmd) | How a new lead becomes a Bark push on every member's phone via the `BARK_KEY` on `workspaceMember`. |
 
 Render any of them standalone with the [Mermaid live editor](https://mermaid.live),
 or with the VS Code Mermaid extension. GitHub renders the embedded copies in the

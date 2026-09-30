@@ -17,7 +17,7 @@ import {
   generateState,
   type TokenSet,
 } from "@dialer/shared";
-import { setAuthToken } from "@/lib/apiClient";
+import { setAuthToken } from "@/lib/api-client";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { api, getAuthToken } from "@/lib/apiClient";
+import { api, getAuthToken } from "@/lib/api-client";
 
 export interface DialerUser {
   id: string;

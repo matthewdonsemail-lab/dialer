@@ -1,14 +1,15 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useLead } from "@/hooks/useLeads";
-import { useCallsForRecord } from "@/hooks/useCallLogs";
-import { useUpdateLead, useDeleteLead } from "@/hooks/useLeads";
+import { useLead } from "@/hooks/use-leads";
+import { useCallsForRecord } from "@/hooks/use-call-logs";
+import { RatingBadge } from "@/components/calls/CallRating";
+import { useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { Softphone } from "@/components/softphone/Softphone";
 import { CallScriptWidget } from "@/components/scripts/CallScriptWidget";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { StatusSelect } from "@/components/common/StatusSelect";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
@@ -18,7 +19,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "lucide-react";
 import { Spokes } from "@/components/ui/Spinner";
 import { CountryBadge } from "@/components/common/CountryBadge";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -302,6 +303,20 @@ export function LeadDetailPage() {
                       <StatusBadge status={call.status ?? "unknown"} />
                       <span className="text-[11px] text-[var(--ods-text-tertiary)]">{call.durationSeconds}s</span>
                     </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <RatingBadge sentiment={call.aiSentiment} score={call.aiScore} />
+                      <button
+                        onClick={() => navigate(`/history/${call.id}`)}
+                        className="text-[11px] text-[var(--ods-brand-600)] hover:underline"
+                      >
+                        View details
+                      </button>
+                    </div>
+                    {(call.aiSummary || call.summary) && (
+                      <p className="text-[12px] text-[var(--ods-text-secondary)] mt-1 line-clamp-2">
+                        {call.aiSummary ?? call.summary}
+                      </p>
+                    )}
                     {(call.telnyxRecordingId || call.recordingUrl) && (
                       <a
                         href={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}

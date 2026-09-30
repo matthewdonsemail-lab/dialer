@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { createLogger } from "../../lib/logger/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
 import type { AgencyProspect, AgencyCampaign, IndustryRouting } from "./types.js";
 import {
   selectValue,
@@ -123,9 +124,11 @@ router.post("/", async (req: AuthRequest, res) => {
       externalId: undefined,
       outboundState: tags?.[0],
       coldCallStatus,
+      // Own-field member attribution (omitted for legacy/fallback sessions).
+      ...(req.workspaceMemberId ? { createdByMemberId: req.workspaceMemberId } : {}),
     };
 
-    const result = await createTwenty<any>('agencyProspects', payload);
+    const result = await createTwenty<any>('agencyProspects', payload, await resolveActor(req));
     const prospect = result.data || result;
 
     const mapped = {
@@ -203,7 +206,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
 
     const id = req.params.id as string;
-    const result = await updateTwenty<any>('agencyProspects', id, payload);
+    const result = await updateTwenty<any>('agencyProspects', id, payload, await resolveActor(req));
     const prospect = result.data || result;
 
     const mapped = mapProspectUpdateResult(prospect);
@@ -361,7 +364,7 @@ router.post("/:id/website-sent", async (req: AuthRequest, res) => {
       const current = await getTwenty<AgencyProspect>('agencyProspects', id);
       const currentLabel = selectValue(current.outboundLabel);
       if (!currentLabel || ["NEEDS_ENRICHMENT", "NEEDS_VIDEO", "READY_FOR_SMS"].includes(currentLabel)) {
-        await updateTwenty('agencyProspects', id, { outboundLabel: "SMS_IN_PROGRESS" });
+        await updateTwenty('agencyProspects', id, { outboundLabel: "SMS_IN_PROGRESS" }, await resolveActor(req));
         advancedLabel = "SMS_IN_PROGRESS";
       }
     } catch (err: any) {

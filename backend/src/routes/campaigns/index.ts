@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwenty, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwenty, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { createLogger } from "../../lib/logger/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
 import type { AgencyCampaign } from "./types.js";
 import { mapCampaign, mapCampaignType } from "./helpers/index.js";
 
@@ -53,7 +54,7 @@ router.post("/", async (req: AuthRequest, res) => {
       note: settings ? JSON.stringify(settings) : undefined,
     };
 
-    const result = await createTwenty<any>('agencyCampaigns', payload);
+    const result = await createTwenty<any>('agencyCampaigns', payload, await resolveActor(req));
     const campaign = result.data || result;
 
     const mapped = mapCampaign(campaign);
@@ -98,7 +99,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
       return;
     }
 
-    const result = await updateTwenty<any>('agencyCampaigns', id, payload);
+    const result = await updateTwenty<any>('agencyCampaigns', id, payload, await resolveActor(req));
     const campaign = result.data || result;
 
     const mapped = mapCampaign(campaign);

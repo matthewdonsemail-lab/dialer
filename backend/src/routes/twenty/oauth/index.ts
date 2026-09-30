@@ -9,8 +9,9 @@ import {
   oauthEndpoints,
   refreshOperatorToken,
 } from "../../../lib/twenty/oauth/index.js";
-import { TwentyOAuthError } from "@dialer/shared";
-import { createLogger } from "../../../lib/logger.js";
+import { findWorkspaceMember, type WorkspaceMemberRecord } from "../../../lib/twenty/workspaceMember/index.js";
+import { TwentyOAuthError, type Introspection } from "@dialer/shared";
+import { createLogger } from "../../../lib/logger/index.js";
 import type { TokenRequestBody, RefreshRequestBody, SessionRequestBody } from "./types.js";
 
 const log = createLogger("oauth");
@@ -58,6 +59,36 @@ interface ResolvedIdentity {
   email: string;
   fullName: string;
   via: string;
+  /** The workspaceMember row this session signed in as (or null when unresolvable). */
+  member: WorkspaceMemberRecord | null;
+}
+
+/**
+ * Resolve a resolved email/fullName to the workspaceMember row it belongs to.
+ *
+ * The introspection `username`/`sub` path only proves "a user signed in";
+ * the workspaceMember record is what the dialer needs so its writes can be
+ * attributed to the member instead of the anonymous API-key actor.
+ * Lookup order (cheap first): the introspection `sub` is the member's
+ * `userId`, so match `userId` first, then fall back to email (case-insensitive).
+ * Best-effort — a miss never fails sign-in.
+ */
+async function resolveMember(
+  introspection: { sub: string | null },
+  email: string,
+): Promise<WorkspaceMemberRecord | null> {
+  const sub = introspection.sub?.trim() || null;
+  try {
+    if (sub) {
+      const byUserId = await findWorkspaceMember({ userId: sub });
+      if (byUserId) return byUserId;
+    }
+    const byEmail = await findWorkspaceMember({ email });
+    if (byEmail) return byEmail;
+  } catch (err: any) {
+    log.info(`workspaceMember resolution failed (${err?.message || err})`);
+  }
+  return null;
 }
 
 /**
@@ -76,10 +107,20 @@ async function resolveOperatorIdentity(
   config: OAuthServerConfig,
   introspection: { username: string | null; sub: string | null },
 ): Promise<ResolvedIdentity> {
-  const fallback: ResolvedIdentity = { email: "operator@twenty", fullName: "operator@twenty", via: "fallback" };
+  const fallback: ResolvedIdentity = {
+    email: "operator@twenty",
+    fullName: "operator@twenty",
+    via: "fallback",
+    member: null,
+  };
   const username = introspection.username?.trim() || null;
   if (username && username.includes("@")) {
-    return { email: username, fullName: username, via: "introspection:username" };
+    const member = await resolveMember(introspection, username);
+    const fullName =
+      member?.firstName || member?.lastName
+        ? `${member?.firstName ?? ""} ${member?.lastName ?? ""}`.trim()
+        : username;
+    return { email: username, fullName, via: "introspection:username", member };
   }
   const sub = introspection.sub?.trim() || null;
   const apiKey = process.env.TWENTY_API_KEY || "";
@@ -98,7 +139,16 @@ async function resolveOperatorIdentity(
           const first = node?.name?.firstName ?? "";
           const last = node?.name?.lastName ?? "";
           const fullName = `${first} ${last}`.trim() || email;
-          return { email, fullName, via: "rest:workspaceMembers" };
+          const member: WorkspaceMemberRecord = {
+            id: node?.id ?? "",
+            userId: node?.userId ?? sub,
+            userEmail: email,
+            firstName: first || null,
+            lastName: last || null,
+            barkKey: null,
+            barkKeyRaw: node?.barkKey ?? null,
+          };
+          return { email, fullName, via: "rest:workspaceMembers", member };
         }
         log.info(`workspaceMembers/${sub} returned no email; keeping fallback identity`);
       } else {
@@ -193,14 +243,37 @@ oauthApp.post("/session", async (c) => {
     if (!result.active) return c.json({ error: "Token is not active" }, 401);
     const identity = await resolveOperatorIdentity(config, result);
     log.info(`OAuth session minted for: ${identity.email} (via ${identity.via})`);
+    const member = identity.member;
+    // Display claims for member-aware UI (sidebar, holder names). Null-safe:
+    // fallback sessions simply carry no member display data.
+    const memberAvatar = (member as any)?.avatarUrl;
     const token = generateToken({
       userId: identity.email,
-      twentyUserId: identity.email,
+      // Prefer the member's userId; keep email for backward compatibility
+      // so old consumers that read the email still work.
+      twentyUserId: member?.userId ?? identity.email,
+      workspaceMemberId: member?.id ?? null,
       email: identity.email,
       fullName: identity.fullName,
+      memberName: identity.fullName,
+      avatarUrl: typeof memberAvatar === "string" ? memberAvatar : undefined,
     });
     return c.json({
-      user: { id: identity.email, email: identity.email, fullName: identity.fullName, role: "agent" },
+      user: {
+        id: identity.email,
+        email: identity.email,
+        fullName: identity.fullName,
+        role: "agent",
+        workspaceMemberId: member?.id ?? null,
+        twentyUserId: member?.userId ?? null,
+        member: member?.id
+          ? {
+              id: member.id,
+              name: identity.fullName,
+              avatarUrl: typeof memberAvatar === "string" ? memberAvatar : null,
+            }
+          : undefined,
+      },
       token,
     });
   } catch (error) {

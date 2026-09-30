@@ -63,6 +63,22 @@ TWENTY_OAUTH_SCOPE=api profile
 # Only needed because this instance is behind an auth-guard nginx with basic auth:
 TWENTY_BASIC_USER=
 TWENTY_BASIC_PASSWORD=
+
+# Voice + AI analysis (see docs/ai-analysis.md)
+TELNYX_API_KEY=<your-key>
+TELNYX_MESSAGING_PROFILE_ID=
+# Shared secret for the Telnyx webhook (?token=). Same value goes in the
+# Telnyx connection webhook URL:
+# https://<backend-public-url>/api/webhooks/telnyx?token=<value>
+TELNYX_WEBHOOK_TOKEN=
+# Single canonical agency number (E.164). Empty = first ACTIVE row.
+AGENCY_PHONE_NUMBER=
+# Stale claim reap (minutes); default 60.
+CLAIM_STALE_AFTER_MINUTES=60
+# Single OpenAI-compatible key for call ratings (any base URL works).
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_ANALYSIS_MODEL=gpt-4o-mini
 ```
 
 ### Frontend (.env.local)

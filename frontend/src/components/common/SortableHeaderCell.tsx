@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
-import { MIN_COLUMN_WIDTH } from "@/hooks/useColumnWidths";
+import { MIN_COLUMN_WIDTH } from "@/hooks/use-column-widths";
 
 /**
  * Twenty-style sortable header cell: the grip is the drag activator (whole
@@ -17,6 +17,7 @@ export function SortableHeaderCell({
   resizeHandle,
   registerHeader,
   filter,
+  settingsLink,
 }: {
   colKey: string;
   label: string;
@@ -26,6 +27,8 @@ export function SortableHeaderCell({
   registerHeader: (key: string) => (el: HTMLElement | null) => void;
   /** Optional header filter button (e.g. HeaderFilter) rendered after the label */
   filter?: React.ReactNode;
+  /** Optional Twenty settings deep-link (e.g. TwentyFieldLink) after the label */
+  settingsLink?: React.ReactNode;
 }) {
   const {
     attributes,
@@ -66,6 +69,7 @@ export function SortableHeaderCell({
           <GripVertical className="w-3.5 h-3.5" />
         </span>
         {label}
+        {settingsLink}
         {filter}
       </span>
       {resizeHandle}

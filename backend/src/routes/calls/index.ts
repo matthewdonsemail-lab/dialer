@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwentyAll, createTwenty, updateTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { telnyxClient, telnyxErrorMessage } from "../../lib/telnyx.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwentyAll, createTwenty, updateTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
+import { telnyxClient, telnyxErrorMessage } from "../../lib/telnyx/index.js";
+import { analyzeCallTranscript, isAiConfigured } from "../../lib/ai/analysis/index.js";
+import { createLogger } from "../../lib/logger/index.js";
 import type { AgencyCall } from "./types.js";
 import { mapCall } from "./helpers/index.js";
 
@@ -179,6 +181,7 @@ router.post("/", async (req: AuthRequest, res) => {
       direction, status, fromNumber, toNumber, startedAt, endedAt,
       durationSeconds, telnyxCallId, telnyxRecordingId, recordingUrl,
       transcript, transcriptionStatus, summary,
+      aiSummary, aiSentiment, aiScore, aiKeyPoints, aiScores, aiConfidence, aiModel, aiAnalyzedAt,
       agencyPhoneId, agencyProspectId, agencyLeadId,
     } = req.body as Partial<AgencyCall>;
 
@@ -195,6 +198,9 @@ router.post("/", async (req: AuthRequest, res) => {
       toNumber,
       durationSeconds: durationSeconds ?? 0,
     };
+    // Own-field member attribution (queryable UUID next to the system Actor).
+    // Omitted for legacy/fallback sessions without a resolved member.
+    if (req.workspaceMemberId) payload.createdByMemberId = req.workspaceMemberId;
     if (startedAt) payload.startedAt = startedAt;
     if (endedAt) payload.endedAt = endedAt;
     if (telnyxCallId) payload.telnyxCallId = telnyxCallId;
@@ -203,11 +209,19 @@ router.post("/", async (req: AuthRequest, res) => {
     if (transcript) payload.transcript = transcript;
     if (transcriptionStatus) payload.transcriptionStatus = transcriptionStatus;
     if (summary) payload.summary = summary;
+    if (aiSummary) payload.aiSummary = aiSummary;
+    if (aiSentiment) payload.aiSentiment = aiSentiment;
+    if (typeof aiScore === "number") payload.aiScore = aiScore;
+    if (aiKeyPoints) payload.aiKeyPoints = aiKeyPoints;
+    if (aiScores) payload.aiScores = aiScores;
+    if (typeof aiConfidence === "number") payload.aiConfidence = aiConfidence;
+    if (aiModel) payload.aiModel = aiModel;
+    if (aiAnalyzedAt) payload.aiAnalyzedAt = aiAnalyzedAt;
     if (agencyPhoneId) payload.agencyPhoneId = agencyPhoneId;
     if (agencyProspectId) payload.agencyProspectId = agencyProspectId;
     if (agencyLeadId) payload.agencyLeadId = agencyLeadId;
 
-    const created = await createTwenty<AgencyCall>('agencyCalls', payload);
+    const created = await createTwenty<AgencyCall>('agencyCalls', payload, await resolveActor(req));
     log.info(
       `Call logged: ${created.id} ${payload.direction} ${payload.fromNumber || "?"} -> ${toNumber} ` +
       `status=${payload.status} dur=${payload.durationSeconds}s ` +
@@ -231,13 +245,14 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
-// PATCH /api/calls/:id — enrich (webhook: recordingUrl/transcript/meeting link)
+// PATCH /api/calls/:id — enrich (webhook: recordingUrl/transcript/meeting link/AI analysis)
 router.patch("/:id", async (req, res) => {
   try {
     const allowed = [
       "status", "endedAt", "durationSeconds", "telnyxCallId", "telnyxRecordingId", "recordingUrl",
       "transcript", "transcriptionStatus", "summary", "debugLog",
       "meetingUrl", "meetingProvider", "meetingAt", "meetingStatus", "meetingBookingId",
+      "aiSummary", "aiSentiment", "aiScore", "aiKeyPoints", "aiScores", "aiConfidence", "aiModel", "aiAnalyzedAt",
     ] as const;
     const patch: Record<string, unknown> = {};
     for (const key of allowed) {
@@ -247,11 +262,59 @@ router.patch("/:id", async (req, res) => {
       res.status(400).json({ error: "Nothing to update" });
       return;
     }
-    const updated = await updateTwenty<AgencyCall>('agencyCalls', req.params.id as string, patch);
+    const actor = await resolveActor(req);
+    const updated = await updateTwenty<AgencyCall>('agencyCalls', req.params.id as string, patch, actor);
     res.json(mapCall(updated));
   } catch (err: any) {
     log.error("Failed to update call:", err.message);
     res.status(500).json({ error: "Failed to update call", details: err.message });
+  }
+});
+
+// POST /api/calls/:id/analyze — run OpenAI-compatible analysis over the
+// stored transcript and write the rating back onto the same call row.
+// Manual trigger (UI button) and backfill path; the Telnyx transcription
+// webhook also calls this best-effort when a transcript lands.
+router.post("/:id/analyze", async (req, res) => {
+  try {
+    if (!isAiConfigured()) {
+      res.status(500).json({ error: "OPENAI_API_KEY not configured" });
+      return;
+    }
+    const call = await getTwenty<AgencyCall>('agencyCalls', req.params.id as string);
+    if (!call.transcript || call.transcript.trim().length < 10) {
+      res.status(400).json({ error: "Call has no transcript to analyze yet" });
+      return;
+    }
+    let analysis;
+    try {
+      analysis = await analyzeCallTranscript(call.transcript, {
+        direction: call.direction,
+        durationSeconds: call.durationSeconds,
+      });
+    } catch (err: any) {
+      log.info(`AI analysis failed for call=${call.id}: ${err.message}`);
+      res.status(502).json({ error: "AI analysis failed", details: String(err.message).slice(0, 200) });
+      return;
+    }
+    const patch: Record<string, unknown> = {
+      aiSummary: analysis.summary,
+      aiSentiment: analysis.sentiment,
+      aiScore: analysis.score,
+      aiKeyPoints: JSON.stringify(analysis.keyPoints),
+      aiScores: JSON.stringify(analysis.scores),
+      aiConfidence: analysis.confidence,
+      aiModel: analysis.model,
+      aiAnalyzedAt: new Date().toISOString(),
+      // Keep legacy summary in sync so old UI surfaces still show something.
+      summary: analysis.summary,
+    };
+    const updated = await updateTwenty<AgencyCall>('agencyCalls', call.id, patch, await resolveActor(req));
+    log.info(`AI analysis stored: call=${call.id} sentiment=${analysis.sentiment} score=${analysis.score}`);
+    res.json({ ok: true, analysis, call: mapCall(updated) });
+  } catch (err: any) {
+    log.error("Failed to analyze call:", err.message);
+    res.status(500).json({ error: "Failed to analyze call", details: err.message });
   }
 });
 

@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwenty, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwenty, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { createLogger } from "../../lib/logger/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
 import type { AgencyScript } from "./types.js";
 import { mapScript } from "./helpers/index.js";
 
@@ -56,7 +57,7 @@ router.post("/", async (req: AuthRequest, res) => {
       payload.campaignIdId = campaignId;
     }
 
-    const result = await createTwenty<any>('agencyScripts', payload);
+    const result = await createTwenty<any>('agencyScripts', payload, await resolveActor(req));
     const script = result.data || result;
     
     const mapped = mapScript(script);
@@ -93,7 +94,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
       return;
     }
 
-    const result = await updateTwenty<any>('agencyScripts', id, payload);
+    const result = await updateTwenty<any>('agencyScripts', id, payload, await resolveActor(req));
     const script = result.data || result;
     
     const mapped = mapScript(script);

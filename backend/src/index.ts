@@ -28,10 +28,13 @@ import scriptsRoutes from "./routes/scripts/index.js";
 import twentyPhonesRoutes from "./routes/twenty/phones/index.js";
 import twentyMetaRoutes from "./routes/twenty/meta/index.js";
 import twentySetupRoutes from "./routes/twenty/setup/index.js";
+import twentyWebhookRouter from "./routes/twenty/webhook/index.js";
 import { callLogsRouter } from "./routes/call-logs/index.js";
 import callsRouter from "./routes/calls/index.js";
+import webhooksRouter from "./routes/telnyx/webhook/index.js";
 import { profilesRouter } from "./routes/profiles/index.js";
-import { createLogger } from "./lib/logger.js";
+import notifyRouter from "./routes/notify/index.js";
+import { createLogger } from "./lib/logger/index.js";
 
 const log = createLogger('server');
 const app = express();
@@ -64,7 +67,14 @@ app.use(cors({ origin: true, credentials: true }));
 // would otherwise consume first.
 app.use("/api/oauth", getRequestListener(oauthApp.fetch));
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({
+  limit: "10mb",
+  // Keep the raw bytes so HMAC-signed webhooks (Twenty) can validate
+  // against the exact payload: {timestamp}:{raw JSON body}.
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 
 app.get("/api/health", (_req, res) => {
   const oauth = loadOAuthConfig();
@@ -115,10 +125,17 @@ app.use("/api/campaigns", campaignsRoutes);
 app.use("/api/scripts", scriptsRoutes);
 app.use("/api/twenty/phones", twentyPhonesRoutes);
 app.use("/api/twenty/meta", twentyMetaRoutes);
+app.use("/api/twenty/webhook", twentyWebhookRouter);
 app.use("/api/setup/twenty", twentySetupRoutes);
 app.use("/api/call-logs", callLogsRouter);
 app.use("/api/calls", callsRouter);
+// Telnyx webhooks are token-gated (no authMiddleware) — mount alongside,
+// before or after auth routes doesn't matter since the router is public.
+// NOTE: the Twenty CRM webhook lives at /api/twenty/webhook (HMAC); this is
+// the Telnyx telephony webhook. Different senders, different auth.
+app.use("/api/webhooks", webhooksRouter);
 app.use("/api/profiles", profilesRouter);
+app.use("/api/notify", notifyRouter);
 
 /**
  * POST /api/calls/recording

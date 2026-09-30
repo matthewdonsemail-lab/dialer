@@ -2,10 +2,10 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { StatusFilterDropdown } from "@/components/common/StatusFilterDropdown";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";
 import { ColumnVisibilityDropdown, ColumnDef } from "@/components/common/ColumnVisibilityDropdown";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -32,14 +32,28 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { useColumnOrder } from "@/hooks/useColumnOrder";
-import { useColumnWidths } from "@/hooks/useColumnWidths";
+import { useColumnOrder } from "@/hooks/use-column-order";
+import { useColumnWidths } from "@/hooks/use-column-widths";
 import {
   SortableHeaderCell,
   ColumnResizeHandle,
 } from "@/components/common/SortableHeaderCell";
+import { TwentyFieldLink } from "@/components/common/TwentyFieldLink";
 
 type StatusFilter = string | "all";
+
+/** Table column key -> ACTUAL Twenty agencyProspects field (null = object page). */
+const PROSPECT_FIELD_FOR_KEY: Record<string, string | null> = {
+  name: "name",
+  company: "niche",
+  phone: "phone",
+  status: "coldCallStatus",
+  state: "region",
+  city: "city",
+  qualification: null,
+  type: "niche",
+  campaign: "campaignIdId",
+};
 
 interface Prospect {
   id: string;
@@ -621,8 +635,11 @@ export function ProspectPage() {
                 />
               </th>
               {nameCol && (
-                <th className="relative px-3 text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
-                  <span className="inline-flex items-center">{nameCol.label}</span>
+                <th className="group/th relative px-3 text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
+                  <span className="inline-flex items-center">
+                    {nameCol.label}
+                    <TwentyFieldLink objectName="agencyProspects" fieldName="name" />
+                  </span>
                   <ColumnResizeHandle
                     colKey="name"
                     tableRef={tableRef}
@@ -643,6 +660,9 @@ export function ProspectPage() {
                       edge={overId === key ? edge : null}
                       registerHeader={registerHeader}
                       filter={headerFilterFor(key)}
+                      settingsLink={
+                        <TwentyFieldLink objectName="agencyProspects" fieldName={PROSPECT_FIELD_FOR_KEY[key] ?? null} />
+                      }
                       resizeHandle={
                         <ColumnResizeHandle
                           colKey={key}

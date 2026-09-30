@@ -4,8 +4,8 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { ColumnVisibilityDropdown, ColumnDef } from "@/components/common/ColumnVisibilityDropdown";
 import { Spokes } from "@/components/ui/Spinner";
-import { api } from "@/lib/apiClient";
-import { mapCampaignStatusOptions } from "@/lib/twentyOptions";
+import { api } from "@/lib/api-client";
+import { mapCampaignStatusOptions } from "@/lib/twenty/options";
 import { Plus, Search, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
