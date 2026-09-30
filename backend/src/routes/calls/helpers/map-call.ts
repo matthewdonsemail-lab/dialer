@@ -35,6 +35,7 @@ export function mapCall(call: AgencyCall) {
     agencyPhoneId: call.agencyPhoneId || null,
     agencyProspectId: call.agencyProspectId || null,
     agencyLeadId: call.agencyLeadId || null,
+    createdByMemberId: call.createdByMemberId || null,
     createdBy: call.createdBy ?? null,
     created_at: call.createdAt || new Date().toISOString(),
     updated_at: call.updatedAt || new Date().toISOString(),

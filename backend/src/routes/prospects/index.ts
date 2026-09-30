@@ -124,6 +124,8 @@ router.post("/", async (req: AuthRequest, res) => {
       externalId: undefined,
       outboundState: tags?.[0],
       coldCallStatus,
+      // Own-field member attribution (omitted for legacy/fallback sessions).
+      ...(req.workspaceMemberId ? { createdByMemberId: req.workspaceMemberId } : {}),
     };
 
     const result = await createTwenty<any>('agencyProspects', payload, await resolveActor(req));

@@ -1,5 +1,5 @@
-import { createLogger } from "../../../logger/index.js";
-import { loadSyncConfig } from "../../client/index.js";
+import { createLogger } from "../../logger/index.js";
+import { loadSyncConfig } from "../client/index.js";
 
 const log = createLogger('twenty-call-history-setup');
 
@@ -11,11 +11,9 @@ const log = createLogger('twenty-call-history-setup');
  * Field list mirrors exactly what backend/src/routes/calls sends/reads:
  * free-form TEXT for status-like values (e.g. IN_PROGRESS / NO_ANSWER),
  * plain TEXT link ids (agencyPhoneId / agencyProspectId / agencyLeadId),
- * DATE_TIME for timestamps, NUMBER for durationSeconds.
- * AI analysis fields (aiSummary/aiSentiment/aiScore/aiKeyPoints/
- * aiConfidence/aiModel/aiAnalyzedAt) are provisioned here too so the
- * Twenty object, the REST mapper, and docs/diagrams stay in parity —
- * every call row carries its own transcript + rating, no side tables.
+ * the own-field member attribution id (createdByMemberId),
+ * AI analysis fields (aiSummary/aiSentiment/aiScores/aiKeyPoints/aiModel),
+ * DATE_TIME for timestamps, NUMBER for durationSeconds and AI numbers.
  */
 
 async function metadataMutation<T = any>(mutation: string): Promise<T> {
@@ -108,9 +106,10 @@ const TEXT_FIELDS = [
   "agencyPhoneId",
   "agencyProspectId",
   "agencyLeadId",
+  "createdByMemberId",
   // AI call analysis (one row = one call; the rating lives on the record).
-  // aiSentiment stays TEXT (POSITIVE/NEUTRAL/NEGATIVE/MIXED) to match the
-  // free-form convention above; aiKeyPoints/aiScores are JSON strings.
+  // aiSentiment stays TEXT (POSITIVE/NEUTRAL/NEGATIVE/MIXED);
+  // aiKeyPoints/aiScores are JSON strings.
   "aiSummary",
   "aiSentiment",
   "aiKeyPoints",
@@ -164,7 +163,7 @@ export async function setupCallHistorySchema(): Promise<{
       fields.push({ name, isNew: true });
       log.info(`Created field ${name} (${type}) on agencyCalls`);
     } catch (err: any) {
-      if (err.message?.includes("already exists")) {
+      if (/already exists|already used by another field/i.test(String(err?.message || ""))) {
         fields.push({ name, isNew: false });
       } else {
         throw err;

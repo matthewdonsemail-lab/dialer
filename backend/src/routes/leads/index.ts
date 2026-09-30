@@ -5,7 +5,7 @@ import { createLogger } from "../../lib/logger/index.js";
 import { resolveActor } from "../../lib/twenty/actor/index.js";
 import { broadcastNewLead, markLeadNotified } from "../../lib/leads/notify/index.js";
 import type { AgencyCampaign, AgencyLead } from "./types.js";
-import { mapLeadToFrontend, frontendStatusToTwenty, getLeadCallCounts } from "./helpers/index.js";
+import { mapLeadToFrontend, frontendStatusToTwenty, toTwentyPhone, toTwentyEmail, getLeadCallCounts } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -80,23 +80,18 @@ router.post("/", async (req: AuthRequest, res) => {
     
     const payload = {
       contactName: fullName,
-      email: email,
-      phone: phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined,
+      email: toTwentyEmail(email),
+      phone: toTwentyPhone(phone),
       company: company,
       status: coldCallStatus === "DO_NOT_CONTACT" ? "LOST" : "NEW",
       coldCallStatus,
       source: source,
       note: notes,
       outboundMessage: undefined,
-      // createdById: the member userId when the session resolved to one,
-      // otherwise the legacy email. The Actor below is the authoritative
-      // "created by" stamp Twenty displays.
-      createdById: req.twentyUserId,
+      // createdById: the resolved workspaceMember UUID when the session
+      // resolved to one, otherwise the legacy email. The Actor below is the
+      // authoritative "created by" stamp Twenty displays.
+      createdById: req.workspaceMemberId ?? req.twentyUserId,
     };
 
     const result = await createTwenty<any>('agencyLeads', payload, await resolveActor(req));
@@ -117,7 +112,7 @@ router.post("/", async (req: AuthRequest, res) => {
       status: coldCallStatus === "DO_NOT_CONTACT" ? "not_interested" : "new",
       source,
       campaign_id: campaign_id,
-      assigned_to: req.twentyUserId,
+      assigned_to: req.workspaceMemberId ?? req.twentyUserId,
       tags: tags ? JSON.stringify(tags) : null,
       notes,
       dnc: Boolean(dnc),
@@ -165,15 +160,16 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
     
     if (company !== undefined) payload.company = company;
+    // Empty phone/email means "no value": omit the key so Twenty keeps its
+    // validated state instead of rejecting an empty composite.
     if (phone !== undefined) {
-      payload.phone = phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined;
+      const twentyPhone = toTwentyPhone(phone);
+      if (twentyPhone !== undefined) payload.phone = twentyPhone;
     }
-    if (email !== undefined) payload.email = email;
+    if (email !== undefined) {
+      const twentyEmail = toTwentyEmail(email);
+      if (twentyEmail !== undefined) payload.email = twentyEmail;
+    }
     if (notes !== undefined) payload.note = notes;
     if (source !== undefined) payload.source = source;
 

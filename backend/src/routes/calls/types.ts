@@ -32,6 +32,8 @@ export interface AgencyCall {
   agencyPhoneId?: string;
   agencyProspectId?: string;
   agencyLeadId?: string;
+  /** WorkspaceMember UUID responsible for the call (our attribution, server-derived). */
+  createdByMemberId?: string;
   createdBy?: unknown;
   createdAt?: string;
   updatedAt?: string;

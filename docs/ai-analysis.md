@@ -6,8 +6,8 @@ column, the call detail page, and Twenty CRM show the same values.
 
 Modules follow `docs/naming-conventions.md`: the analyzer is the repo-owned
 `backend/src/lib/ai/analysis/` (`types.ts` + `index.ts`), the schema
-provisioner lives at
-`backend/src/lib/twenty/objectService/helpers/call-history-setup.ts`, and the
+provisioner is the `agencyCall` mirror
+(`backend/src/lib/twenty/agencyCall/`, verbatim `nameSingular`), and the
 Telnyx receiver is the route `backend/src/routes/telnyx/webhook/`
 (`POST /api/webhooks/telnyx`). Twenty object names stay verbatim camelCase
 (`agencyCalls`); repo-owned paths stay kebab-case.
@@ -79,9 +79,8 @@ still guards it (409 when actively held, stale reap after
 
 ## Schema provisioning
 
-`POST /api/setup/twenty` provisions the AI fields through the
-`objectService` helper (`lib/twenty/objectService/helpers/call-history-setup.ts`,
-idempotent): `aiSummary`, `aiSentiment`, `aiKeyPoints`, `aiScores`, `aiModel`
+`POST /api/setup/twenty` provisions the AI fields through the `agencyCall`
+mirror (`lib/twenty/agencyCall/`, idempotent, alongside `createdByMemberId`): `aiSummary`, `aiSentiment`, `aiKeyPoints`, `aiScores`, `aiModel`
 (TEXT), `aiAnalyzedAt` (DATE_TIME), `aiScore`, `aiConfidence` (NUMBER).
 Re-run setup after deploying to add them to an existing workspace.
 
