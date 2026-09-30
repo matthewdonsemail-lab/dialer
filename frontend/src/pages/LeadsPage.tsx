@@ -33,6 +33,7 @@ import {
   SortableHeaderCell,
   ColumnResizeHandle,
 } from "@/components/common/SortableHeaderCell";
+import { TwentyFieldLink } from "@/components/common/TwentyFieldLink";
 import { ActionsMenu } from "@/components/common/ActionsMenu";
 import { CampaignSelect } from "@/components/common/CampaignSelect";
 import { HeaderFilter } from "@/components/common/HeaderFilter";
@@ -40,6 +41,20 @@ import { api } from "@/lib/apiClient";
 import { useQuery } from "@tanstack/react-query";
 
 type StatusFilter = string | "all";
+
+/** Table column key -> ACTUAL Twenty agencyLeads field (null = object page). */
+const LEAD_FIELD_FOR_KEY: Record<string, string | null> = {
+  name: "name",
+  company: "company",
+  phone: "phone",
+  status: "coldCallStatus",
+  state: null,
+  city: null,
+  qualification: null,
+  last_called: null,
+  type: "source",
+  campaign: "campaignIdId",
+};
 
 function CampaignTab({
   label,
@@ -550,8 +565,11 @@ export function LeadsPage() {
                 />
               </th>
               {nameCol && (
-                <th className="relative px-3 text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
-                  <span className="inline-flex items-center">{nameCol.label}</span>
+                <th className="group/th relative px-3 text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
+                  <span className="inline-flex items-center">
+                    {nameCol.label}
+                    <TwentyFieldLink objectName="agencyLeads" fieldName="name" />
+                  </span>
                   <ColumnResizeHandle
                     colKey="name"
                     tableRef={tableRef}
@@ -572,6 +590,9 @@ export function LeadsPage() {
                       edge={overId === key ? edge : null}
                       registerHeader={registerHeader}
                       filter={headerFilterFor(key)}
+                      settingsLink={
+                        <TwentyFieldLink objectName="agencyLeads" fieldName={LEAD_FIELD_FOR_KEY[key] ?? null} />
+                      }
                       resizeHandle={
                         <ColumnResizeHandle
                           colKey={key}

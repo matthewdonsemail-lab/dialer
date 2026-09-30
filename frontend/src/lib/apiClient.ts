@@ -189,7 +189,11 @@ export const api = {
 
   twentyMeta: {
     fields: (objectName: string) =>
-      request<{ fields: Record<string, Array<{ label: string; value: string; color: string }>> }>(
+      request<{
+        object: { singular: string; plural: string };
+        baseUrl: string;
+        fields: Record<string, Array<{ label: string; value: string; color: string }>>;
+      }>(
         `/api/twenty/meta/${objectName}`
       ),
   },
