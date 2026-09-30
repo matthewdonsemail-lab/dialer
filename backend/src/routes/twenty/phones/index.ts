@@ -11,6 +11,36 @@ router.use(authMiddleware);
 
 const log = createLogger('phones');
 
+/**
+ * Stale-claim expiry (minutes, env-overridable).
+ *
+ * The claim lock lives on the Twenty row, and the only code that clears it
+ * ran inside the app — so a closed tab left numbers held forever. A non-IDLE
+ * claim older than this with no activity is treated as abandoned: a new
+ * claim may take the number, and anyone may release it. Normal calls last
+ * minutes, so the default (60) never touches a live conversation; it only
+ * reaps the dead ones. Holder re-claims stay idempotent at any age.
+ */
+function staleAfterMinutes(): number {
+  const raw = Number(process.env.CLAIM_STALE_AFTER_MINUTES ?? 60);
+  return Number.isFinite(raw) && raw > 0 ? raw : 60;
+}
+
+function claimAgeMinutes(phone: AgencyPhone): number | null {
+  if (!phone.claimedAt) return null;
+  const at = new Date(phone.claimedAt).getTime();
+  if (!Number.isFinite(at)) return null;
+  return (Date.now() - at) / 60_000;
+}
+
+function isClaimStale(phone: AgencyPhone): boolean {
+  if ((phone.callState || "IDLE") === "IDLE") return false;
+  const age = claimAgeMinutes(phone);
+  // Non-IDLE with no usable timestamp predates claim tracking: ancient.
+  if (age === null) return true;
+  return age > staleAfterMinutes();
+}
+
 router.get("/", async (_req, res) => {
   try {
     log.info('Fetching phones from Twenty CRM');
@@ -76,14 +106,19 @@ router.post("/:id/claim", async (req: AuthRequest, res) => {
     const state = phone.callState || "IDLE";
     const holder = phone.claimedByMemberId || null;
     if (state !== "IDLE" && holder && holder !== memberId) {
-      log.info(`Claim refused: ${id} held by ${phone.claimedByEmail || holder}`);
-      res.status(409).json({
-        error: "Number is in use",
-        heldBy: phone.claimedByEmail || holder,
-        callState: state,
-        claimedAt: phone.claimedAt || null,
-      });
-      return;
+      if (isClaimStale(phone)) {
+        const age = claimAgeMinutes(phone);
+        log.info(`Claim reaped: ${id} was held by ${phone.claimedByEmail || holder} (${age === null ? "no timestamp" : `${Math.round(age)}m old`}); taken by ${memberEmail || memberId}`);
+      } else {
+        log.info(`Claim refused: ${id} held by ${phone.claimedByEmail || holder}`);
+        res.status(409).json({
+          error: "Number is in use",
+          heldBy: phone.claimedByEmail || holder,
+          callState: state,
+          claimedAt: phone.claimedAt || null,
+        });
+        return;
+      }
     }
     const now = new Date().toISOString();
     const updated = await updateTwenty<AgencyPhone>('agencyPhones', id, {
@@ -146,8 +181,13 @@ router.post("/:id/release", async (req: AuthRequest, res) => {
     const phone = await getTwenty<AgencyPhone>('agencyPhones', id);
     const holder = phone.claimedByMemberId || null;
     if (holder && holder !== memberId && !force) {
-      res.status(409).json({ error: "Number is held by another member", heldBy: phone.claimedByEmail || holder });
-      return;
+      if (isClaimStale(phone)) {
+        const age = claimAgeMinutes(phone);
+        log.info(`Stale claim reaped on release: ${id} was held by ${phone.claimedByEmail || holder} (${age === null ? "no timestamp" : `${Math.round(age)}m old`}); released by ${memberId}`);
+      } else {
+        res.status(409).json({ error: "Number is held by another member", heldBy: phone.claimedByEmail || holder });
+        return;
+      }
     }
     const now = new Date().toISOString();
     const updated = await updateTwenty<AgencyPhone>('agencyPhones', id, {

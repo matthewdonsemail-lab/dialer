@@ -10,8 +10,10 @@
  * Rebuild with current project env after any env change.
  *
  * Handled events:
- *   call.recording.saved                -> attach recording to agencyCalls (by telnyxCallId)
- *   call.recording.transcription.saved  -> attach transcript to agencyCalls
+ *   call.recording.saved                -> attach recording to agencyCalls (by telnyxCallId;
+ *                                          falls back to newest recording-less from/to row
+ *                                          within 2h, for tabs closed before the id stamp)
+ *   call.recording.transcription.saved  -> attach transcript to agencyCalls (same fallback)
  *   message.received / message.finalized -> acknowledged (SMS pipeline owns these next)
  * Everything else -> 200 + logged.
  */
@@ -94,6 +96,52 @@ async function findCallByTelnyxId(telnyxCallId: string): Promise<any | null> {
   return null;
 }
 
+/**
+ * Orphan-row fallback: the browser row exists but never got its
+ * telnyxCallId (tab closed before the stamp). Find the newest recording-less
+ * row for the same caller->callee pair, created within the last 2h.
+ * Returns null when nothing plausible matches — the caller then falls back
+ * to creating an INBOUND row (true inbound calls).
+ */
+async function findOpenCallByParties(from?: string, to?: string): Promise<any | null> {
+  if (!from && !to) return null;
+  const windowStart = Date.now() - 120 * 60_000;
+  let best: any | null = null;
+  let bestAt = 0;
+  let cursor: string | undefined;
+  for (let page = 0; page < 25; page++) {
+    const params = new URLSearchParams({
+      limit: "200",
+      orderBy: "id[AscNullsFirst]",
+      ...(cursor ? { filter: `id[gt]:"${cursor}"` } : {}),
+    });
+    let rows: any[];
+    try {
+      const json = await twentyRest("GET", `agencyCalls?${params.toString()}`);
+      rows = unwrapList(json, "agencyCalls");
+    } catch {
+      return best;
+    }
+    for (const r of rows) {
+      if (!r || typeof r !== "object") continue;
+      if (r.telnyxRecordingId || r.recordingUrl) continue;
+      if (from && r.fromNumber && r.fromNumber !== from) continue;
+      if (to && r.toNumber && r.toNumber !== to) continue;
+      const at = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+      if (!Number.isFinite(at) || at < windowStart) continue;
+      if (at > bestAt) {
+        best = r;
+        bestAt = at;
+      }
+    }
+    if (rows.length < 200) break;
+    const ids = rows.map((r: any) => r?.id).filter((id: any) => typeof id === "string");
+    if (ids.length === 0) break;
+    cursor = ids[ids.length - 1];
+  }
+  return best;
+}
+
 async function handleRecordingSaved(p: any): Promise<string> {
   const callControlId: string | undefined = p?.call_control_id;
   const recordingId: string | undefined = p?.recording_id ?? p?.recording_ids?.[0];
@@ -108,6 +156,22 @@ async function handleRecordingSaved(p: any): Promise<string> {
     if (downloadUrl) patch.recordingUrl = downloadUrl;
     await twentyRest("PATCH", `agencyCalls/${existing.id}`, patch);
     return `attached to ${existing.id}`;
+  }
+
+  // The browser died before stamping telnyxCallId (tab closed mid-call or
+  // before wrap-up): match the open row by parties + recency instead of
+  // creating a duplicate INBOUND row the agent will never look at. Stamping
+  // telnyxCallId here also lets the later transcription event match by id.
+  const orphan = await findOpenCallByParties(p?.from, p?.to);
+  if (orphan) {
+    const patch: Record<string, unknown> = {
+      telnyxCallId: callControlId,
+      transcriptionStatus: "PENDING",
+    };
+    if (recordingId) patch.telnyxRecordingId = recordingId;
+    if (downloadUrl) patch.recordingUrl = downloadUrl;
+    await twentyRest("PATCH", `agencyCalls/${orphan.id}`, patch);
+    return `attached to open row ${orphan.id} (parties fallback)`;
   }
 
   // No browser-logged row (e.g. inbound via shared registration): create one.
@@ -131,7 +195,17 @@ async function handleTranscriptionSaved(p: any): Promise<string> {
     p?.transcript ?? p?.transcription_text ?? p?.text ?? p?.transcription?.text;
   if (!callControlId) return "missing call_control_id";
   const existing = await findCallByTelnyxId(callControlId);
-  if (!existing) return "no matching call row";
+  if (!existing) {
+    // Same orphan case as recordings: the row never got its telnyxCallId
+    // (e.g. the recording event is still in flight). Match by parties so
+    // the transcript is not dropped, and stamp the id for later events.
+    const orphan = await findOpenCallByParties(p?.from, p?.to);
+    if (!orphan) return "no matching call row";
+    const patch: Record<string, unknown> = { telnyxCallId: callControlId, transcriptionStatus: "READY" };
+    if (text) patch.transcript = text;
+    await twentyRest("PATCH", `agencyCalls/${orphan.id}`, patch);
+    return `transcript attached to open row ${orphan.id} (parties fallback)`;
+  }
   const patch: Record<string, unknown> = { transcriptionStatus: "READY" };
   if (text) patch.transcript = text;
   await twentyRest("PATCH", `agencyCalls/${existing.id}`, patch);

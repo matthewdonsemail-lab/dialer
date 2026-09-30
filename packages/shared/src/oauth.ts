@@ -47,6 +47,8 @@ export interface TokenSet {
 export interface Introspection {
   active: boolean;
   username: string | null;
+  /** RFC 7662 subject: present even when Twenty omits `username`. */
+  sub: string | null;
   scope: string | null;
   expiresAt: number | null;
 }
@@ -271,6 +273,7 @@ export async function introspectToken(
   return {
     active: body.active === true,
     username: typeof body.username === "string" ? body.username : null,
+    sub: typeof body.sub === "string" ? body.sub : null,
     scope: typeof body.scope === "string" ? body.scope : null,
     expiresAt: typeof body.exp === "number" ? body.exp : null,
   };
