@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { getSipConfig, isSipConfigured, getSipDomain, getSipExtension } from "@/sip";
 import { sipLog, classifyFailure, getReport, type ClassifiedFailure } from "@/sip";
-import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/config/dialerConfig";
+import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/config";
 import { Button } from "@/components/ui/Button";
 import { OutcomeSelect } from "@/components/common/OutcomeSelect";
 import { api, getAuthToken } from "@/lib/api-client";
