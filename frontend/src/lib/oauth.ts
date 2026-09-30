@@ -79,6 +79,23 @@ export function loadOperatorSession(): OperatorSession | null {
 export async function beginSignIn(): Promise<void> {
   if (!API_URL) throw new Error("VITE_API_URL must be set — the dialer backend is required for login.");
   const config = await publicConfig();
+  // Guard against the classic port-mismatch trap: Twenty returns the browser
+  // to config.redirectUri after authorization. If this tab runs anywhere else
+  // (e.g. dev server on :3000 while the registered callback is on :5173),
+  // the browser lands on a dead address with ERR_CONNECTION_REFUSED and no
+  // useful message. Fail here instead, naming both sides. See docs/identity.md.
+  try {
+    const expectedOrigin = new URL(config.redirectUri).origin;
+    if (window.location.origin !== expectedOrigin) {
+      throw new Error(
+        `This page runs at ${window.location.origin}, but Twenty will send you back to ${config.redirectUri} after sign-in — nothing listens there, so the browser would show "connection refused". ` +
+          `Run the frontend on the registered callback origin (local dev: port 5173 with strictPort, see frontend/vite.config.ts), or register ${window.location.origin}/callback as a redirect URI on the Twenty OAuth client and set TWENTY_OAUTH_REDIRECT_URI to match.`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("will send you back")) throw error;
+    throw new Error("The backend returned an invalid OAuth redirect URI. Check TWENTY_OAUTH_REDIRECT_URI.");
+  }
   const verifier = generateCodeVerifier();
   const state = generateState();
   const pending: PendingFlow = { verifier, state };

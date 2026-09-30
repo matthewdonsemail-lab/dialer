@@ -647,7 +647,7 @@ cp frontend/.env.example frontend/.env.local
 bun run dev                  # backend on :4000, frontend on :3000
 ```
 
-Open http://localhost:3000 and sign in with an account that already exists in
+Open http://localhost:5173 and sign in with an account that already exists in
 Twenty. Signup is disabled: the dialer verifies credentials against Twenty's
 `core."user"` table rather than keeping its own.
 

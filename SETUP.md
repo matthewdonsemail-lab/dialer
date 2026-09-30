@@ -16,7 +16,7 @@ npm run dev
 ```
 
 ### 3. Access the App
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:5173
 - Backend API: http://localhost:4000
 
 ## Authentication
