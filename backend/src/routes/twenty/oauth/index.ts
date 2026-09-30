@@ -10,7 +10,12 @@ import {
   refreshOperatorToken,
 } from "../../../lib/twenty/oauth/index.js";
 import { findWorkspaceMember, type WorkspaceMemberRecord } from "../../../lib/twenty/workspaceMember/index.js";
-import { TwentyOAuthError, type Introspection } from "@dialer/shared";
+import {
+  decodeJwtPayload,
+  TwentyOAuthError,
+  type Introspection,
+  type TwentyAccessTokenClaims,
+} from "@dialer/shared";
 import { createLogger } from "../../../lib/logger/index.js";
 import type { TokenRequestBody, RefreshRequestBody, SessionRequestBody } from "./types.js";
 
@@ -131,6 +136,195 @@ async function resolveOperatorIdentity(
   }
 
   throw new UnresolvedMemberError(Object.keys(introspection.claims ?? {}).sort());
+}
+
+function identityFrom(member: WorkspaceMemberRecord, via: string): ResolvedIdentity {
+  const fullName =
+    `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim() ||
+    member.userEmail ||
+    member.id;
+  return { email: member.userEmail || fullName, fullName, via, member };
+}
+
+
+oauthApp.get("/config", async (c) => {
+  const { config, response } = requireConfig(c);
+  if (!config) return response;
+  try {
+    const endpoints = await oauthEndpoints(config.baseUrl);
+    return c.json({
+      authorizationEndpoint: endpoints.authorizationEndpoint,
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      scope: config.scope,
+    });
+  } catch (error) {
+    return fail(c, error, "Failed to read Twenty OAuth discovery");
+  }
+});
+
+oauthApp.post("/token", async (c) => {
+  const { config, response } = requireConfig(c);
+  if (!config) return response;
+  const body = (await c.req.json().catch(() => null)) as TokenRequestBody | null;
+  if (!body?.code || !body.verifier) {
+    return c.json({ error: "code and verifier are required" }, 400);
+  }
+  try {
+    const tokens = await exchangeAuthorizationCode(config, {
+      code: body.code,
+      verifier: body.verifier,
+      redirectUri: body.redirectUri,
+    });
+    return c.json({ tokens });
+  } catch (error) {
+    return fail(c, error, "Failed to exchange the authorization code", 502);
+  }
+});
+
+oauthApp.post("/refresh", async (c) => {
+  const { config, response } = requireConfig(c);
+  if (!config) return response;
+  const body = (await c.req.json().catch(() => null)) as RefreshRequestBody | null;
+  if (!body?.refreshToken) return c.json({ error: "refreshToken is required" }, 400);
+  try {
+    const tokens = await refreshOperatorToken(config, body.refreshToken);
+    return c.json({ tokens });
+  } catch (error) {
+    return fail(c, error, "Failed to refresh the operator token", 502);
+  }
+});
+
+/** Who is calling: introspect the Bearer token, 401 when it is not live. */
+oauthApp.get("/me", async (c) => {
+  const { config, response } = requireConfig(c);
+  if (!config) return response;
+  const header = c.req.header("Authorization") ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+  if (!token) return c.json({ error: "Bearer token is required" }, 401);
+  try {
+    const result = await checkOperatorToken(config, token);
+    if (!result.active) return c.json({ error: "Token is not active" }, 401);
+    const identity = await resolveOperatorIdentity(result, token);
+    return c.json({
+      active: true,
+      email: identity.email,
+      workspaceMemberId: identity.member.id,
+      fullName: identity.fullName,
+      resolvedVia: identity.via,
+      scope: result.scope,
+    });
+  } catch (error) {
+    if (error instanceof UnresolvedMemberError) {
+      return c.json({ error: error.message, claims: error.claimNames }, 403);
+    }
+    return fail(c, error, "Failed to validate the operator token", 502);
+  }
+});
+
+/**
+ * Mint a dialer JWT for a live Twenty access token.
+ *
+ * The SPA finishes PKCE (code → Twenty tokens via `/token`), then calls
+ * here once. Introspection proves the token is live; the dialer JWT keeps
+ * every existing route on its current `authMiddleware` contract.
+ */
+oauthApp.post("/session", async (c) => {
+  const { config, response } = requireConfig(c);
+  if (!config) return response;
+  const body = (await c.req.json().catch(() => null)) as SessionRequestBody | null;
+  if (!body?.accessToken) return c.json({ error: "accessToken is required" }, 400);
+  try {
+    const result = await checkOperatorToken(config, body.accessToken);
+    if (!result.active) return c.json({ error: "Token is not active" }, 401);
+    const identity = await resolveOperatorIdentity(result, body.accessToken);
+    log.info(`OAuth session minted for: ${identity.email} (via ${identity.via})`);
+    const member = identity.member;
+    const memberAvatar = (member as any)?.avatarUrl;
+    const token = generateToken({
+      userId: identity.email,
+      // Prefer the member's userId; keep email for backward compatibility
+      // so old consumers that read the email still work.
+      twentyUserId: member?.userId ?? identity.email,
+      workspaceMemberId: member.id,
+      email: identity.email,
+      fullName: identity.fullName,
+      memberName: identity.fullName,
+      avatarUrl: typeof memberAvatar === "string" ? memberAvatar : undefined,
+    });
+    return c.json({
+      user: {
+        id: identity.email,
+        email: identity.email,
+        fullName: identity.fullName,
+        role: "agent",
+        workspaceMemberId: member.id,
+        twentyUserId: member.userId ?? null,
+        member: {
+          id: member.id,
+          name: identity.fullName,
+          avatarUrl: typeof memberAvatar === "string" ? memberAvatar : null,
+        },
+      },
+      token,
+    });
+  } catch (error) {
+    if (error instanceof UnresolvedMemberError) {
+      // Never mint a session we cannot attribute: "operator@twenty" made the
+      // UI show a fake operator and then 401'd every member-scoped route.
+      log.error(`Unresolved workspace member. introspection claims: ${error.claimNames.join(", ")}`);
+      return c.json(
+        { error: error.message, claims: error.claimNames },
+        403,
+      );
+    }
+    return fail(c, error, "Failed to create the dialer session", 502);
+  }
+});/**
+ * Map a live Twenty token to its workspaceMember.
+ *
+ * Twenty application access tokens use the application id as `sub`, so
+ * introspection.sub must not be treated as the human identity. After
+ * introspection proves the token is active, read the user identity from the
+ * signed token payload and resolve it against workspaceMembers.userId.
+ * Email remains a compatibility fallback for deployments that expose it.
+ */
+async function resolveOperatorIdentity(
+  introspection: Introspection,
+  accessToken: string,
+): Promise<ResolvedIdentity> {
+  let claims: TwentyAccessTokenClaims;
+  try {
+    claims = decodeJwtPayload<TwentyAccessTokenClaims>(accessToken);
+  } catch (error) {
+    throw new UnresolvedMemberError([
+      ...Object.keys(introspection.claims ?? {}).sort(),
+      "token.userId",
+      "token.userWorkspaceId",
+    ]);
+  }
+
+  if (claims.userWorkspaceId) {
+    const byMemberId = await findWorkspaceMember({ workspaceMemberId: claims.userWorkspaceId });
+    if (byMemberId) return identityFrom(byMemberId, "jwt:userWorkspaceId");
+  }
+
+  if (claims.userId) {
+    const byUserId = await findWorkspaceMember({ userId: claims.userId });
+    if (byUserId) return identityFrom(byUserId, "jwt:userId");
+  }
+
+  const emails = emailsFromClaims(introspection.claims ?? {});
+  for (const email of emails) {
+    const byEmail = await findWorkspaceMember({ email });
+    if (byEmail) return identityFrom(byEmail, "claim:email");
+  }
+
+  throw new UnresolvedMemberError([
+    ...Object.keys(introspection.claims ?? {}).sort(),
+    "token.userId",
+    "token.userWorkspaceId",
+  ]);
 }
 
 function identityFrom(member: WorkspaceMemberRecord, via: string): ResolvedIdentity {
