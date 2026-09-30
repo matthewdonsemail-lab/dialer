@@ -7,12 +7,33 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
 import { api } from "@/lib/apiClient";
 
+const SENTIMENT_STYLES: Record<string, string> = {
+  POSITIVE: "text-green-600 border-green-500/30 bg-green-500/10",
+  NEGATIVE: "text-red-600 border-red-500/30 bg-red-500/10",
+  MIXED: "text-amber-600 border-amber-500/30 bg-amber-500/10",
+  NEUTRAL: "text-[var(--ods-text-secondary)] border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]",
+};
+
+export function RatingBadge({ sentiment, score }: { sentiment: string | null; score: number | null }) {
+  if (score === null || score === undefined) {
+    return <span className="text-[11px] text-[var(--ods-text-tertiary)]">—</span>;
+  }
+  const style = SENTIMENT_STYLES[(sentiment || "NEUTRAL").toUpperCase()] ?? SENTIMENT_STYLES.NEUTRAL;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] border text-[11px] font-semibold ${style}`}>
+      {score}
+      <span className="font-normal opacity-80">{(sentiment || "NEUTRAL").toLowerCase()}</span>
+    </span>
+  );
+}
+
 export function CallHistoryPage() {
   const navigate = useNavigate();
   const { data: calls, isLoading } = useCalls();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedAudioId, setExpandedAudioId] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState(false);
 
   const { data: leads } = useQuery({
     queryKey: ["leads"],
@@ -47,6 +68,7 @@ export function CallHistoryPage() {
           (call.toNumber ?? "").includes(q) ||
           (call.fromNumber ?? "").includes(q) ||
           (call.summary ?? "").toLowerCase().includes(q) ||
+          (call.aiSummary ?? "").toLowerCase().includes(q) ||
           recordNameOf(call).toLowerCase().includes(q);
         return matchesStatus && matchesSearch;
       })
@@ -109,13 +131,14 @@ export function CallHistoryPage() {
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Duration</th>
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Recording</th>
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Summary</th>
+              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Rating</th>
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Date</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--ods-border)]">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-[13px] text-[var(--ods-text-secondary)]">
+                <td colSpan={8} className="text-center py-8 text-[13px] text-[var(--ods-text-secondary)]">
                   No call records found
                 </td>
               </tr>
@@ -148,6 +171,7 @@ export function CallHistoryPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          setAudioError(false);
                           setExpandedAudioId(audioOpen ? null : call.id);
                         }}
                         className="inline-flex items-center gap-1 text-[12px] text-[var(--ods-brand-600)] hover:underline"
@@ -159,18 +183,26 @@ export function CallHistoryPage() {
                       <span className="text-[11px] text-[var(--ods-text-tertiary)]">—</span>
                     )}
                   </td>
-                  <td className="px-3 text-[13px] text-[var(--ods-text-secondary)] max-w-xs truncate">{call.summary ?? "—"}</td>
+                  <td className="px-3 text-[13px] text-[var(--ods-text-secondary)] max-w-xs truncate">{call.aiSummary ?? call.summary ?? "—"}</td>
+                  <td className="px-3"><RatingBadge sentiment={call.aiSentiment} score={call.aiScore} /></td>
                   <td className="px-3 text-[12px] text-[var(--ods-text-tertiary)]">{call.created_at ? new Date(call.created_at).toLocaleString() : "—"}</td>
                 </tr>
                 {audioOpen && (
                   <tr key={`${call.id}-audio`}>
-                    <td colSpan={7} className="px-3 py-2 bg-[var(--ods-bg-secondary)]">
+                    <td colSpan={8} className="px-3 py-2 bg-[var(--ods-bg-secondary)]">
                       <audio
                         controls
                         preload="none"
                         src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}
                         className="w-full max-w-xl"
+                        onError={() => setAudioError(true)}
                       />
+                      {audioError && (
+                        <p className="mt-1 text-[11px] text-amber-700">
+                          Audio failed to load (0:00) — the Telnyx recording isn't attached yet.
+                          Open the row and use Reconcile, or check the webhook setup.
+                        </p>
+                      )}
                     </td>
                   </tr>
                 )}

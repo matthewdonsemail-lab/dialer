@@ -14,6 +14,14 @@ export interface AgencyCall {
   transcript?: string;
   transcriptionStatus?: string;
   summary?: string;
+  // AI analysis — one row = one call, rating stored on the record itself.
+  aiSummary?: string;
+  aiSentiment?: string;
+  aiScore?: number;
+  aiKeyPoints?: string;
+  aiConfidence?: number;
+  aiModel?: string;
+  aiAnalyzedAt?: string;
   debugLog?: string;
   meetingUrl?: string;
   meetingProvider?: string;

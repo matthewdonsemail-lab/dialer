@@ -344,8 +344,10 @@ sequenceDiagram
     participant API as API (Express / Hono)
     participant TW as Twenty CRM
     participant TX as Telnyx
+    participant AI as AI (OpenAI-compatible)
 
-    A->>SP: press dial
+    A->>SP: press dial (phone = GET /api/twenty/phones/primary row)
+    Note over SP,API: one canonical agency number from agencyPhones -<br/>no hardcoded caller id, no per-call pool picks
     SP->>API: POST /api/twenty/phones/:id/claim {memberId}
     API->>TW: PATCH agencyPhones callState=DIALING, claimedBy*
     API-->>SP: 200, or 409 heldBy when another member holds it
@@ -382,6 +384,15 @@ sequenceDiagram
     TX-->>SP: call.recording.transcription.saved
     Note over TX,SP: delivered to the webhook receiver, not the API.<br/>receiver PATCHes recordingUrl then transcript + transcriptionStatus=READY
 
+    TX->>API: POST /api/webhooks/telnyx?token= (or Vercel /api/telnyx-webhook?token=)
+    Note over TX,API: same contract both surfaces:<br/>token-gated, 200 on unknown events, 500 only on real errors (Telnyx retries)
+    API->>TW: PATCH agencyCalls telnyxRecordingId/recordingUrl, transcriptionStatus=PENDING
+    API->>TW: PATCH agencyCalls transcript, transcriptionStatus=READY
+    API->>AI: chat/completions {transcript} (single OPENAI-compatible key)
+    AI-->>API: {summary, sentiment, score 0-100, keyPoints, confidence}
+    API->>TW: PATCH agencyCalls aiSummary/aiSentiment/aiScore/aiKeyPoints/aiConfidence/aiModel/aiAnalyzedAt (+summary mirror)
+    Note over API,TW: every call row carries its own rating -<br/>no side tables, visible in Twenty CRM directly
+
     A->>SP: hang up
     SP->>TX: BYE
     SP->>API: PATCH /api/calls/:id {status, endedAt, durationSeconds, telnyxCallId, debugLog}
@@ -400,6 +411,13 @@ sequenceDiagram
     TX-->>API: download_urls.mp3 (expires in about 10 minutes)
     API-->>SP: 302 to the fresh URL
     Note over API,TX: the Telnyx API key never leaves the server
+
+    A->>SP: analyze (or auto after transcription webhook)
+    SP->>API: POST /api/calls/:id/analyze
+    API->>AI: chat/completions {transcript}
+    AI-->>API: {summary, sentiment, score, keyPoints, confidence}
+    API->>TW: PATCH agencyCalls ai* fields (+summary mirror)
+    API-->>SP: ok + analysis - Rating column shows score/sentiment
 ```
 
 > Source: [`docs/diagrams/call-lifecycle.mmd`](docs/diagrams/call-lifecycle.mmd).
@@ -539,6 +557,7 @@ erDiagram
         text claimedByMemberId
         text claimedByEmail
         datetime claimedAt
+        datetime lastHeartbeatAt
         text currentCallId
         text lastSyncedAt
     }
@@ -557,7 +576,14 @@ erDiagram
         text recordingUrl "expires, play via /api/calls/:id/audio"
         text transcript
         select transcriptionStatus "NONE PENDING READY FAILED"
-        text summary
+        text summary "mirrors aiSummary once analyzed"
+        text aiSummary "1-2 sentence AI summary, on the row itself"
+        text aiSentiment "POSITIVE NEUTRAL NEGATIVE MIXED, the prospect"
+        number aiScore "0-100, how the call went"
+        text aiKeyPoints "JSON string array, max 5"
+        number aiConfidence "0-1 model confidence"
+        text aiModel "OPENAI_ANALYSIS_MODEL id"
+        datetime aiAnalyzedAt
         text debugLog "SIP event trail, 8KB cap"
         text meetingUrl
         text meetingProvider

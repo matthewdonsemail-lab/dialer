@@ -81,6 +81,7 @@ erDiagram
         text claimedByMemberId
         text claimedByEmail
         datetime claimedAt
+        datetime lastHeartbeatAt
         text currentCallId
         text lastSyncedAt
     }
@@ -99,7 +100,14 @@ erDiagram
         text recordingUrl "expires, play via /api/calls/:id/audio"
         text transcript
         select transcriptionStatus "NONE PENDING READY FAILED"
-        text summary
+        text summary "mirrors aiSummary once analyzed"
+        text aiSummary "1-2 sentence AI summary, on the row itself"
+        text aiSentiment "POSITIVE NEUTRAL NEGATIVE MIXED, the prospect"
+        number aiScore "0-100, how the call went"
+        text aiKeyPoints "JSON string array, max 5"
+        number aiConfidence "0-1 model confidence"
+        text aiModel "OPENAI_ANALYSIS_MODEL id"
+        datetime aiAnalyzedAt
         text debugLog "SIP event trail, 8KB cap"
         text meetingUrl
         text meetingProvider

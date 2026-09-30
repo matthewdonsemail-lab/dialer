@@ -32,6 +32,11 @@ type VercelRes = {
 const TWENTY_BASE = (process.env.TWENTY_BASE_URL || "https://twenty.inferencesaver.com").replace(/\/$/, "");
 const TWENTY_KEY = process.env.TWENTY_API_KEY || "";
 const HOOK_TOKEN = process.env.TELNYX_WEBHOOK_TOKEN || "";
+// Single AI key (OpenAI-compatible). When set, transcription webhooks also
+// write the rating back onto the same agencyCalls row.
+const AI_KEY = process.env.OPENAI_API_KEY || "";
+const AI_BASE = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+const AI_MODEL = process.env.OPENAI_ANALYSIS_MODEL || "gpt-4o-mini";
 
 const TW_HEADERS: Record<string, string> = {
   Authorization: `Bearer ${TWENTY_KEY}`,
@@ -204,12 +209,63 @@ async function handleTranscriptionSaved(p: any): Promise<string> {
     const patch: Record<string, unknown> = { telnyxCallId: callControlId, transcriptionStatus: "READY" };
     if (text) patch.transcript = text;
     await twentyRest("PATCH", `agencyCalls/${orphan.id}`, patch);
+    if (text) await attachAnalysis(orphan.id, text);
     return `transcript attached to open row ${orphan.id} (parties fallback)`;
   }
   const patch: Record<string, unknown> = { transcriptionStatus: "READY" };
   if (text) patch.transcript = text;
   await twentyRest("PATCH", `agencyCalls/${existing.id}`, patch);
+  if (text) await attachAnalysis(existing.id, text);
   return `transcript attached to ${existing.id}`;
+}
+
+/**
+ * Best-effort AI rating on the same row (single OpenAI-compatible key).
+ * Never throws — the transcript attach above already succeeded.
+ */
+async function attachAnalysis(callId: string, transcript: string): Promise<void> {
+  if (!AI_KEY || transcript.trim().length < 10) return;
+  try {
+    const clean = transcript.trim().slice(0, 12_000);
+    const res = await fetch(`${AI_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${AI_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        temperature: 0.2,
+        max_tokens: 600,
+        messages: [
+          {
+            role: "system",
+            content: 'You analyze cold-call transcripts. Reply with JSON only: {"summary": string, "sentiment": "POSITIVE"|"NEUTRAL"|"NEGATIVE"|"MIXED", "score": 0-100, "keyPoints": string[], "confidence": 0-1}. Sentiment reflects the PROSPECT.',
+          },
+          { role: "user", content: `Transcript:\n${clean}` },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`AI provider ${res.status}`);
+    const json: any = await res.json();
+    const content: string = json?.choices?.[0]?.message?.content ?? "{}";
+    const start = content.indexOf("{");
+    const end = content.lastIndexOf("}");
+    const parsed: any = JSON.parse(start >= 0 && end > start ? content.slice(start, end + 1) : content);
+    const sentiment = ["POSITIVE", "NEUTRAL", "NEGATIVE", "MIXED"].includes(String(parsed?.sentiment || "").toUpperCase())
+      ? String(parsed.sentiment).toUpperCase()
+      : "NEUTRAL";
+    const summary = String(parsed?.summary || "No summary returned.").slice(0, 1000);
+    await twentyRest("PATCH", `agencyCalls/${callId}`, {
+      aiSummary: summary,
+      aiSentiment: sentiment,
+      aiScore: Math.min(100, Math.max(0, Math.round(Number(parsed?.score ?? 50) || 50))),
+      aiKeyPoints: JSON.stringify(Array.isArray(parsed?.keyPoints) ? parsed.keyPoints.map(String).slice(0, 5) : []),
+      aiConfidence: Math.min(1, Math.max(0, Number(parsed?.confidence ?? 0.5) || 0.5)),
+      aiModel: AI_MODEL,
+      aiAnalyzedAt: new Date().toISOString(),
+      summary,
+    });
+  } catch (err: any) {
+    console.error(`analysis failed for ${callId}:`, err?.message || err);
+  }
 }
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {

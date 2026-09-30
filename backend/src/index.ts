@@ -30,6 +30,7 @@ import twentyMetaRoutes from "./routes/twenty/meta/index.js";
 import twentySetupRoutes from "./routes/twenty/setup/index.js";
 import { callLogsRouter } from "./routes/call-logs/index.js";
 import callsRouter from "./routes/calls/index.js";
+import webhooksRouter from "./routes/webhooks/index.js";
 import { profilesRouter } from "./routes/profiles/index.js";
 import { createLogger } from "./lib/logger.js";
 
@@ -118,6 +119,9 @@ app.use("/api/twenty/meta", twentyMetaRoutes);
 app.use("/api/setup/twenty", twentySetupRoutes);
 app.use("/api/call-logs", callLogsRouter);
 app.use("/api/calls", callsRouter);
+// Telnyx webhooks are token-gated (no authMiddleware) — mount alongside,
+// before or after auth routes doesn't matter since the router is public.
+app.use("/api/webhooks", webhooksRouter);
 app.use("/api/profiles", profilesRouter);
 
 /**

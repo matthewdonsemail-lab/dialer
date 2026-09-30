@@ -8,10 +8,14 @@ const log = createLogger('twenty-call-history-setup');
  *
  * Self-contained on purpose: it uses its own metadata mutations so this
  * feature does not depend on — or rewrite — the generic setup helpers.
- * Field list mirrors exactly what backend/src/routes/calls.ts sends/reads:
+ * Field list mirrors exactly what backend/src/routes/calls sends/reads:
  * free-form TEXT for status-like values (e.g. IN_PROGRESS / NO_ANSWER),
  * plain TEXT link ids (agencyPhoneId / agencyProspectId / agencyLeadId),
  * DATE_TIME for timestamps, NUMBER for durationSeconds.
+ * AI analysis fields (aiSummary/aiSentiment/aiScore/aiKeyPoints/
+ * aiConfidence/aiModel/aiAnalyzedAt) are provisioned here too so the
+ * Twenty object, the REST mapper, and docs/diagrams stay in parity —
+ * every call row carries its own transcript + rating, no side tables.
  */
 
 async function metadataMutation<T = any>(mutation: string): Promise<T> {
@@ -104,11 +108,18 @@ const TEXT_FIELDS = [
   "agencyPhoneId",
   "agencyProspectId",
   "agencyLeadId",
+  // AI call analysis (one row = one call; the rating lives on the record).
+  // aiSentiment stays TEXT (POSITIVE/NEUTRAL/NEGATIVE/MIXED) to match the
+  // free-form convention above; aiKeyPoints is a JSON string array.
+  "aiSummary",
+  "aiSentiment",
+  "aiKeyPoints",
+  "aiModel",
 ];
 
-const DATE_TIME_FIELDS = ["startedAt", "endedAt", "meetingAt"];
+const DATE_TIME_FIELDS = ["startedAt", "endedAt", "meetingAt", "aiAnalyzedAt"];
 
-const NUMBER_FIELDS = ["durationSeconds"];
+const NUMBER_FIELDS = ["durationSeconds", "aiScore", "aiConfidence"];
 
 export async function setupCallHistorySchema(): Promise<{
   objectId: string;

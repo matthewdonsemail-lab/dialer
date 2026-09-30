@@ -161,6 +161,7 @@ export const api = {
 
   twentyPhones: {
     list: () => request<any[]>("/api/twenty/phones"),
+    primary: () => request<{ phone: any; isPrimary: boolean; total: number }>("/api/twenty/phones/primary"),
     claim: (id: string, member: { memberId: string; memberEmail?: string }) =>
       request<any>(`/api/twenty/phones/${id}/claim`, { method: "POST", body: JSON.stringify(member) }),
     heartbeat: (id: string, member: { memberId: string }) =>
@@ -182,6 +183,8 @@ export const api = {
       request<{ ok: boolean; telnyxRecordingId: string | null }>(`/api/calls/${id}/record`, { method: "POST" }),
     reconcile: (id: string) =>
       request<{ attached: boolean }>(`/api/calls/${id}/reconcile`, { method: "POST" }),
+    analyze: (id: string) =>
+      request<{ ok: boolean; analysis: any; call: any }>(`/api/calls/${id}/analyze`, { method: "POST" }),
   },
 
   twentyMeta: {

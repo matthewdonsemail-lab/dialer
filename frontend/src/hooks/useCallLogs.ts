@@ -53,6 +53,13 @@ export interface AgencyCallRecord {
   transcript: string | null;
   transcriptionStatus: string | null;
   summary: string | null;
+  aiSummary: string | null;
+  aiSentiment: string | null;
+  aiScore: number | null;
+  aiKeyPoints: string | null;
+  aiConfidence: number | null;
+  aiModel: string | null;
+  aiAnalyzedAt: string | null;
   meetingUrl: string | null;
   meetingProvider: string | null;
   meetingAt: string | null;
