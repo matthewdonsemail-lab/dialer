@@ -20,6 +20,7 @@ import { Spokes } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useCallsForRecord } from "@/hooks/useCallLogs";
+import { RatingBadge } from "@/components/calls/CallRating";
 
 interface Prospect {
   id: string;
@@ -329,6 +330,20 @@ export function ProspectDetailPage() {
                     <StatusBadge status={call.status ?? "unknown"} />
                     <span className="text-[11px] text-[var(--ods-text-tertiary)]">{call.durationSeconds}s</span>
                   </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <RatingBadge sentiment={call.aiSentiment} score={call.aiScore} />
+                    <button
+                      onClick={() => navigate(`/history/${call.id}`)}
+                      className="text-[11px] text-[var(--ods-brand-600)] hover:underline"
+                    >
+                      View details
+                    </button>
+                  </div>
+                  {(call.aiSummary || call.summary) && (
+                    <p className="text-[12px] text-[var(--ods-text-secondary)] mt-1 line-clamp-2">
+                      {call.aiSummary ?? call.summary}
+                    </p>
+                  )}
                   <div className="flex items-center gap-3 mt-1">
                     {call.telnyxRecordingId && (
                       <a

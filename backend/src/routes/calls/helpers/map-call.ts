@@ -22,6 +22,7 @@ export function mapCall(call: AgencyCall) {
     aiSentiment: call.aiSentiment || null,
     aiScore: typeof call.aiScore === "number" ? call.aiScore : null,
     aiKeyPoints: call.aiKeyPoints || null,
+    aiScores: call.aiScores || null,
     aiConfidence: typeof call.aiConfidence === "number" ? call.aiConfidence : null,
     aiModel: call.aiModel || null,
     aiAnalyzedAt: call.aiAnalyzedAt || null,

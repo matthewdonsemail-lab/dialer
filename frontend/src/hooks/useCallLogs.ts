@@ -57,6 +57,7 @@ export interface AgencyCallRecord {
   aiSentiment: string | null;
   aiScore: number | null;
   aiKeyPoints: string | null;
+  aiScores: string | null;
   aiConfidence: number | null;
   aiModel: string | null;
   aiAnalyzedAt: string | null;

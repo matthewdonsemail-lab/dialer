@@ -110,10 +110,11 @@ const TEXT_FIELDS = [
   "agencyLeadId",
   // AI call analysis (one row = one call; the rating lives on the record).
   // aiSentiment stays TEXT (POSITIVE/NEUTRAL/NEGATIVE/MIXED) to match the
-  // free-form convention above; aiKeyPoints is a JSON string array.
+  // free-form convention above; aiKeyPoints/aiScores are JSON strings.
   "aiSummary",
   "aiSentiment",
   "aiKeyPoints",
+  "aiScores",
   "aiModel",
 ];
 

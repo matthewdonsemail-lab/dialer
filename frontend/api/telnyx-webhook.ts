@@ -237,7 +237,7 @@ async function attachAnalysis(callId: string, transcript: string): Promise<void>
         messages: [
           {
             role: "system",
-            content: 'You analyze cold-call transcripts. Reply with JSON only: {"summary": string, "sentiment": "POSITIVE"|"NEUTRAL"|"NEGATIVE"|"MIXED", "score": 0-100, "keyPoints": string[], "confidence": 0-1}. Sentiment reflects the PROSPECT.',
+            content: 'You analyze cold-call transcripts. Reply with JSON only: {"summary": string, "sentiment": "POSITIVE"|"NEUTRAL"|"NEGATIVE"|"MIXED", "score": 0-100, "scores": {"conversion": 1-5, "politeness": 1-5, "questioning": 1-5, "engagement": 1-5, "sentiment": 1-5}, "keyPoints": string[], "confidence": 0-1}. Sentiment reflects the PROSPECT.',
           },
           { role: "user", content: `Transcript:\n${clean}` },
         ],
@@ -253,11 +253,25 @@ async function attachAnalysis(callId: string, transcript: string): Promise<void>
       ? String(parsed.sentiment).toUpperCase()
       : "NEUTRAL";
     const summary = String(parsed?.summary || "No summary returned.").slice(0, 1000);
+    const num = (v: unknown, min: number, max: number, fb: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fb;
+    };
+    const overall = num(parsed?.score, 0, 100, 50);
+    const fb15 = Math.min(5, Math.max(1, Math.round(overall / 20)));
+    const raw = (parsed?.scores ?? {}) as Record<string, unknown>;
     await twentyRest("PATCH", `agencyCalls/${callId}`, {
       aiSummary: summary,
       aiSentiment: sentiment,
-      aiScore: Math.min(100, Math.max(0, Math.round(Number(parsed?.score ?? 50) || 50))),
+      aiScore: overall,
       aiKeyPoints: JSON.stringify(Array.isArray(parsed?.keyPoints) ? parsed.keyPoints.map(String).slice(0, 5) : []),
+      aiScores: JSON.stringify({
+        conversion: num(raw.conversion, 1, 5, fb15),
+        politeness: num(raw.politeness, 1, 5, fb15),
+        questioning: num(raw.questioning, 1, 5, fb15),
+        engagement: num(raw.engagement, 1, 5, fb15),
+        sentiment: num(raw.sentiment, 1, 5, fb15),
+      }),
       aiConfidence: Math.min(1, Math.max(0, Number(parsed?.confidence ?? 0.5) || 0.5)),
       aiModel: AI_MODEL,
       aiAnalyzedAt: new Date().toISOString(),

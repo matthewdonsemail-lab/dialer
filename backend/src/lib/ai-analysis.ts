@@ -4,11 +4,21 @@ const log = createLogger('ai-analysis');
 
 export type AiSentiment = "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "MIXED";
 
+export interface CallQualityScores {
+  /** 1-5 each: conversion likelihood, agent politeness/rapport, discovery questions, prospect engagement, prospect sentiment. */
+  conversion: number;
+  politeness: number;
+  questioning: number;
+  engagement: number;
+  sentiment: number;
+}
+
 export interface CallAnalysis {
   summary: string;
   sentiment: AiSentiment;
   /** 0-100: how well the call went for the prospect. */
   score: number;
+  scores: CallQualityScores;
   keyPoints: string[];
   /** 0-1: model self-reported confidence. */
   confidence: number;
@@ -26,6 +36,10 @@ function clamp(n: unknown, min: number, max: number, fallback: number): number {
   const v = typeof n === "string" ? Number(n) : (n as number);
   if (!Number.isFinite(v)) return fallback;
   return Math.min(max, Math.max(min, v));
+}
+
+function clampInt(n: unknown, min: number, max: number, fallback: number): number {
+  return Math.round(clamp(n, min, max, fallback));
 }
 
 /** Single AI key (OpenAI-compatible). Any base URL works — OpenAI default. */
@@ -46,6 +60,8 @@ const SYSTEM_PROMPT = [
   "Reply with JSON only, no markdown, no commentary:",
   '{"summary": string (1-2 sentences), "sentiment": "POSITIVE"|"NEUTRAL"|"NEGATIVE"|"MIXED",',
   '"score": number 0-100 (how well the call went / how the prospect felt),',
+  '"scores": {"conversion": 1-5 (conversion probability), "politeness": 1-5 (agent politeness and rapport),',
+  '"questioning": 1-5 (questioning effectiveness), "engagement": 1-5 (contact engagement), "sentiment": 1-5 (prospect sentiment)},',
   '"keyPoints": string[] (max 5 short bullets), "confidence": number 0-1}.',
   "Sentiment reflects the PROSPECT, not the agent. Score <40 = bad, 40-69 = neutral, 70+ = good.",
 ].join(" ");
@@ -114,10 +130,20 @@ export async function analyzeCallTranscript(
   const keyPoints = Array.isArray(parsed?.keyPoints)
     ? parsed.keyPoints.map((k: unknown) => String(k).trim()).filter(Boolean).slice(0, 5)
     : [];
+  const rawScores = (parsed?.scores ?? {}) as Record<string, unknown>;
+  // Fall back to the overall score mapped onto 1-5 when the model omits parts.
+  const fallback15 = Math.min(5, Math.max(1, Math.round(clamp(parsed?.score, 0, 100, 50) / 20)));
   const result: CallAnalysis = {
     summary,
     sentiment: normalizeSentiment(parsed?.sentiment),
     score: Math.round(clamp(parsed?.score, 0, 100, 50)),
+    scores: {
+      conversion: clampInt(rawScores.conversion, 1, 5, fallback15),
+      politeness: clampInt(rawScores.politeness, 1, 5, fallback15),
+      questioning: clampInt(rawScores.questioning, 1, 5, fallback15),
+      engagement: clampInt(rawScores.engagement, 1, 5, fallback15),
+      sentiment: clampInt(rawScores.sentiment, 1, 5, fallback15),
+    },
     keyPoints,
     confidence: clamp(parsed?.confidence, 0, 1, 0.5),
     model,

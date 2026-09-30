@@ -19,6 +19,7 @@ export interface AgencyCall {
   aiSentiment?: string;
   aiScore?: number;
   aiKeyPoints?: string;
+  aiScores?: string;
   aiConfidence?: number;
   aiModel?: string;
   aiAnalyzedAt?: string;

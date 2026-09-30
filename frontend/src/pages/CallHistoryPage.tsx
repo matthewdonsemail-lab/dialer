@@ -5,27 +5,8 @@ import { useCalls } from "@/hooks/useCallLogs";
 import { Search, Phone, User, AudioLines } from "lucide-react";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
+import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 import { api } from "@/lib/apiClient";
-
-const SENTIMENT_STYLES: Record<string, string> = {
-  POSITIVE: "text-green-600 border-green-500/30 bg-green-500/10",
-  NEGATIVE: "text-red-600 border-red-500/30 bg-red-500/10",
-  MIXED: "text-amber-600 border-amber-500/30 bg-amber-500/10",
-  NEUTRAL: "text-[var(--ods-text-secondary)] border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]",
-};
-
-export function RatingBadge({ sentiment, score }: { sentiment: string | null; score: number | null }) {
-  if (score === null || score === undefined) {
-    return <span className="text-[11px] text-[var(--ods-text-tertiary)]">—</span>;
-  }
-  const style = SENTIMENT_STYLES[(sentiment || "NEUTRAL").toUpperCase()] ?? SENTIMENT_STYLES.NEUTRAL;
-  return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] border text-[11px] font-semibold ${style}`}>
-      {score}
-      <span className="font-normal opacity-80">{(sentiment || "NEUTRAL").toLowerCase()}</span>
-    </span>
-  );
-}
 
 export function CallHistoryPage() {
   const navigate = useNavigate();
@@ -33,7 +14,6 @@ export function CallHistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedAudioId, setExpandedAudioId] = useState<string | null>(null);
-  const [audioError, setAudioError] = useState(false);
 
   const { data: leads } = useQuery({
     queryKey: ["leads"],
@@ -171,7 +151,6 @@ export function CallHistoryPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setAudioError(false);
                           setExpandedAudioId(audioOpen ? null : call.id);
                         }}
                         className="inline-flex items-center gap-1 text-[12px] text-[var(--ods-brand-600)] hover:underline"
@@ -189,20 +168,28 @@ export function CallHistoryPage() {
                 </tr>
                 {audioOpen && (
                   <tr key={`${call.id}-audio`}>
-                    <td colSpan={8} className="px-3 py-2 bg-[var(--ods-bg-secondary)]">
-                      <audio
-                        controls
-                        preload="none"
-                        src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}
-                        className="w-full max-w-xl"
-                        onError={() => setAudioError(true)}
-                      />
-                      {audioError && (
-                        <p className="mt-1 text-[11px] text-amber-700">
-                          Audio failed to load (0:00) — the Telnyx recording isn't attached yet.
-                          Open the row and use Reconcile, or check the webhook setup.
-                        </p>
-                      )}
+                    <td colSpan={8} className="px-3 py-3 bg-[var(--ods-bg-secondary)]">
+                      <div className="flex flex-col lg:flex-row gap-3 items-stretch">
+                        <div className="flex-1 min-w-0">
+                          {hasAudio ? (
+                            <WaveformPlayer
+                              src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}
+                              seed={call.id}
+                              detailHref={`/history/${call.id}`}
+                            />
+                          ) : (
+                            <p className="text-[12px] text-[var(--ods-text-secondary)]">No recording yet.</p>
+                          )}
+                          {call.transcript && (
+                            <p className="mt-2 text-[12px] text-[var(--ods-text-secondary)] whitespace-pre-wrap max-h-32 overflow-y-auto">
+                              {call.transcript}
+                            </p>
+                          )}
+                        </div>
+                        <div className="lg:w-80 shrink-0">
+                          <CallQualityScores scores={parseAiScores(call.aiScores)} />
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 )}

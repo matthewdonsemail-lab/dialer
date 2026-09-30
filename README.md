@@ -581,6 +581,7 @@ erDiagram
         text aiSentiment "POSITIVE NEUTRAL NEGATIVE MIXED, the prospect"
         number aiScore "0-100, how the call went"
         text aiKeyPoints "JSON string array, max 5"
+        text aiScores "JSON 1-5: conversion, politeness, questioning, engagement, sentiment"
         number aiConfidence "0-1 model confidence"
         text aiModel "OPENAI_ANALYSIS_MODEL id"
         datetime aiAnalyzedAt

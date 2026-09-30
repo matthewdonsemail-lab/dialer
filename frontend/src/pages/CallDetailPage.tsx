@@ -7,6 +7,7 @@ import { WidgetCard } from "@/components/ui/WidgetCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
 import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines, Star } from "lucide-react";
+import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 
 export function CallDetailPage() {
   const { callId } = useParams<{ callId: string }>();
@@ -172,7 +173,10 @@ export function CallDetailPage() {
         {/* Recording + transcript (Telnyx server-side; proxied so URLs never expire) */}
         <WidgetCard title="Recording" icon={AudioLines}>
           {call.telnyxRecordingId || call.recordingUrl ? (
-            <audio controls src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl} className="w-full" />
+            <WaveformPlayer
+              src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl}
+              seed={call.id}
+            />
           ) : (
             <div className="flex flex-col gap-2">
               <p className="text-[13px] text-[var(--ods-text-secondary)]">No recording yet</p>
@@ -200,56 +204,60 @@ export function CallDetailPage() {
 
         {/* AI analysis — rating lives on the call row itself */}
         <WidgetCard title="AI Analysis" icon={Star}>
-          {call.aiScore !== null && call.aiScore !== undefined ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[22px] font-bold text-[var(--ods-text-primary)]">{call.aiScore}</span>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[22px] font-bold text-[var(--ods-text-primary)]">
+                {call.aiScore ?? "—"}
+              </span>
+              {call.aiScore !== null && call.aiScore !== undefined && (
                 <span className="text-[12px] text-[var(--ods-text-tertiary)]">/ 100</span>
-                <StatusBadge status={call.aiSentiment ?? "NEUTRAL"} />
-              </div>
-              <div className="h-1.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-[var(--ods-brand-500)]"
-                  style={{ width: `${Math.min(100, Math.max(0, call.aiScore))}%` }}
-                />
-              </div>
+              )}
+              <RatingBadge sentiment={call.aiSentiment} score={call.aiScore} />
+            </div>
+            <CallQualityScores
+              scores={parseAiScores(call.aiScores)}
+              fallback={
+                <div className="flex flex-col gap-2">
+                  <p className="text-[13px] text-[var(--ods-text-secondary)]">
+                    {call.transcript ? "No analysis yet for this call." : "Analyze unlocks once a transcript lands."}
+                  </p>
+                  {call.transcript && (
+                    <button
+                      onClick={() => analyzeMutation.mutate()}
+                      disabled={analyzeMutation.isPending}
+                      className="self-start px-2 py-1 text-[12px] border border-[var(--ods-border)] rounded-[4px] text-[var(--ods-brand-600)] hover:underline disabled:opacity-50"
+                    >
+                      {analyzeMutation.isPending ? "Analyzing…" : "Analyze this call"}
+                    </button>
+                  )}
+                </div>
+              }
+            />
+            {(call.aiSummary || call.summary) && (
               <p className="text-[13px] text-[var(--ods-text-primary)] whitespace-pre-wrap">
-                {call.aiSummary}
+                {call.aiSummary || call.summary}
               </p>
-              {(() => {
-                try {
-                  const points: string[] = JSON.parse(call.aiKeyPoints || "[]");
-                  if (!Array.isArray(points) || points.length === 0) return null;
-                  return (
-                    <ul className="list-disc pl-5 text-[12px] text-[var(--ods-text-secondary)] flex flex-col gap-1">
-                      {points.map((pt, i) => <li key={i}>{pt}</li>)}
-                    </ul>
-                  );
-                } catch {
-                  return null;
-                }
-              })()}
+            )}
+            {(() => {
+              try {
+                const points: string[] = JSON.parse(call.aiKeyPoints || "[]");
+                if (!Array.isArray(points) || points.length === 0) return null;
+                return (
+                  <ul className="list-disc pl-5 text-[12px] text-[var(--ods-text-secondary)] flex flex-col gap-1">
+                    {points.map((pt, i) => <li key={i}>{pt}</li>)}
+                  </ul>
+                );
+              } catch {
+                return null;
+              }
+            })()}
+            {(call.aiModel || call.aiAnalyzedAt || typeof call.aiConfidence === "number") && (
               <p className="text-[11px] text-[var(--ods-text-tertiary)]">
                 {call.aiModel || "ai"} {call.aiAnalyzedAt ? `· ${new Date(call.aiAnalyzedAt).toLocaleString()}` : ""}
                 {typeof call.aiConfidence === "number" ? ` · ${(call.aiConfidence * 100).toFixed(0)}% confident` : ""}
               </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <p className="text-[13px] text-[var(--ods-text-secondary)]">
-                {call.transcript ? "No analysis yet for this call." : "Analyze unlocks once a transcript lands."}
-              </p>
-              {call.transcript && (
-                <button
-                  onClick={() => analyzeMutation.mutate()}
-                  disabled={analyzeMutation.isPending}
-                  className="self-start px-2 py-1 text-[12px] border border-[var(--ods-border)] rounded-[4px] text-[var(--ods-brand-600)] hover:underline disabled:opacity-50"
-                >
-                  {analyzeMutation.isPending ? "Analyzing…" : "Analyze this call"}
-                </button>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </WidgetCard>
 
         {/* Meeting (booked from this call) */}

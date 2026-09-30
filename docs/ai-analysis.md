@@ -18,6 +18,8 @@ Analysis runs only from `READY` with a transcript >= 10 chars:
 
 Analysis writes `aiSummary`, `aiSentiment` (`POSITIVE`/`NEUTRAL`/`NEGATIVE`/
 `MIXED`, the prospect's feeling), `aiScore` (0-100, how the call went),
+`aiScores` (JSON with 1-5 `conversion`, `politeness`, `questioning`,
+`engagement`, `sentiment` — the Call Quality Scores panel),
 `aiKeyPoints` (JSON string array, max 5), `aiConfidence` (0-1), `aiModel`,
 `aiAnalyzedAt`, and mirrors `aiSummary` into legacy `summary` so old UI
 surfaces keep working.
@@ -33,9 +35,11 @@ fetch-based, no vendor SDK):
   gateway works.
 - `OPENAI_ANALYSIS_MODEL` — default `gpt-4o-mini`.
 
-Validation: score clamped 0-100 (rounded), sentiment normalized to the enum
-(unknown -> `NEUTRAL`), confidence clamped 0-1, transcript truncated to
-12k chars, model output parsed as JSON with code-fence tolerance.
+Validation: score clamped 0-100 (rounded), sub-scores clamped 1-5 (falling
+back to the overall score mapped onto 1-5 when the model omits parts),
+sentiment normalized to the enum (unknown -> `NEUTRAL`), confidence clamped
+0-1, transcript truncated to 12k chars, model output parsed as JSON with
+code-fence tolerance.
 
 ## Webhook parity (local = production)
 

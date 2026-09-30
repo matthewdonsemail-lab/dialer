@@ -180,7 +180,7 @@ router.post("/", async (req: AuthRequest, res) => {
       direction, status, fromNumber, toNumber, startedAt, endedAt,
       durationSeconds, telnyxCallId, telnyxRecordingId, recordingUrl,
       transcript, transcriptionStatus, summary,
-      aiSummary, aiSentiment, aiScore, aiKeyPoints, aiConfidence, aiModel, aiAnalyzedAt,
+      aiSummary, aiSentiment, aiScore, aiKeyPoints, aiScores, aiConfidence, aiModel, aiAnalyzedAt,
       agencyPhoneId, agencyProspectId, agencyLeadId,
     } = req.body as Partial<AgencyCall>;
 
@@ -209,6 +209,7 @@ router.post("/", async (req: AuthRequest, res) => {
     if (aiSentiment) payload.aiSentiment = aiSentiment;
     if (typeof aiScore === "number") payload.aiScore = aiScore;
     if (aiKeyPoints) payload.aiKeyPoints = aiKeyPoints;
+    if (aiScores) payload.aiScores = aiScores;
     if (typeof aiConfidence === "number") payload.aiConfidence = aiConfidence;
     if (aiModel) payload.aiModel = aiModel;
     if (aiAnalyzedAt) payload.aiAnalyzedAt = aiAnalyzedAt;
@@ -247,7 +248,7 @@ router.patch("/:id", async (req, res) => {
       "status", "endedAt", "durationSeconds", "telnyxCallId", "telnyxRecordingId", "recordingUrl",
       "transcript", "transcriptionStatus", "summary", "debugLog",
       "meetingUrl", "meetingProvider", "meetingAt", "meetingStatus", "meetingBookingId",
-      "aiSummary", "aiSentiment", "aiScore", "aiKeyPoints", "aiConfidence", "aiModel", "aiAnalyzedAt",
+      "aiSummary", "aiSentiment", "aiScore", "aiKeyPoints", "aiScores", "aiConfidence", "aiModel", "aiAnalyzedAt",
     ] as const;
     const patch: Record<string, unknown> = {};
     for (const key of allowed) {
@@ -296,6 +297,7 @@ router.post("/:id/analyze", async (req, res) => {
       aiSentiment: analysis.sentiment,
       aiScore: analysis.score,
       aiKeyPoints: JSON.stringify(analysis.keyPoints),
+      aiScores: JSON.stringify(analysis.scores),
       aiConfidence: analysis.confidence,
       aiModel: analysis.model,
       aiAnalyzedAt: new Date().toISOString(),

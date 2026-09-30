@@ -69,6 +69,7 @@ async function maybeAnalyze(callId: string, transcript: string, call: AgencyCall
       aiSentiment: analysis.sentiment,
       aiScore: analysis.score,
       aiKeyPoints: JSON.stringify(analysis.keyPoints),
+      aiScores: JSON.stringify(analysis.scores),
       aiConfidence: analysis.confidence,
       aiModel: analysis.model,
       aiAnalyzedAt: new Date().toISOString(),
