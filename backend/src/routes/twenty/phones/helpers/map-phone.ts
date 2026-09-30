@@ -17,11 +17,15 @@ export function mapPhone(phone: AgencyPhone) {
     eligibleProducts: phone.eligibleProducts ?? null,
     features: phone.features ?? null,
     health: phone.health ?? null,
-    // Claim state — single holder at a time
+    // Claim state — single holder at a time. Stale claims are NOT masked
+    // here: the single canonical agency number must never silently appear
+    // free while held. Stale reaping happens explicitly in claim/release
+    // (see index.ts isClaimStale), never by hiding the holder.
     callState: phone.callState || "IDLE",
     claimedByMemberId: phone.claimedByMemberId || null,
     claimedByEmail: phone.claimedByEmail || null,
     claimedAt: phone.claimedAt || null,
+    lastHeartbeatAt: (phone as { lastHeartbeatAt?: string }).lastHeartbeatAt || null,
     currentCallId: phone.currentCallId || null,
     // Back-compat aliases for existing UI (PhoneNumbersPage, widget selector)
     provider: phone.numberType || "Unknown",
