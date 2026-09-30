@@ -56,15 +56,21 @@ export interface Introspection {
 }
 
 export interface TwentyAccessTokenClaims {
-  sub?: string;
-  applicationId?: string;
-  workspaceId?: string;
-  userId?: string;
-  userWorkspaceId?: string;
-  type?: string;
-  exp?: number;
-  iat?: number;
-}
+    sub?: string;
+    applicationId?: string;
+    workspaceId?: string;
+    userId?: string;
+    userWorkspaceId?: string;
+    type?: string;
+    exp?: number;
+    iat?: number;
+    /**
+     * Twenty adds claims to this token over time, so the shape is open. The
+     * index signature is what lets it satisfy `Record<string, unknown>` —
+     * an `interface` gets no implicit index signature, a `type` alias would.
+     */
+    [claim: string]: unknown;
+  }
 
 type FetchFn = typeof fetch;
 

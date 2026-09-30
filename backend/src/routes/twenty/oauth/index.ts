@@ -291,13 +291,4 @@ oauthApp.post("/session", async (c) => {
     }
     return fail(c, error, "Failed to create the dialer session", 502);
   }
-});/**
- * Map a live Twenty token to its workspaceMember.
- *
- * Twenty application access tokens use the application id as `sub`, so
- * introspection.sub must not be treated as the human identity. After
- * introspection proves the token is active, read the user identity from the
- * signed token payload and resolve it against workspaceMembers.userId.
- * Email remains a compatibility fallback for deployments that expose it.
- */
-async 
+});
