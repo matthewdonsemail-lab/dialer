@@ -51,6 +51,13 @@ export interface Introspection {
   sub: string | null;
   scope: string | null;
   expiresAt: number | null;
+  /**
+   * The raw RFC 7662 response. Twenty does not document which claim carries
+   * the sign-in email (it is absent from `username` for operator tokens, and
+   * `sub` is not a persisted id in this instance), so consumers that must map
+   * a token to a person scan these claims rather than trusting a fixed field.
+   */
+  claims: Record<string, unknown>;
 }
 
 type FetchFn = typeof fetch;
@@ -276,6 +283,7 @@ export async function introspectToken(
     sub: typeof body.sub === "string" ? body.sub : null,
     scope: typeof body.scope === "string" ? body.scope : null,
     expiresAt: typeof body.exp === "number" ? body.exp : null,
+    claims: body,
   };
 }
 

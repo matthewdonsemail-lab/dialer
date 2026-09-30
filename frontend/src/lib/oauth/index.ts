@@ -152,7 +152,12 @@ export async function finishSignIn(search: string): Promise<void> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken: tokens.accessToken }),
       });
-      if (!sessionRes.ok) throw new Error("Could not create the dialer session. Start sign-in again.");
+      if (!sessionRes.ok) {
+        // Surface the server's reason. A 403 here means the token could not be
+        // matched to a workspaceMember, which the user can actually act on.
+        const body = (await sessionRes.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || "Could not create the dialer session. Start sign-in again.");
+      }
       const { token } = (await sessionRes.json()) as { token: string };
       setAuthToken(token);
       finishSignInCache.clear();
