@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Phone, MapPin, Building, Globe } from "lucide-react";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
 

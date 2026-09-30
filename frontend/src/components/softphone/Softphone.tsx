@@ -14,7 +14,7 @@ import { getSipConfig, isSipConfigured, getSipDomain, getSipExtension } from "@/
 import { sipLog, classifyFailure, getReport, type ClassifiedFailure } from "@/sip";
 import { Button } from "@/components/ui/Button";
 import { OutcomeSelect } from "@/components/common/OutcomeSelect";
-import { api, getAuthToken } from "@/lib/apiClient";
+import { api, getAuthToken } from "@/lib/api-client";
 import type { Database } from "@/types/database";
 
 // Explicit opt-in only: simulated calls NEVER happen silently. Ordinary dials

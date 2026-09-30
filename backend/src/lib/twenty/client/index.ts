@@ -1,4 +1,20 @@
-import { createLogger } from "./logger.js";
+import { createLogger } from "../../logger/index.js";
+import type { WriteActor } from "../actor/index.js";
+
+export type { WriteActor };
+
+/**
+ * Merge actor fields into a record payload. Actor fields are read-mostly
+ * system fields, so only set them when present and not already on the
+ * payload — this keeps the write safe for objects that reject them.
+ */
+function withActor(data: any, actor: WriteActor | null | undefined): any {
+  if (!actor) return data;
+  const out: any = { ...data };
+  if (actor.createdBy && !out.createdBy) out.createdBy = actor.createdBy;
+  if (actor.updatedBy && !out.updatedBy) out.updatedBy = actor.updatedBy;
+  return out;
+}
 
 const log = createLogger('twenty-client');
 
@@ -238,12 +254,13 @@ export async function fetchTwenty<T>(path: string, options?: TwentyQueryOptions)
 /**
  * Create a record in Twenty CRM and return the normalized entity primitive
  */
-export async function createTwenty<T = TwentyRecord>(path: string, data: any): Promise<T> {
+export async function createTwenty<T = TwentyRecord>(path: string, data: any, actor?: WriteActor | null): Promise<T> {
   const cfg = getConfig();
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   const url = `${cfg.twentyBaseUrl}/rest/${cleanPath}`;
+  const payload = withActor(data, actor);
 
-  log.info(`Creating ${cleanPath}:`, JSON.stringify(data).substring(0, 200));
+  log.info(`Creating ${cleanPath}:`, JSON.stringify(payload).substring(0, 200));
 
   const response = await fetch(url, {
     method: "POST",
@@ -251,7 +268,7 @@ export async function createTwenty<T = TwentyRecord>(path: string, data: any): P
       Authorization: `Bearer ${cfg.twentyApiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   log.info(`Create response: ${response.status}`);
@@ -269,12 +286,13 @@ export async function createTwenty<T = TwentyRecord>(path: string, data: any): P
 /**
  * Update a record in Twenty CRM and return the normalized entity primitive
  */
-export async function updateTwenty<T = TwentyRecord>(path: string, id: string, data: any): Promise<T> {
+export async function updateTwenty<T = TwentyRecord>(path: string, id: string, data: any, actor?: WriteActor | null): Promise<T> {
   const cfg = getConfig();
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   const url = `${cfg.twentyBaseUrl}/rest/${cleanPath}/${encodeURIComponent(id)}`;
+  const payload = withActor(data, actor);
 
-  log.info(`Updating ${cleanPath}/${id}:`, JSON.stringify(data).substring(0, 200));
+  log.info(`Updating ${cleanPath}/${id}:`, JSON.stringify(payload).substring(0, 200));
 
   const response = await fetch(url, {
     method: "PATCH",
@@ -282,7 +300,7 @@ export async function updateTwenty<T = TwentyRecord>(path: string, id: string, d
       Authorization: `Bearer ${cfg.twentyApiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   log.info(`Update response: ${response.status}`);
@@ -334,17 +352,29 @@ export async function graphqlMutation<T>(mutation: string): Promise<T> {
 /**
  * Update a record via GraphQL (supports relation fields with connect/disconnect)
  */
-export async function updateTwentyGraphQL<T>(objectName: string, id: string, data: any): Promise<T> {
+export async function updateTwentyGraphQL<T>(objectName: string, id: string, data: any, actor?: WriteActor | null): Promise<T> {
   const camelCaseName = objectName.charAt(0).toUpperCase() + objectName.slice(1);
   const setFields = Object.entries(data)
     .map(([key, value]) => `${key}: ${JSON.stringify(value).replace(/"/g, '\\"')}`)
     .join(", ");
 
+  // Actor fields in the mutation's data block. Twenty's GraphQL accepts
+  // createdBy/updatedBy as nested Actor objects on update.
+  const actorFields: string[] = [];
+  if (actor?.updatedBy) {
+    actorFields.push(
+      `updatedBy: { source: ${JSON.stringify(actor.updatedBy.source)}, workspaceMemberId: ${JSON.stringify(
+        actor.updatedBy.workspaceMemberId
+      )}, name: ${JSON.stringify(actor.updatedBy.name).replace(/"/g, '\\"')} }`
+    );
+  }
+  const fields = [setFields, ...actorFields].filter(Boolean).join(", ");
+
   const mutation = `
     mutation {
       updateOne${camelCaseName}(input: {
         id: "${id}"
-        ${setFields ? `data: { ${setFields} }` : ""}
+        ${fields ? `data: { ${fields} }` : ""}
       }) {
         id
       }

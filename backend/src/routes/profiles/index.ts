@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { twentyClient } from "../../lib/twenty-client.js";
+import { twentyClient } from "../../lib/twenty/client/index.js";
 
 interface AuthRequest extends Request {
   user?: { id: string; email: string };

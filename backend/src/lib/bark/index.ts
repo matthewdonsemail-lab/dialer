@@ -1,53 +1,19 @@
-import { createLogger } from "./logger.js";
+import { createLogger } from "../logger/index.js";
+import { getBarkServerUrl, redactKey } from "./helpers/index.js";
+import type { BarkPushOptions, BarkPushResult } from "./types.js";
+
+export type { BarkPushOptions, BarkPushResult };
 
 const log = createLogger("bark");
-
-export interface BarkPushOptions {
-  title?: string;
-  subtitle?: string;
-  body: string;
-  group?: string;
-  url?: string;
-  level?: "active" | "timeSensitive" | "passive" | "critical";
-  sound?: string;
-  badge?: number;
-  icon?: string;
-}
-
-export interface BarkPushResult {
-  ok: boolean;
-  status: number;
-  message: string;
-}
-
-/**
- * Bark server base URL.
- *
- * Defaults to the public Bark server (https://api.day.app).
- * Override with BARK_SERVER_URL when self-hosting (e.g. a custom
- * domain on node01 behind auth-guard). Trailing slashes are stripped.
- *
- * Docs: https://bark.day.app/#/en-us/tutorial
- * API v2: POST {server}/push { device_key, title, body, ... }
- */
-export function getBarkServerUrl(): string {
-  const raw = (process.env.BARK_SERVER_URL || "https://api.day.app").trim();
-  return raw.replace(/\/+$/, "");
-}
-
-function redactKey(key: string): string {
-  if (!key) return "(empty)";
-  if (key.length <= 8) return "***";
-  return `${key.slice(0, 4)}...${key.slice(-4)}`;
-}
 
 /**
  * Send a push notification through a Bark server.
  *
- * The device key is the per-member BARK_KEY stored on the
- * workspaceMember object in Twenty (field `barkKey`, label BARK_KEY,
- * type RICH_TEXT -> markdown string). The key itself never gets logged
- * beyond a redacted prefix/suffix.
+ * The device key is the per-member BARK_KEY stored on the workspaceMember
+ * object in Twenty (field `barkKey`, RICH_TEXT -> markdown string).
+ * The key itself never gets logged beyond a redacted prefix/suffix.
+ *
+ * API v2: POST {server}/push { device_key, title, body, ... }
  */
 export async function sendBarkPush(
   deviceKey: string,

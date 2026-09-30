@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useLead } from "@/hooks/useLeads";
-import { useCallsForRecord } from "@/hooks/useCallLogs";
-import { useUpdateLead, useDeleteLead } from "@/hooks/useLeads";
+import { useLead } from "@/hooks/use-leads";
+import { useCallsForRecord } from "@/hooks/use-call-logs";
+import { useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { Softphone } from "@/components/softphone/Softphone";
 import { CallScriptWidget } from "@/components/scripts/CallScriptWidget";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { StatusSelect } from "@/components/common/StatusSelect";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
@@ -18,7 +18,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "lucide-react";
 import { Spokes } from "@/components/ui/Spinner";
 import { CountryBadge } from "@/components/common/CountryBadge";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useQueryClient } from "@tanstack/react-query";
 

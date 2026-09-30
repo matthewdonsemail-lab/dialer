@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../../middleware/auth.js";
-import { getTwenty, updateTwenty } from "../../../lib/twenty-client.js";
-import { twentyGraphqlClient } from "../../../lib/twenty-graphql.js";
-import { createLogger } from "../../../lib/logger.js";
+import { getTwenty, updateTwenty } from "../../../lib/twenty/client/index.js";
+import { resolveActor } from "../../../lib/twenty/actor/index.js";
+import { twentyGraphqlClient } from "../../../lib/twenty/graphql/index.js";
+import { createLogger } from "../../../lib/logger/index.js";
 import type { AgencyPhone, ClaimBody, CallStateBody, ReleaseBody } from "./types.js";
 import { mapPhone } from "./helpers/index.js";
 
@@ -127,7 +128,7 @@ router.post("/:id/claim", async (req: AuthRequest, res) => {
       claimedByEmail: memberEmail || "",
       claimedAt: now,
       lastSyncedAt: now,
-    });
+    }, await resolveActor(req));
     log.info(`Number claimed: ${id} by ${memberEmail || memberId}`);
     res.json(mapPhone(updated));
   } catch (err: any) {
@@ -157,7 +158,7 @@ router.post("/:id/state", async (req: AuthRequest, res) => {
     const updated = await updateTwenty<AgencyPhone>('agencyPhones', id, {
       callState: state,
       lastSyncedAt: new Date().toISOString(),
-    });
+    }, await resolveActor(req));
     res.json(mapPhone(updated));
   } catch (err: any) {
     log.error("Failed to set call state:", err.message);
@@ -197,7 +198,7 @@ router.post("/:id/release", async (req: AuthRequest, res) => {
       claimedAt: null,
       currentCallId: callId || phone.currentCallId || "",
       lastSyncedAt: now,
-    });
+    }, await resolveActor(req));
     log.info(`Number released: ${id} by ${memberId}${force ? " (forced)" : ""}`);
     res.json(mapPhone(updated));
   } catch (err: any) {

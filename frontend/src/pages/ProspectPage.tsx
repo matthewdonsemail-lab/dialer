@@ -2,10 +2,10 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { StatusFilterDropdown } from "@/components/common/StatusFilterDropdown";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";
 import { ColumnVisibilityDropdown, ColumnDef } from "@/components/common/ColumnVisibilityDropdown";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -32,8 +32,8 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { useColumnOrder } from "@/hooks/useColumnOrder";
-import { useColumnWidths } from "@/hooks/useColumnWidths";
+import { useColumnOrder } from "@/hooks/use-column-order";
+import { useColumnWidths } from "@/hooks/use-column-widths";
 import {
   SortableHeaderCell,
   ColumnResizeHandle,

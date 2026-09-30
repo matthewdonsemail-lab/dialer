@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useLeads } from "@/hooks/useLeads";
-import { useCreateLead, useDeleteLead, useUpdateLead } from "@/hooks/useLeads";
+import { useLeads } from "@/hooks/use-leads";
+import { useCreateLead, useDeleteLead, useUpdateLead } from "@/hooks/use-leads";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { StatusFilterDropdown } from "@/components/common/StatusFilterDropdown";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";
 import { ColumnVisibilityDropdown, ColumnDef } from "@/components/common/ColumnVisibilityDropdown";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -27,8 +27,8 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { useColumnOrder } from "@/hooks/useColumnOrder";
-import { useColumnWidths } from "@/hooks/useColumnWidths";
+import { useColumnOrder } from "@/hooks/use-column-order";
+import { useColumnWidths } from "@/hooks/use-column-widths";
 import {
   SortableHeaderCell,
   ColumnResizeHandle,
@@ -36,7 +36,7 @@ import {
 import { ActionsMenu } from "@/components/common/ActionsMenu";
 import { CampaignSelect } from "@/components/common/CampaignSelect";
 import { HeaderFilter } from "@/components/common/HeaderFilter";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { useQuery } from "@tanstack/react-query";
 
 type StatusFilter = string | "all";

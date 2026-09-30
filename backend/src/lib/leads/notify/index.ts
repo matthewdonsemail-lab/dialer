@@ -1,57 +1,25 @@
 import type { Request } from "express";
-import { createLogger } from "./logger.js";
-import { sendBarkPush } from "./bark.js";
-import { listWorkspaceMembers } from "./workspace-members.js";
+import { createLogger } from "../../logger/index.js";
+import { sendBarkPush } from "../../bark/index.js";
+import { listWorkspaceMembers } from "../../twenty/workspaceMember/index.js";
+import { buildLeadDeepLink, formatLeadBody } from "./helpers/index.js";
+import type { NewLeadInfo, LeadBroadcastResult } from "./types.js";
+
+export type { NewLeadInfo, LeadBroadcastResult };
 
 const log = createLogger("lead-notify");
 
-export interface NewLeadInfo {
-  id: string;
-  contactName?: string | null;
-  company?: string | null;
-  phone?: string | null;
-  email?: string | null;
-}
-
-/**
- * Deep link straight into the dialer lead page (`/leads/:leadId`
- * in `frontend/src/App.tsx` -> `LeadDetailPage`).
- *
- * Tapping the Bark notification opens this URL directly on the phone.
- * Same-origin Vercel deploy means the backend often shares the host
- * with the frontend, so when FRONTEND_URL is unset we fall back to the
- * incoming request's origin (honouring x-forwarded-proto/host).
- */
-export function getLeadDeepLink(req: Request, leadId: string): string {
-  const configured = (process.env.FRONTEND_URL || "").trim().replace(/\/+$/, "");
-  if (configured) return `${configured}/leads/${encodeURIComponent(leadId)}`;
-
+/** Request -> the plain values the pure deep-link helper needs. */
+function requestOriginParts(req: Request): { proto: string; host: string } {
   const protoHeader = req.get("x-forwarded-proto");
   const proto = (protoHeader ? protoHeader.split(",")[0].trim() : req.protocol) || "https";
   const host = req.get("x-forwarded-host") || req.get("host") || "";
-  if (!host) return `/leads/${encodeURIComponent(leadId)}`;
-  return `${proto}://${host}/leads/${encodeURIComponent(leadId)}`;
-}
-
-function formatLeadBody(lead: NewLeadInfo): string {
-  const parts: string[] = [];
-  if (lead.contactName?.trim()) parts.push(lead.contactName.trim());
-  if (lead.company?.trim()) parts.push(lead.company.trim());
-  if (lead.phone?.trim()) parts.push(lead.phone.trim());
-  const summary = parts.join(" · ");
-  return summary ? `New lead: ${summary}` : "New lead added";
-}
-
-export interface LeadBroadcastResult {
-  attempted: number;
-  sent: number;
-  skippedNoKey: number;
-  failed: number;
+  return { proto, host };
 }
 
 /**
  * Cross-path dedupe: the dialer POST /api/leads hook and the Twenty
- * native webhook (`agencyLead.created`) both funnel here. A dialer-created
+ * native webhook (agencyLead.created) both funnel here. A dialer-created
  * lead would otherwise notify twice (once per path), so each path marks
  * the lead id and skips ids marked within the TTL. In-memory only —
  * fine for a single backend instance; use Twenty/Redis if you scale out.
@@ -74,10 +42,10 @@ export function markLeadNotified(leadId: string): void {
 }
 
 /**
- * Global broadcast: push a new-lead notification to EVERY workspace
- * member that has a BARK_KEY configured. Fire-and-forget from the
- * caller — this never throws, it only logs per-member failures so one
- * bad key can't fail the lead creation itself.
+ * Global broadcast: push a new-lead notification to EVERY workspaceMember
+ * that has a BARK_KEY configured. Fire-and-forget from the caller — this
+ * never throws, it only logs per-member failures so one bad key can't fail
+ * the lead creation itself.
  */
 export async function broadcastNewLead(
   req: Request,
@@ -99,7 +67,13 @@ export async function broadcastNewLead(
     return result;
   }
 
-  const url = getLeadDeepLink(req, lead.id);
+  const { proto, host } = requestOriginParts(req);
+  const url = buildLeadDeepLink({
+    frontendUrl: process.env.FRONTEND_URL,
+    proto,
+    host,
+    leadId: lead.id,
+  });
   const body = formatLeadBody(lead);
   log.info(`New lead ${lead.id}: broadcasting to ${withKey.length} member(s), url=${url}`);
 

@@ -1,13 +1,14 @@
 import { Router, Response } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { createLogger } from "../../lib/logger.js";
-import { sendBarkPush } from "../../lib/bark.js";
-import { broadcastNewLead } from "../../lib/lead-notify.js";
-import { getTwenty } from "../../lib/twenty-client.js";
+import { createLogger } from "../../lib/logger/index.js";
+import { sendBarkPush } from "../../lib/bark/index.js";
+import { broadcastNewLead } from "../../lib/leads/notify/index.js";
+import { getTwenty } from "../../lib/twenty/client/index.js";
 import {
   findWorkspaceMember,
   listWorkspaceMembers,
-} from "../../lib/workspace-members.js";
+} from "../../lib/twenty/workspaceMember/index.js";
+import type { BarkNotifyBody } from "./types.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -39,21 +40,9 @@ router.get("/bark/status", async (_req: AuthRequest, res: Response) => {
   }
 });
 
-interface BarkNotifyBody {
-  email?: string;
-  userId?: string;
-  workspaceMemberId?: string;
-  title?: string;
-  subtitle?: string;
-  body?: string;
-  group?: string;
-  url?: string;
-  level?: "active" | "timeSensitive" | "passive" | "critical";
-}
-
 /**
  * POST /api/notify/bark
- * Resolve one workspace member (email | userId | workspaceMemberId —
+ * Resolve one workspaceMember (email | userId | workspaceMemberId —
  * defaults to the caller's JWT email), read their BARK_KEY from the
  * workspaceMember object metadata field `barkKey`, and push via Bark.
  */

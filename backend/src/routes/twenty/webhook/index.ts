@@ -1,58 +1,46 @@
 import { Router, Request, Response } from "express";
-import crypto from "crypto";
-import { createLogger } from "../../../lib/logger.js";
-import { getTwenty } from "../../../lib/twenty-client.js";
+import { createLogger } from "../../../lib/logger/index.js";
+import { getTwenty } from "../../../lib/twenty/client/index.js";
 import {
   broadcastNewLead,
   markLeadNotified,
   wasRecentlyNotified,
-} from "../../../lib/lead-notify.js";
+} from "../../../lib/leads/notify/index.js";
+import { isNewLeadEvent, recordIdFrom, verifySignature } from "./helpers/index.js";
+import type { TwentyWebhookBody } from "./types.js";
 
 const router = Router();
-const log = createLogger("twenty-webhooks");
+const log = createLogger("twenty-webhook");
 
 /**
- * POST /api/twenty/webhooks — Twenty native webhook receiver (no dialer JWT;
+ * POST /api/twenty/webhook — Twenty native webhook receiver (no dialer JWT;
  * Twenty signs with HMAC, same pattern as frontend/api/telnyx-webhook.ts).
  *
- * Setup in Twenty: Settings → APIs & Webhooks → Webhooks → URL
- *   https://<backend>/api/twenty/webhooks
+ * Setup in Twenty: Settings -> APIs & Webhooks -> Webhooks -> URL
+ *   https://<backend>/api/twenty/webhook
  * Twenty POSTs { event, data, timestamp } for every record change; we
  * filter to agencyLead.created, fetch the full lead, and run the same
  * global Bark broadcast the dialer POST /api/leads hook uses.
  *
  * Auth (either):
- * - HMAC: TWENTY_WEBHOOK_SECRET set → validate
+ * - HMAC: TWENTY_WEBHOOK_SECRET set -> validate
  *   X-Twenty-Webhook-Signature over "{timestamp}:{raw JSON body}".
  * - Token gate: ?token=<TWENTY_WEBHOOK_TOKEN> (Telnyx-webhook precedent).
  */
-
-const CREATED_EVENTS = new Set(["agencyLead.created", "agencyLeads.created"]);
-
-function timingSafeEq(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
-}
-
 function isAuthorized(req: Request): boolean {
   const secret = (process.env.TWENTY_WEBHOOK_SECRET || "").trim();
   if (secret) {
-    const sig = req.get("x-twenty-webhook-signature") || "";
-    const ts = req.get("x-twenty-webhook-timestamp") || "";
-    const raw = (req as any).rawBody as Buffer | undefined;
-    if (!sig || !ts || !raw) return false;
-    const expected = crypto
-      .createHmac("sha256", secret)
-      .update(`${ts}:${raw.toString("utf8")}`)
-      .digest("hex");
-    if (timingSafeEq(expected, sig.trim())) return true;
-    // Fall through to token gate so rotation doesn't hard-fail.
+    const ok = verifySignature({
+      secret,
+      timestamp: req.get("x-twenty-webhook-timestamp") || "",
+      rawBody: (req as any).rawBody as Buffer | undefined,
+      signature: req.get("x-twenty-webhook-signature") || "",
+    });
+    if (ok) return true;
+    // Fall through to the token gate so rotation does not hard-fail.
   }
   const token = (process.env.TWENTY_WEBHOOK_TOKEN || "").trim();
-  if (token && req.query.token === token) return true;
-  return false;
+  return Boolean(token) && req.query.token === token;
 }
 
 router.post("/", async (req: Request, res: Response) => {
@@ -61,17 +49,16 @@ router.post("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const body = (req.body ?? {}) as { event?: unknown; data?: unknown };
-  const event = typeof body.event === "string" ? body.event : "";
+  const body = (req.body ?? {}) as TwentyWebhookBody;
+  const event = body.event;
 
-  // Ack everything 2xx so Twenty doesn't retry; ignore non-lead events.
-  if (!CREATED_EVENTS.has(event)) {
-    res.json({ ok: true, ignored: event || null });
+  // Ack everything 2xx so Twenty does not retry; ignore non-lead events.
+  if (!isNewLeadEvent(event)) {
+    res.json({ ok: true, ignored: typeof event === "string" ? event : null });
     return;
   }
 
-  const data = (body.data ?? {}) as { id?: unknown };
-  const leadId = typeof data.id === "string" ? data.id : null;
+  const leadId = recordIdFrom(body.data);
   if (!leadId) {
     log.error("agencyLead.created without data.id");
     res.json({ ok: true, ignored: "missing-id" });
@@ -91,8 +78,8 @@ router.post("/", async (req: Request, res: Response) => {
     const contactName =
       lead.contactName ||
       [lead.firstName, lead.lastName].filter(Boolean).join(" ") ||
-      (typeof data === "object" && data !== null
-        ? ((data as any).contactName ?? null)
+      (typeof body.data === "object" && body.data !== null
+        ? ((body.data as any).contactName ?? null)
         : null);
     const phone =
       typeof lead.phone === "object" && lead.phone
@@ -110,7 +97,7 @@ router.post("/", async (req: Request, res: Response) => {
     res.json({ ok: true, leadId, ...result });
   } catch (err: any) {
     log.error(`Webhook broadcast failed for lead ${leadId}: ${err.message}`);
-    // Still 200: the lead exists, only the push failed — don't trigger
+    // Still 200: the lead exists, only the push failed — do not trigger
     // Twenty retries for a notification-side error.
     res.json({ ok: false, leadId, error: err.message });
   }
