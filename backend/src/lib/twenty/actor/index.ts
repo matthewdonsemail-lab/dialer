@@ -32,5 +32,5 @@ export async function resolveActor(req: AuthRequest): Promise<WriteActor | null>
   }
 
   const actor: ActorPayload = { source: "API", workspaceMemberId: memberRef, name };
-  return { createdBy: actor, updatedBy: actor };
+  return { createdBy: actor };
 }

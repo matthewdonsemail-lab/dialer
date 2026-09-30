@@ -12,7 +12,6 @@ function withActor(data: any, actor: WriteActor | null | undefined): any {
   if (!actor) return data;
   const out: any = { ...data };
   if (actor.createdBy && !out.createdBy) out.createdBy = actor.createdBy;
-  if (actor.updatedBy && !out.updatedBy) out.updatedBy = actor.updatedBy;
   return out;
 }
 
@@ -358,24 +357,24 @@ export async function updateTwentyGraphQL<T>(objectName: string, id: string, dat
     .map(([key, value]) => `${key}: ${JSON.stringify(value).replace(/"/g, '\\"')}`)
     .join(", ");
 
-  // Actor fields in the mutation's data block. Twenty's GraphQL accepts
-  // createdBy/updatedBy as nested Actor objects on update.
+  // Twenty accepts the createdBy Actor in the data block.
   const actorFields: string[] = [];
-  if (actor?.updatedBy) {
+  if (actor?.createdBy) {
+    const a = actor.createdBy;
     actorFields.push(
-      `updatedBy: { source: ${JSON.stringify(actor.updatedBy.source)}, workspaceMemberId: ${JSON.stringify(
-        actor.updatedBy.workspaceMemberId
-      )}, name: ${JSON.stringify(actor.updatedBy.name).replace(/"/g, '\\"')} }`
+      `createdBy: { source: ${JSON.stringify(a.source)}, workspaceMemberId: ${JSON.stringify(
+        a.workspaceMemberId
+      )}, name: ${JSON.stringify(a.name).replace(/"/g, '\\"')} }`
     );
   }
   const fields = [setFields, ...actorFields].filter(Boolean).join(", ");
 
+  // This Twenty version names the mutation `update<Singular>` (e.g.
+  // updateAgencyCall), not `updateOne<Singular>` — the latter does not
+  // exist in the schema. Verified against the live introspection.
   const mutation = `
     mutation {
-      updateOne${camelCaseName}(input: {
-        id: "${id}"
-        ${fields ? `data: { ${fields} }` : ""}
-      }) {
+      update${camelCaseName}(id: "${id}"${fields ? `, data: { ${fields} }` : ""}) {
         id
       }
     }
