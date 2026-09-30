@@ -111,7 +111,7 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
   });
 
   const { user } = useAuth();
-  const myMemberId = user ? user.twentyUserId ?? user.id : null;
+  const myMemberId = user?.memberId ?? null;
 
   const heldByOther = (row: AgencyPhoneRow) =>
     (row.callState || "IDLE") !== "IDLE" &&

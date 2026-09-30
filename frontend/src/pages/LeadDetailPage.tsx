@@ -32,7 +32,7 @@ export function LeadDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const member = user ? { id: user.twentyUserId ?? user.id, email: user.email } : null;
+  const member = user?.memberId ? { id: user.memberId, email: user.email } : null;
   const recentCalls = useCallsForRecord({ leadId: leadId ?? null });
 
   // Default sending number for leads (first ACTIVE row; claim enforced server-side)

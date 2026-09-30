@@ -70,7 +70,7 @@ export function ProspectDetailPage() {
   const [editingData, setEditingData] = useState<Partial<Prospect>>({});
   const [agencyFromNumber, setAgencyFromNumber] = useState("");
   const { user } = useAuth();
-  const member = user ? { id: user.twentyUserId ?? user.id, email: user.email } : null;
+  const member = user?.memberId ? { id: user.memberId, email: user.email } : null;
 
   // Resolve the selected sending number to its agencyPhones row (for claiming).
   // Shared ["twentyPhones"] cache with the widget: holder state stays live.
