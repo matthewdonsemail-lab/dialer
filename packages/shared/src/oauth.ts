@@ -8,10 +8,10 @@
  * nothing but global fetch and WebCrypto, so the same code runs in Node,
  * browsers, and workers unchanged.
  *
- * Shared domain (backend + SPA import this — never copy it): the backend
- * owns the confidential provider instance (client secret), the SPA runs
- * the public code flow (verifier in sessionStorage, code redemption
- * proxied through the Hono `/api/oauth` routes).
+ * Shared domain (backend + SPA import this — never copy it): the client is
+ * a public PKCE client. The verifier stays in sessionStorage and code
+ * redemption is proxied through the Hono `/api/oauth` routes; no client
+ * secret is required or stored.
  */
 
 export class TwentyOAuthError extends Error {
@@ -47,17 +47,23 @@ export interface TokenSet {
 export interface Introspection {
   active: boolean;
   username: string | null;
-  /** RFC 7662 subject: present even when Twenty omits `username`. */
+  /** RFC 7662 subject. For Twenty application tokens this is the application id. */
   sub: string | null;
   scope: string | null;
   expiresAt: number | null;
-  /**
-   * The raw RFC 7662 response. Twenty does not document which claim carries
-   * the sign-in email (it is absent from `username` for operator tokens, and
-   * `sub` is not a persisted id in this instance), so consumers that must map
-   * a token to a person scan these claims rather than trusting a fixed field.
-   */
+  /** The raw RFC 7662 response. */
   claims: Record<string, unknown>;
+}
+
+export interface TwentyAccessTokenClaims {
+  sub?: string;
+  applicationId?: string;
+  workspaceId?: string;
+  userId?: string;
+  userWorkspaceId?: string;
+  type?: string;
+  exp?: number;
+  iat?: number;
 }
 
 type FetchFn = typeof fetch;
@@ -86,6 +92,40 @@ export function base64UrlEncode(bytes: Uint8Array): string {
     out += i + 2 < bytes.length ? BASE64_ALPHABET[triple & 63] : "";
   }
   return out.replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+/** Decode a JWT payload after Twenty introspection has established that the token is live.
+ * This does not verify the signature; introspection is the trust boundary.
+ */
+export function decodeJwtPayload<T extends Record<string, unknown>>(token: string): T {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    throw new TwentyOAuthError(502, "Twenty access token is not a JWT");
+  }
+
+  const encoded = parts[1] ?? "";
+  const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const bytes: number[] = [];
+
+  for (let i = 0; i < padded.length; i += 4) {
+    const a = BASE64_ALPHABET.indexOf(padded[i] ?? "=");
+    const b = BASE64_ALPHABET.indexOf(padded[i + 1] ?? "=");
+    const c = BASE64_ALPHABET.indexOf(padded[i + 2] ?? "=");
+    const d = BASE64_ALPHABET.indexOf(padded[i + 3] ?? "=");
+    if (a < 0 || b < 0 || c < 0 || d < 0) {
+      throw new TwentyOAuthError(502, "Twenty access token has an invalid JWT payload");
+    }
+    bytes.push((a << 2) | (b >> 4));
+    if (c !== 64) bytes.push(((b & 15) << 4) | (c >> 2));
+    if (d !== 64) bytes.push(((c & 3) << 6) | d);
+  }
+
+  try {
+    return JSON.parse(new TextDecoder().decode(new Uint8Array(bytes))) as T;
+  } catch {
+    throw new TwentyOAuthError(502, "Twenty access token has an invalid JWT payload");
+  }
 }
 
 /** Filter crypto.getRandomValues through an injectable source for tests. */
@@ -137,7 +177,7 @@ export async function discoverOAuth(baseUrl: string, fetchFn: FetchFn = fetch): 
   };
 }
 
-/** RFC 7591 dynamic client registration. The secret is shown once. */
+/** RFC 7591 dynamic registration for the public PKCE client. */
 export async function registerClient(
   registrationEndpoint: string,
   input: { clientName: string; redirectUris: string[] },
@@ -150,7 +190,7 @@ export async function registerClient(
       client_name: input.clientName,
       redirect_uris: input.redirectUris,
       grant_types: ["authorization_code", "refresh_token"],
-      token_endpoint_auth_method: "client_secret_post",
+      token_endpoint_auth_method: "none",
     }),
   });
   if (!response.ok) {
