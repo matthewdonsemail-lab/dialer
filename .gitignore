@@ -18,6 +18,11 @@ env.txt
 *.pem
 *.key
 temp_login.json
+# HTTP Archive files: browser/devtools HAR exports record every request and
+# response header, so they capture Authorization and Cookie values verbatim.
+# Treat them as secrets; never commit.
+*.har
+**/*.har
 
 # Build & dist
 dist/
