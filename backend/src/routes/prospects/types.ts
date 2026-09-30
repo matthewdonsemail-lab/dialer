@@ -32,6 +32,8 @@ export interface AgencyProspect {
   utmSource?: string;
   source?: string;
   note?: string;
+  /** WorkspaceMember UUID responsible for the prospect (our attribution, server-derived). */
+  createdByMemberId?: string;
   campaignIdId?: string; // Relation to agencyCampaign
   createdAt?: string;
   updatedAt?: string;

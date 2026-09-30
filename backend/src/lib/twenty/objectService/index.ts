@@ -1,7 +1,19 @@
 import { createLogger } from "../../logger/index.js";
 import { loadSyncConfig } from "../client/index.js";
+import { setupCallHistorySchema } from "../agencyCall/index.js";
 
 const log = createLogger('twenty-object-service');
+
+/**
+ * Twenty reports name collisions several ways depending on version/path
+ * ("already exists" vs METADATA_VALIDATION_FAILED/NOT_AVAILABLE "already
+ * used by another field"). All mean the same for idempotent setup: the
+ * field is there, record isNew:false and continue. Pure string match.
+ */
+export function isFieldExistsError(err: any): boolean {
+  const msg = String(err?.message || "");
+  return /already exists|already used by another field/i.test(msg);
+}
 
 /**
  * Execute a GraphQL mutation against Twenty's metadata API
@@ -253,6 +265,22 @@ export async function setupTwentyCRM(): Promise<{
     });
     results.objects.push({ name: "agencyProspects", id: prospectsObj.id, isNew: prospectsObj.isNew });
 
+    // 1a. Member attribution field on agencyProspects (server-derived creator).
+    try {
+      await createTextField({
+        objectMetadataId: prospectsObj.id,
+        name: "createdByMemberId",
+        label: "Created By Member ID",
+      });
+      results.fields.push({ object: "agencyProspects", name: "createdByMemberId", isNew: true });
+    } catch (err: any) {
+      if (isFieldExistsError(err)) {
+        results.fields.push({ object: "agencyProspects", name: "createdByMemberId", isNew: false });
+      } else {
+        throw err;
+      }
+    }
+
     // 2. Create agencyLeads object
     const leadsObj = await getOrCreateObject({
       nameSingular: "agencyLead",
@@ -392,6 +420,14 @@ export async function setupTwentyCRM(): Promise<{
           throw err;
         }
       }
+    }
+
+    // 7. Create agencyCalls object + call-history fields (call log persistence,
+    // including the own-field member attribution column).
+    const callsSchema = await setupCallHistorySchema();
+    results.objects.push({ name: "agencyCalls", id: callsSchema.objectId, isNew: callsSchema.objectIsNew });
+    for (const f of callsSchema.fields) {
+      results.fields.push({ object: "agencyCalls", name: f.name, isNew: f.isNew });
     }
 
     log.info(`Setup completed. Created ${results.objects.length} objects and ${results.fields.length} fields.`);

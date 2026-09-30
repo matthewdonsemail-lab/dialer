@@ -244,6 +244,9 @@ oauthApp.post("/session", async (c) => {
     const identity = await resolveOperatorIdentity(config, result);
     log.info(`OAuth session minted for: ${identity.email} (via ${identity.via})`);
     const member = identity.member;
+    // Display claims for member-aware UI (sidebar, holder names). Null-safe:
+    // fallback sessions simply carry no member display data.
+    const memberAvatar = (member as any)?.avatarUrl;
     const token = generateToken({
       userId: identity.email,
       // Prefer the member's userId; keep email for backward compatibility
@@ -252,6 +255,8 @@ oauthApp.post("/session", async (c) => {
       workspaceMemberId: member?.id ?? null,
       email: identity.email,
       fullName: identity.fullName,
+      memberName: identity.fullName,
+      avatarUrl: typeof memberAvatar === "string" ? memberAvatar : undefined,
     });
     return c.json({
       user: {
@@ -261,6 +266,13 @@ oauthApp.post("/session", async (c) => {
         role: "agent",
         workspaceMemberId: member?.id ?? null,
         twentyUserId: member?.userId ?? null,
+        member: member?.id
+          ? {
+              id: member.id,
+              name: identity.fullName,
+              avatarUrl: typeof memberAvatar === "string" ? memberAvatar : null,
+            }
+          : undefined,
       },
       token,
     });

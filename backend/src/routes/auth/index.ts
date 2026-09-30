@@ -21,16 +21,23 @@ router.post("/signup", (_req, res) => {
 });
 
 router.get("/me", authMiddleware, (req: AuthRequest, res) => {
-  // User info is stored in the JWT token payload
+  // Identity comes from the JWT minted at OAuth session time. When the
+  // session resolved a workspaceMember, the sidebar renders the member.
+  const name = req.memberName || req.userFullName || "";
+  const memberId = req.workspaceMemberId || null;
   const user: DialerMeResponse = {
     id: req.userId!,
     email: req.userEmail || "",
-    fullName: req.userFullName || "",
+    fullName: name,
     role: "agent",
     twentyUserId: req.twentyUserId,
+    workspaceMemberId: memberId,
+    member: memberId
+      ? { id: memberId, name, avatarUrl: req.avatarUrl || null }
+      : undefined,
   };
 
-  log.info(`GET /me: ${user.email}`);
+  log.info(`GET /me: ${user.email} member=${memberId || "none"}`);
   res.json(user);
 });
 

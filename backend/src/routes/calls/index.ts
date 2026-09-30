@@ -196,6 +196,9 @@ router.post("/", async (req: AuthRequest, res) => {
       toNumber,
       durationSeconds: durationSeconds ?? 0,
     };
+    // Own-field member attribution (queryable UUID next to the system Actor).
+    // Omitted for legacy/fallback sessions without a resolved member.
+    if (req.workspaceMemberId) payload.createdByMemberId = req.workspaceMemberId;
     if (startedAt) payload.startedAt = startedAt;
     if (endedAt) payload.endedAt = endedAt;
     if (telnyxCallId) payload.telnyxCallId = telnyxCallId;

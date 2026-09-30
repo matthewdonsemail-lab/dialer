@@ -90,10 +90,10 @@ router.post("/", async (req: AuthRequest, res) => {
       source: source,
       note: notes,
       outboundMessage: undefined,
-      // createdById: the member userId when the session resolved to one,
-      // otherwise the legacy email. The Actor below is the authoritative
-      // "created by" stamp Twenty displays.
-      createdById: req.twentyUserId,
+      // createdById: the resolved workspaceMember UUID when the session
+      // resolved to one, otherwise the legacy email. The Actor below is the
+      // authoritative "created by" stamp Twenty displays.
+      createdById: req.workspaceMemberId ?? req.twentyUserId,
     };
 
     const result = await createTwenty<any>('agencyLeads', payload, await resolveActor(req));
