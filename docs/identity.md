@@ -136,7 +136,7 @@ TWENTY_BASIC_PASSWORD=...
 ```
 
 The client is a **public PKCE-only** client (dynamic registration via
-`POST /oauth/register`, no `token_endpoint_auth`). Its registered redirect
+`POST /oauth/register`, with `token_endpoint_auth_method: none`). Its registered redirect
 URI must match `TWENTY_OAUTH_REDIRECT_URI` exactly, so the frontend dev
 server is pinned to port **5173** (`--strictPort`) and the callback path is
 `/callback`.
