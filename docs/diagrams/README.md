@@ -44,6 +44,7 @@ other.
 | [data-model.mmd](./data-model.mmd) | The `agency*` objects, their fields, and their relations. |
 | [integration-paths.mmd](./integration-paths.mmd) | The two ways the dialer reaches Twenty, and what only each one can do. |
 | [bark-new-lead-notify.mmd](./bark-new-lead-notify.mmd) | How a new lead becomes a Bark push on every member's phone via the `BARK_KEY` on `workspaceMember`. |
+| [member-attribution.mmd](./member-attribution.mmd) | How a signed-in operator becomes a named `workspaceMember` on every record, and the claim heartbeat bound to that member. |
 
 Render any of them standalone with the [Mermaid live editor](https://mermaid.live),
 or with the VS Code Mermaid extension. GitHub renders the embedded copies in the

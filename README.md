@@ -664,6 +664,76 @@ sequenceDiagram
 
 > Source: [`docs/diagrams/bark-new-lead-notify.mmd`](docs/diagrams/bark-new-lead-notify.mmd).
 
+### Member identity and record attribution
+
+Records the dialer writes are attributed to the member who is signed in, not to
+the API key. Two channels are written side by side, and both depend on schema
+that `POST /api/setup/twenty` creates.
+
+<!-- mermaid:member-attribution.mmd -->
+```mermaid
+flowchart TB
+    subgraph twenty ["Twenty (identity provider + system of record)"]
+        wm["workspaceMember<br/>the signed-in human<br/>id, userId, userEmail, name"]
+        actor["createdBy Actor<br/>system actor, source API<br/>SETTABLE via REST"]
+        own["createdByMemberId<br/>own TEXT field on the object<br/>queryable UUID, SETTABLE"]
+        beat["agencyPhone.lastHeartbeatAt<br/>DATE_TIME, SETTABLE"]
+    end
+
+    subgraph auth ["Identity (backend)"]
+        sess["POST /api/oauth/session<br/>introspect token -> resolve member"]
+        jwt["dialer JWT<br/>workspaceMemberId, memberName"]
+        mw["authMiddleware<br/>req.workspaceMemberId, req.memberName"]
+        guard["requireMember()<br/>401 when the session has no member"]
+    end
+
+    subgraph writes ["Attribution on write"]
+        calls["POST /api/calls<br/>createdBy Actor + createdByMemberId"]
+        leads["POST /api/leads<br/>createdById, assigned_to"]
+        pro["POST /api/prospects<br/>createdBy Actor + createdByMemberId"]
+    end
+
+    subgraph claim ["Number claim lifecycle (same member)"]
+        hb["POST /phones/:id/heartbeat<br/>every 3s, holder only"]
+        rel["POST /phones/:id/release<br/>holder only, or force"]
+    end
+
+    twenty -->|"introspect sub / username"| sess
+    sess --> wm
+    wm -->|"resolved row"| sess
+    sess --> jwt --> mw --> guard
+    guard -->|"member id is server-derived,<br/>never taken from the request body"| calls
+    guard --> leads
+    guard --> pro
+    guard --> hb
+    guard --> rel
+
+    calls --> actor
+    calls --> own
+    pro --> own
+    pro --> actor
+    hb --> beat
+    rel --> beat
+
+    note1["updatedBy is NOT settable.<br/>Twenty recomputes it from the<br/>authenticated caller, so it stays<br/>the API actor. Read createdBy."]
+    actor -.- note1
+```mermaid
+```
+
+> Source: [`docs/diagrams/member-attribution.mmd`](docs/diagrams/member-attribution.mmd).
+
+The member id is derived server-side from the JWT, never read from a request
+body, so a caller cannot claim to be someone else. Two consequences worth
+knowing:
+
+- `createdBy` is settable and reads back the real member.
+- `updatedBy` is **not** settable. Twenty recomputes it from the authenticated
+  caller, so it keeps reporting the API actor. Attribution reads `createdBy`.
+
+Because both channels write plain fields, the object must actually have them.
+`GET /api/setup/twenty/status` lists every field the routes read or write and
+reports `exists: false` for anything the workspace is still missing.
+
 ### Key status values
 
 `agencyProspects.coldCallStatus`
