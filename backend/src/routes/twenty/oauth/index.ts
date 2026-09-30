@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { generateToken } from "../../../middleware/auth.js";
+import type { OAuthServerConfig } from "../../../lib/twenty/oauth/types.js";
 import {
   checkOperatorToken,
   exchangeAuthorizationCode,
@@ -51,6 +52,63 @@ function requireConfig(c: any) {
   const config = loadOAuthConfig();
   if (!config) return { config: null, response: c.json({ error: "Twenty OAuth is not configured" }, 500) };
   return { config, response: null };
+}
+
+interface ResolvedIdentity {
+  email: string;
+  fullName: string;
+  via: string;
+}
+
+/**
+ * Who just signed in, in human terms.
+ *
+ * Twenty's introspection answers "is this token live?" but carries no
+ * `username` for operator tokens, which is how every session ended up as
+ * the literal "operator@twenty". Resolution chain:
+ *   1. introspection `username`, when it looks like an email;
+ *   2. introspection `sub` -> Twenty REST `workspaceMembers/{sub}` (server
+ *      API key; bare /rest is exempt from the auth-guard) -> `userEmail`;
+ *   3. the historical "operator@twenty" fallback (unchanged behavior).
+ * Every step is best-effort and logged; a miss never fails sign-in.
+ */
+async function resolveOperatorIdentity(
+  config: OAuthServerConfig,
+  introspection: { username: string | null; sub: string | null },
+): Promise<ResolvedIdentity> {
+  const fallback: ResolvedIdentity = { email: "operator@twenty", fullName: "operator@twenty", via: "fallback" };
+  const username = introspection.username?.trim() || null;
+  if (username && username.includes("@")) {
+    return { email: username, fullName: username, via: "introspection:username" };
+  }
+  const sub = introspection.sub?.trim() || null;
+  const apiKey = process.env.TWENTY_API_KEY || "";
+  if (sub && config.baseUrl && apiKey) {
+    try {
+      const res = await fetch(
+        `${config.baseUrl.replace(/\/$/, "")}/rest/workspaceMembers/${encodeURIComponent(sub)}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } },
+      );
+      if (res.ok) {
+        const json = (await res.json()) as any;
+        const node = json?.data?.workspaceMember ?? json?.data ?? json;
+        const rawEmail = node?.userEmail ?? node?.email;
+        const email = typeof rawEmail === "string" && rawEmail.includes("@") ? rawEmail : null;
+        if (email) {
+          const first = node?.name?.firstName ?? "";
+          const last = node?.name?.lastName ?? "";
+          const fullName = `${first} ${last}`.trim() || email;
+          return { email, fullName, via: "rest:workspaceMembers" };
+        }
+        log.info(`workspaceMembers/${sub} returned no email; keeping fallback identity`);
+      } else {
+        log.info(`workspaceMembers/${sub} lookup -> ${res.status}; keeping fallback identity`);
+      }
+    } catch (err: any) {
+      log.info(`workspaceMembers lookup failed (${err?.message || err}); keeping fallback identity`);
+    }
+  }
+  return fallback;
 }
 
 oauthApp.get("/config", async (c) => {
@@ -111,7 +169,8 @@ oauthApp.get("/me", async (c) => {
   try {
     const result = await checkOperatorToken(config, token);
     if (!result.active) return c.json({ error: "Token is not active" }, 401);
-    return c.json({ active: true, username: result.username, scope: result.scope });
+    const identity = await resolveOperatorIdentity(config, result);
+    return c.json({ active: true, username: result.username, email: identity.email, scope: result.scope });
   } catch (error) {
     return fail(c, error, "Failed to validate the operator token", 502);
   }
@@ -132,16 +191,16 @@ oauthApp.post("/session", async (c) => {
   try {
     const result = await checkOperatorToken(config, body.accessToken);
     if (!result.active) return c.json({ error: "Token is not active" }, 401);
-    const email = result.username ?? "operator@twenty";
-    log.info(`OAuth session minted for: ${email}`);
+    const identity = await resolveOperatorIdentity(config, result);
+    log.info(`OAuth session minted for: ${identity.email} (via ${identity.via})`);
     const token = generateToken({
-      userId: email,
-      twentyUserId: email,
-      email,
-      fullName: email,
+      userId: identity.email,
+      twentyUserId: identity.email,
+      email: identity.email,
+      fullName: identity.fullName,
     });
     return c.json({
-      user: { id: email, email, fullName: email, role: "agent" },
+      user: { id: identity.email, email: identity.email, fullName: identity.fullName, role: "agent" },
       token,
     });
   } catch (error) {

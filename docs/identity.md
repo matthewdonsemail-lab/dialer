@@ -117,6 +117,7 @@ server is pinned to port **5173** (`--strictPort`) and the callback path is
 | Native `user:pass` prompt loops / 401 at `/authorize` | Basic creds for the auth-guard are wrong or expired. | [twenty-troubleshooting.md](./twenty-troubleshooting.md) |
 | "Twenty OAuth is not configured" from `/api/oauth/*` | OAuth vars missing from the **root** `.env.local`. | This file's config section. |
 | Consent 302s to `/callback?error=...` | The redirect URI in the client record doesn't match `--port 5173`. | This file's config section. |
+| Sidebar shows "operator" / `operator@twenty` after Twenty sign-in | The dialer JWT is minted once at sign-in (7-day lifetime). Identity is resolved at mint time via introspection `username`, then `workspaceMembers/{sub}`. Sign out and sign back in to pick up the fix; the backend log line `OAuth session minted for: ...` shows which path resolved. | `backend/src/routes/twenty/oauth/index.ts` |
 
 ## What the dialer deliberately does not do
 

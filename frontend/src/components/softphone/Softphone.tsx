@@ -14,7 +14,7 @@ import { getSipConfig, isSipConfigured, getSipDomain, getSipExtension } from "@/
 import { sipLog, classifyFailure, getReport, type ClassifiedFailure } from "@/sip";
 import { Button } from "@/components/ui/Button";
 import { OutcomeSelect } from "@/components/common/OutcomeSelect";
-import { api } from "@/lib/apiClient";
+import { api, getAuthToken } from "@/lib/apiClient";
 import type { Database } from "@/types/database";
 
 // Explicit opt-in only: simulated calls NEVER happen silently. Ordinary dials
@@ -131,6 +131,57 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         inboundSessionRef.current = null;
       }
     };
+  }, []);
+
+  // Last-breath flush on tab close. Closing the tab runs NO React cleanup
+  // (the effect above never fires), so without this a closed tab leaves the
+  // agencyCalls row stuck IN_PROGRESS and the number claimed forever.
+  // pagehide + keepalive fetch is the one channel that survives unload:
+  // close the call row (stamping the call-control-id so the Telnyx webhook
+  // can match it later) and release the number. Reconcile is deliberately
+  // skipped here — it can take longer than unload allows; the webhook's
+  // from/to fallback covers the recording attach instead.
+  useEffect(() => {
+    const flushOnHide = () => {
+      try {
+        const token = getAuthToken();
+        if (!token) return;
+        const base = import.meta.env.VITE_API_URL || "";
+        const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+        const hold = holdRef.current;
+        const callId = callLogIdRef.current;
+        if (hold) {
+          holdRef.current = null;
+          try {
+            fetch(`${base}/api/twenty/phones/${hold.phoneId}/release`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ memberId: hold.memberId, callId: callId ?? undefined }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch { /* unload in progress */ }
+        }
+        if (callId) {
+          const ccid = telnyxCallControlIdRef.current;
+          try {
+            fetch(`${base}/api/calls/${callId}`, {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify({
+                status: mapOutcomeToCallStatus(outcomeRef.current),
+                endedAt: new Date().toISOString(),
+                durationSeconds: durationRef.current,
+                ...(ccid ? { telnyxCallId: ccid } : {}),
+              }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch { /* unload in progress */ }
+        }
+      } catch { /* never throw during unload */ }
+    };
+    window.addEventListener("pagehide", flushOnHide);
+    return () => window.removeEventListener("pagehide", flushOnHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Duration timer
