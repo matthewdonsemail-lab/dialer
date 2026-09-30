@@ -4,6 +4,14 @@ One row = one call. The transcript, summary, and rating all live on the
 `agencyCalls` record itself (`docs/diagrams/data-model.mmd`), so the Rating
 column, the call detail page, and Twenty CRM show the same values.
 
+Modules follow `docs/naming-conventions.md`: the analyzer is the repo-owned
+`backend/src/lib/ai/analysis/` (`types.ts` + `index.ts`), the schema
+provisioner lives at
+`backend/src/lib/twenty/objectService/helpers/call-history-setup.ts`, and the
+Telnyx receiver is the route `backend/src/routes/telnyx/webhook/`
+(`POST /api/webhooks/telnyx`). Twenty object names stay verbatim camelCase
+(`agencyCalls`); repo-owned paths stay kebab-case.
+
 ## State machine
 
 `transcriptionStatus`: `NONE` -> `PENDING` (recording saved) -> `READY`
@@ -26,8 +34,8 @@ surfaces keep working.
 
 ## Single key
 
-One OpenAI-compatible key drives everything (`backend/src/lib/ai-analysis.ts`,
-fetch-based, no vendor SDK):
+One OpenAI-compatible key drives everything (`lib/ai/analysis/`, fetch-based,
+no vendor SDK):
 
 - `OPENAI_API_KEY` — required for analysis; without it webhooks still attach
   transcripts but skip analysis, and `/analyze` 500s with a clear message.
@@ -44,9 +52,11 @@ code-fence tolerance.
 ## Webhook parity (local = production)
 
 - Express: `POST /api/webhooks/telnyx?token=<TELNYX_WEBHOOK_TOKEN>`
-  (`backend/src/routes/webhooks/index.ts`), mounted in `backend/src/index.ts`.
+  (`backend/src/routes/telnyx/webhook/index.ts`), mounted in `backend/src/index.ts`.
   Same contract as the serverless receiver: token-gated (401 on mismatch),
   200 on unknown events, 500 only on real errors so Telnyx retries.
+  (The Twenty CRM webhook is a different receiver at `/api/twenty/webhook`
+  with HMAC auth — different sender, different auth.)
 - Vercel: `POST /api/telnyx-webhook?token=` (`frontend/api/telnyx-webhook.ts`)
   with identical recording/transcription/analysis writes.
 - Both share the orphan fallback: when the browser row never got its
@@ -69,8 +79,16 @@ still guards it (409 when actively held, stale reap after
 
 ## Schema provisioning
 
-`POST /api/setup/twenty` provisions the AI fields through
-`backend/src/lib/twenty-call-history-setup.ts` (idempotent): `aiSummary`,
-`aiSentiment`, `aiKeyPoints`, `aiModel` (TEXT), `aiAnalyzedAt` (DATE_TIME),
-`aiScore`, `aiConfidence` (NUMBER). Re-run setup after deploying to add
-them to an existing workspace.
+`POST /api/setup/twenty` provisions the AI fields through the
+`objectService` helper (`lib/twenty/objectService/helpers/call-history-setup.ts`,
+idempotent): `aiSummary`, `aiSentiment`, `aiKeyPoints`, `aiScores`, `aiModel`
+(TEXT), `aiAnalyzedAt` (DATE_TIME), `aiScore`, `aiConfidence` (NUMBER).
+Re-run setup after deploying to add them to an existing workspace.
+
+## Attribution
+
+Authenticated writes (`POST /api/calls`, `PATCH /api/calls/:id`,
+`POST /api/calls/:id/analyze`, phone claim/state/release) inject the
+workspaceMember actor (`resolveActor(req)`), so `createdBy` names the real
+member instead of the API-key actor. Token-gated webhook writes carry no
+actor (no session) and are attributed to the integration.

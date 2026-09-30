@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../../middleware/auth.js";
-import { fetchTwenty } from "../../../lib/twenty-client.js";
-import { createLogger } from "../../../lib/logger.js";
+import { fetchTwenty } from "../../../lib/twenty/client/index.js";
+import { createLogger } from "../../../lib/logger/index.js";
 import type { TwentyObject } from "./types.js";
 import { findTargetObject, extractFieldOptions } from "./helpers/index.js";
 

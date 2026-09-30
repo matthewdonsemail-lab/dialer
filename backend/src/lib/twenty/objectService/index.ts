@@ -1,6 +1,6 @@
-import { createLogger } from "./logger.js";
-import { loadSyncConfig } from "./twenty-client.js";
-import { setupCallHistorySchema } from "./twenty-call-history-setup.js";
+import { createLogger } from "../../logger/index.js";
+import { loadSyncConfig } from "../client/index.js";
+import { setupCallHistorySchema } from "./helpers/call-history-setup.js";
 
 const log = createLogger('twenty-object-service');
 

@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { createLogger } from "../../lib/logger/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
+import { broadcastNewLead, markLeadNotified } from "../../lib/leads/notify/index.js";
 import type { AgencyCampaign, AgencyLead } from "./types.js";
 import { mapLeadToFrontend, frontendStatusToTwenty, getLeadCallCounts } from "./helpers/index.js";
 
@@ -91,10 +93,13 @@ router.post("/", async (req: AuthRequest, res) => {
       source: source,
       note: notes,
       outboundMessage: undefined,
+      // createdById: the member userId when the session resolved to one,
+      // otherwise the legacy email. The Actor below is the authoritative
+      // "created by" stamp Twenty displays.
       createdById: req.twentyUserId,
     };
 
-    const result = await createTwenty<any>('agencyLeads', payload);
+    const result = await createTwenty<any>('agencyLeads', payload, await resolveActor(req));
     const lead = result.data || result;
     
     const mapped = {
@@ -124,6 +129,17 @@ router.post("/", async (req: AuthRequest, res) => {
     };
 
     log.info(`Created lead ${lead.id}`);
+    // Global Bark broadcast to every member with a BARK_KEY.
+    // Fire-and-forget: a push failure must never fail the lead creation.
+    // Mark first so the Twenty webhook (agencyLead.created) dedupes this id.
+    markLeadNotified(String(lead.id));
+    void broadcastNewLead(req, {
+      id: String(lead.id),
+      contactName: fullName || null,
+      company: company || null,
+      phone: phone || null,
+      email: email || null,
+    }).catch((err: any) => log.error(`New-lead broadcast failed: ${err?.message || err}`));
     res.status(201).json(mapped);
   } catch (err: any) {
     log.error("Failed to create lead:", err.message);
@@ -177,7 +193,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
 
     const id = req.params.id as string;
-    const result = await updateTwenty<any>('agencyLeads', id, payload);
+    const result = await updateTwenty<any>('agencyLeads', id, payload, await resolveActor(req));
     const lead = result.data || result;
 
     // Fetch campaigns to resolve campaign types

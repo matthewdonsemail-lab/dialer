@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { twentyClient } from "../../lib/twenty-client.js";
+import { twentyClient } from "../../lib/twenty/client/index.js";
 import type { CallLogsAuthRequest as AuthRequest, CreateCallLogBody } from "./types.js";
 import { buildCallLogPayload } from "./helpers/index.js";
 

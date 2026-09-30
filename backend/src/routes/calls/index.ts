@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwentyAll, createTwenty, updateTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { telnyxClient, telnyxErrorMessage } from "../../lib/telnyx.js";
-import { analyzeCallTranscript, isAiConfigured } from "../../lib/ai-analysis.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwentyAll, createTwenty, updateTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
+import { telnyxClient, telnyxErrorMessage } from "../../lib/telnyx/index.js";
+import { analyzeCallTranscript, isAiConfigured } from "../../lib/ai/analysis/index.js";
+import { createLogger } from "../../lib/logger/index.js";
 import type { AgencyCall } from "./types.js";
 import { mapCall } from "./helpers/index.js";
 
@@ -217,7 +218,7 @@ router.post("/", async (req: AuthRequest, res) => {
     if (agencyProspectId) payload.agencyProspectId = agencyProspectId;
     if (agencyLeadId) payload.agencyLeadId = agencyLeadId;
 
-    const created = await createTwenty<AgencyCall>('agencyCalls', payload);
+    const created = await createTwenty<AgencyCall>('agencyCalls', payload, await resolveActor(req));
     log.info(
       `Call logged: ${created.id} ${payload.direction} ${payload.fromNumber || "?"} -> ${toNumber} ` +
       `status=${payload.status} dur=${payload.durationSeconds}s ` +
@@ -258,7 +259,8 @@ router.patch("/:id", async (req, res) => {
       res.status(400).json({ error: "Nothing to update" });
       return;
     }
-    const updated = await updateTwenty<AgencyCall>('agencyCalls', req.params.id as string, patch);
+    const actor = await resolveActor(req);
+    const updated = await updateTwenty<AgencyCall>('agencyCalls', req.params.id as string, patch, actor);
     res.json(mapCall(updated));
   } catch (err: any) {
     log.error("Failed to update call:", err.message);
@@ -304,7 +306,7 @@ router.post("/:id/analyze", async (req, res) => {
       // Keep legacy summary in sync so old UI surfaces still show something.
       summary: analysis.summary,
     };
-    const updated = await updateTwenty<AgencyCall>('agencyCalls', call.id, patch);
+    const updated = await updateTwenty<AgencyCall>('agencyCalls', call.id, patch, await resolveActor(req));
     log.info(`AI analysis stored: call=${call.id} sentiment=${analysis.sentiment} score=${analysis.score}`);
     res.json({ ok: true, analysis, call: mapCall(updated) });
   } catch (err: any) {

@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useCalls } from "@/hooks/useCallLogs";
+import { useCalls } from "@/hooks/use-call-logs";
 import { Search, Phone, User, AudioLines } from "lucide-react";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
 import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 
 export function CallHistoryPage() {
   const navigate = useNavigate();

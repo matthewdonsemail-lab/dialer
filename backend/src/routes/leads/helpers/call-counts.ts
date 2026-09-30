@@ -1,4 +1,4 @@
-import { listTwentyAll } from "../../../lib/twenty-client.js";
+import { listTwentyAll } from "../../../lib/twenty/client/index.js";
 
 interface AgencyCallLink {
   agencyLeadId?: string;

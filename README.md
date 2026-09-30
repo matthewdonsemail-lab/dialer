@@ -624,6 +624,46 @@ One API rule worth memorising: Twenty writes relation fields as
 `{fieldName}Id`, so a relation declared as `campaignId` is sent as
 `campaignIdId`.
 
+### New-lead phone notifications
+
+<!-- mermaid:bark-new-lead-notify.mmd -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SRC as Lead source<br/>dialer UI, Twenty UI,<br/>CSV import, API
+    participant API as API (Express)
+    participant TW as Twenty CRM
+    participant BARK as Bark server<br/>api.day.app or self-hosted
+    participant APNS as Apple APNs
+    participant IPH as Member iPhone<br/>Bark app installed
+
+    SRC->>API: POST /api/leads {contact, company, phone}
+    API->>TW: POST /rest/agencyLeads
+    TW-->>API: lead row id
+    API->>API: markLeadNotified(id)<br/>10-minute cross-path dedupe
+    API->>API: broadcastNewLead (fire-and-forget)<br/>a push failure never fails the lead
+
+    SRC->>TW: lead created outside the dialer<br/>Twenty UI, CSV, API, workflow
+    TW-->>API: POST /api/twenty/webhooks<br/>{event: agencyLead.created, data}
+    Note over TW,API: token or HMAC gate, non-lead events<br/>ack 2xx and ignore, known ids dedupe-skip
+    API->>TW: GET /rest/agencyLeads/:id<br/>full lead metadata (webhook payload can be partial)
+
+    API->>TW: GET /rest/workspaceMembers
+    TW-->>API: members with barkKey<br/>BARK_KEY metadata field, RICH_TEXT markdown
+    Note over API,TW: members without a BARK_KEY are skipped<br/>their key was never stored on the object
+
+    loop every member that has a BARK_KEY
+        API->>BARK: POST /push {device_key, title, body, url}<br/>url is {FRONTEND_URL}/leads/:leadId
+        BARK->>APNS: push payload
+        APNS-->>IPH: notification appears
+    end
+
+    IPH->>IPH: member taps the notification
+    IPH->>API: open /leads/:leadId<br/>LeadDetailPage, the lead itself, not a list
+```
+
+> Source: [`docs/diagrams/bark-new-lead-notify.mmd`](docs/diagrams/bark-new-lead-notify.mmd).
+
 ### Key status values
 
 `agencyProspects.coldCallStatus`

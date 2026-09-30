@@ -9,6 +9,8 @@ export interface AuthRequest extends Request {
   userRole?: string;
   userEmail?: string;
   userFullName?: string;
+  /** The workspaceMember row this session signed in as (set on new JWTs). */
+  workspaceMemberId?: string | null;
 }
 
 export interface TokenPayload {
@@ -16,6 +18,8 @@ export interface TokenPayload {
   twentyUserId?: string;
   email?: string;
   fullName?: string;
+  /** The workspaceMember id the session resolved to (null for pre-migration JWTs). */
+  workspaceMemberId?: string | null;
 }
 
 export function generateToken(payload: TokenPayload): string {
@@ -36,6 +40,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     req.twentyUserId = payload.twentyUserId;
     req.userEmail = payload.email;
     req.userFullName = payload.fullName;
+    req.workspaceMemberId = payload.workspaceMemberId ?? null;
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });

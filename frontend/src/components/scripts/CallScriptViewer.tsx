@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { X, BookOpen, AlertTriangle } from "lucide-react";
-import { useScripts, Script } from "@/hooks/useScripts";
+import { useScripts, Script } from "@/hooks/use-scripts";
 
 interface CallScriptViewerProps {
   onClose: () => void;

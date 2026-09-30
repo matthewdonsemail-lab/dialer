@@ -1,5 +1,5 @@
-import { setAuthToken } from "@/lib/apiClient";
-import { api } from "@/lib/apiClient";
+import { setAuthToken } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import { clearOperatorSession } from "@/lib/oauth";
 import type { DialerUser } from "@/components/auth/AuthProvider";
 

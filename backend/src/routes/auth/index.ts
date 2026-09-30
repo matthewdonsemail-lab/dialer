@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/logger/index.js";
 import type { DialerMeResponse } from "./types.js";
 
 const router = Router();

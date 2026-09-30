@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Globe, Video, Copy, ExternalLink, MessageSquare, AlertTriangle, Check, Ban, Lock } from "lucide-react";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Badge } from "@/components/ui/Badge";

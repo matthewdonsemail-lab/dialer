@@ -1,5 +1,5 @@
-import { createLogger } from "./logger.js";
-import { loadSyncConfig } from "./twenty-client.js";
+import { createLogger } from "../../../logger/index.js";
+import { loadSyncConfig } from "../../client/index.js";
 
 const log = createLogger('twenty-call-history-setup');
 

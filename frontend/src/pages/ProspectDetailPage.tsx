@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { Softphone } from "@/components/softphone/Softphone";
 import { CallScriptWidget } from "@/components/scripts/CallScriptWidget";
 import { SendWebsiteWidget } from "@/components/website/SendWebsiteWidget";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { StatusSelect } from "@/components/common/StatusSelect";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
@@ -19,7 +19,7 @@ import { CountryBadge } from "@/components/common/CountryBadge";
 import { Spokes } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { useCallsForRecord } from "@/hooks/useCallLogs";
+import { useCallsForRecord } from "@/hooks/use-call-logs";
 import { RatingBadge } from "@/components/calls/CallRating";
 
 interface Prospect {

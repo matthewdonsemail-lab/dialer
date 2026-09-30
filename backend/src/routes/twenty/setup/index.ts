@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../../middleware/auth.js";
-import { setupTwentyCRM } from "../../../lib/twenty-object-service.js";
-import { createLogger } from "../../../lib/logger.js";
+import { setupTwentyCRM } from "../../../lib/twenty/objectService/index.js";
+import { createLogger } from "../../../lib/logger/index.js";
 import type { SetupStatusResponse } from "./types.js";
 
 const router = Router();

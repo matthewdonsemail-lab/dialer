@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
-import { MIN_COLUMN_WIDTH } from "@/hooks/useColumnWidths";
+import { MIN_COLUMN_WIDTH } from "@/hooks/use-column-widths";
 
 /**
  * Twenty-style sortable header cell: the grip is the drag activator (whole

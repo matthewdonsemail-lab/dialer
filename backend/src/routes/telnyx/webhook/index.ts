@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { listTwentyAll, createTwenty, updateTwenty } from "../../lib/twenty-client.js";
-import { analyzeCallTranscript, isAiConfigured } from "../../lib/ai-analysis.js";
-import { createLogger } from "../../lib/logger.js";
-import type { AgencyCall } from "../calls/types.js";
+import { listTwentyAll, createTwenty, updateTwenty } from "../../../lib/twenty/client/index.js";
+import { analyzeCallTranscript, isAiConfigured } from "../../../lib/ai/analysis/index.js";
+import { createLogger } from "../../../lib/logger/index.js";
+import type { AgencyCall } from "../../calls/types.js";
 
 const log = createLogger('telnyx-webhook');
 

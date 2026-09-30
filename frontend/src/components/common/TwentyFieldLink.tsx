@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 
 interface MetaResponse {
   object: { singular: string; plural: string };
