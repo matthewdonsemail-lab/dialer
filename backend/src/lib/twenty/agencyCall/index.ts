@@ -103,9 +103,6 @@ const TEXT_FIELDS = [
   "meetingProvider",
   "meetingBookingId",
   "meetingStatus",
-  "agencyPhoneId",
-  "agencyProspectId",
-  "agencyLeadId",
   "createdByMemberId",
   // AI call analysis (one row = one call; the rating lives on the record).
   // aiSentiment stays TEXT (POSITIVE/NEUTRAL/NEGATIVE/MIXED);
@@ -115,6 +112,19 @@ const TEXT_FIELDS = [
   "aiKeyPoints",
   "aiScores",
   "aiModel",
+];
+
+/**
+ * Relations are NOT created as TEXT. A Twenty relation is declared under its
+ * base name with type RELATION (e.g. `agencyPhone`); REST writes then address
+ * it as `agencyPhoneId`. Declaring a TEXT field literally named
+ * `agencyPhoneId` would shadow the relation with a useless text column, so
+ * these are ensured as relations only, and only when absent.
+ */
+const RELATION_FIELDS = [
+  { name: "agencyPhone", target: "agencyPhone" },
+  { name: "agencyProspect", target: "agencyProspect" },
+  { name: "agencyLead", target: "agencyLead" },
 ];
 
 const DATE_TIME_FIELDS = ["startedAt", "endedAt", "meetingAt", "aiAnalyzedAt"];
@@ -174,6 +184,49 @@ export async function setupCallHistorySchema(): Promise<{
   for (const name of TEXT_FIELDS) await ensure("TEXT", name);
   for (const name of DATE_TIME_FIELDS) await ensure("DATE_TIME", name);
   for (const name of NUMBER_FIELDS) await ensure("NUMBER", name);
+
+  // Relations last: they need the target object to exist, and a relation
+  // field that already exists (every workspace built before this ran has
+  // them) is left exactly as-is.
+  for (const rel of RELATION_FIELDS) {
+    if (existing.has(rel.name)) {
+      fields.push({ name: rel.name, isNew: false });
+      continue;
+    }
+    const targetId = await getObjectId(rel.target);
+    if (!targetId) {
+      log.info(`Skipping relation ${rel.name}: target object ${rel.target} not found`);
+      continue;
+    }
+    try {
+      const data = await metadataMutation<any>(`mutation {
+        createOneField(input: { field: {
+          objectMetadataId: "${objectId}"
+          type: RELATION
+          name: "${rel.name}"
+          label: ${JSON.stringify(labelFor(rel.name))}
+          description: ""
+          isNullable: true
+          settings: { relationType: "MANY_TO_ONE", onDelete: "SET_NULL", joinColumnName: "${rel.name}Id" }
+          relationCreationPayload: {
+            targetObjectMetadataId: "${targetId}"
+            targetFieldLabel: "Name"
+            targetFieldIcon: "IconPhoneCall"
+            type: "MANY_TO_ONE"
+          }
+        } }) { id name }
+      }`);
+      void data;
+      fields.push({ name: rel.name, isNew: true });
+      log.info(`Created relation ${rel.name} on agencyCalls -> ${rel.target}`);
+    } catch (err: any) {
+      if (/already exists|already used by another field/i.test(String(err?.message || ""))) {
+        fields.push({ name: rel.name, isNew: false });
+      } else {
+        throw err;
+      }
+    }
+  }
 
   return { objectId, objectIsNew, fields };
 }

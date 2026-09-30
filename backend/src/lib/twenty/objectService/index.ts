@@ -394,7 +394,7 @@ export async function setupTwentyCRM(): Promise<{
         await createTextField({ objectMetadataId: phonesObj.id, name: f.name, label: f.label });
         results.fields.push({ object: "agencyPhones", name: f.name, isNew: true });
       } catch (err: any) {
-        if (err.message?.includes("already exists")) {
+        if (isFieldExistsError(err)) {
           results.fields.push({ object: "agencyPhones", name: f.name, isNew: false });
         } else {
           throw err;
@@ -411,7 +411,7 @@ export async function setupTwentyCRM(): Promise<{
         await createDateTimeField({ objectMetadataId: phonesObj.id, name: f.name, label: f.label });
         results.fields.push({ object: "agencyPhones", name: f.name, isNew: true });
       } catch (err: any) {
-        if (err.message?.includes("already exists")) {
+        if (isFieldExistsError(err)) {
           results.fields.push({ object: "agencyPhones", name: f.name, isNew: false });
         } else {
           throw err;
@@ -432,7 +432,7 @@ export async function setupTwentyCRM(): Promise<{
       });
       results.fields.push({ object: "agencyPhones", name: "callState", isNew: true });
     } catch (err: any) {
-      if (err.message?.includes("already exists")) {
+      if (isFieldExistsError(err)) {
         results.fields.push({ object: "agencyPhones", name: "callState", isNew: false });
       } else {
         throw err;

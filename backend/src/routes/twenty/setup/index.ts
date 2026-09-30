@@ -80,6 +80,16 @@ router.get("/status", async (_req, res) => {
       { object: "agencyCalls", name: "agencyProspectId" },
       { object: "agencyCalls", name: "createdByMemberId" },
       { object: "agencyCalls", name: "debugLog" },
+      // AI call analysis: written by POST/PATCH /api/calls, so they belong in
+      // the contract. A missing one makes every call write 400.
+      { object: "agencyCalls", name: "aiSummary" },
+      { object: "agencyCalls", name: "aiSentiment" },
+      { object: "agencyCalls", name: "aiScore" },
+      { object: "agencyCalls", name: "aiConfidence" },
+      { object: "agencyCalls", name: "aiKeyPoints" },
+      { object: "agencyCalls", name: "aiScores" },
+      { object: "agencyCalls", name: "aiModel" },
+      { object: "agencyCalls", name: "aiAnalyzedAt" },
     ];
 
     const status: SetupStatusResponse = {
