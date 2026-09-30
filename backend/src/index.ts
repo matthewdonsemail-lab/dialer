@@ -39,6 +39,7 @@ import webhooksRouter from "./routes/telnyx/webhook/index.js";
 import { profilesRouter } from "./routes/profiles/index.js";
 import notifyRouter from "./routes/notify/index.js";
 import { createLogger } from "./lib/logger/index.js";
+import messagesRouter from "./routes/messages/index.js";
 
 const log = createLogger('server');
 const app = express();
@@ -177,6 +178,7 @@ app.use("/api/calls", callsRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/profiles", profilesRouter);
 app.use("/api/notify", notifyRouter);
+app.use("/api/messages", messagesRouter);
 
 /**
  * POST /api/calls/recording

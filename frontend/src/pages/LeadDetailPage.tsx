@@ -1,25 +1,27 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useLead } from "@/hooks/useLeads";
-import { useCallsForRecord } from "@/hooks/useCallLogs";
-import { useUpdateLead, useDeleteLead } from "@/hooks/useLeads";
+import { useLead } from "@/hooks/use-leads";
+import { useCallsForRecord } from "@/hooks/use-call-logs";
+import { RatingBadge } from "@/components/calls/CallRating";
+import { useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { Softphone } from "@/components/softphone/Softphone";
+import { ConversationsWidget } from "@/components/messages/ConversationsWidget";
 import { CallScriptWidget } from "@/components/scripts/CallScriptWidget";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { StatusSelect } from "@/components/common/StatusSelect";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { LeadForm } from "@/components/leads/LeadForm";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
-import { WidgetLayout, WidgetSlot } from "@/components/common/WidgetLayout";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "lucide-react";
 import { Spokes } from "@/components/ui/Spinner";
 import { CountryBadge } from "@/components/common/CountryBadge";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -32,7 +34,7 @@ export function LeadDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const member = user ? { id: user.twentyUserId ?? user.id, email: user.email } : null;
+  const member = user?.memberId ? { id: user.memberId, email: user.email } : null;
   const recentCalls = useCallsForRecord({ leadId: leadId ?? null });
 
   // Default sending number for leads (first ACTIVE row; claim enforced server-side)
@@ -78,6 +80,8 @@ export function LeadDetailPage() {
 
     // Update lead status based on call outcome
     const statusMap: Record<string, string> = {
+      // Media opened but no human confirmed: not yet a contact.
+      connected: "callback",
       answered: "contacted",
       busy: "callback",
       voicemail: "callback",
@@ -167,15 +171,9 @@ export function LeadDetailPage() {
         </>
       }
     >
-      <WidgetLayout storageKey="dialer:layout:lead-detail">
-        {/* Softphone + Call Script + Lead Details */}
-        <WidgetSlot
-          id="softphone"
-          title="Softphone"
-          span={4}
-          lockHide
-          lockHideReason="The phone can't be hidden — hiding it mid-call would drop the call."
-        >
+      <div className="flex flex-col gap-[var(--ods-sp-6)]">
+        {/* Main Dialing Row: Softphone + Call Script + Lead Details */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[var(--ods-sp-6)] items-stretch">
           <Softphone
             lead={lead}
             phoneId={defaultPhoneRow?.id ?? null}
@@ -183,12 +181,8 @@ export function LeadDetailPage() {
             leadId={leadId ?? null}
             onCallEnd={handleCallEnd}
           />
-        </WidgetSlot>
-        <WidgetSlot id="script" title="Call Script" span={4}>
           <CallScriptWidget campaignId={lead.campaign_id ?? null} />
-        </WidgetSlot>
-        <WidgetSlot id="details" title="Lead Details" span={4}>
-          <WidgetCard title="Lead Details" className="h-full">
+          <WidgetCard title="Lead Details">
             <div className="flex flex-col gap-[var(--ods-sp-4)]">
               {/* Status with StatusSelect */}
               <div>
@@ -241,13 +235,10 @@ export function LeadDetailPage() {
                   ["Company", lead.company ?? "—"],
                   ["Phone", lead.phone ?? "—"],
                   ["Email", lead.email ?? "—"],
-                  ["Website", lead.website ?? "—"],
-                  ["Address", lead.address ?? "—"],
-                  ["City", locationLine || "—"],
-                  ["Country", (lead as any).country ?? "—"],
                   ["Calls", String(lead.call_count ?? 0)],
                   ["Last Called", lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : "Never"],
                   ["Created", new Date(lead.created_at).toLocaleDateString()],
+                  ["Updated", new Date(lead.updated_at).toLocaleDateString()],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">
@@ -257,18 +248,35 @@ export function LeadDetailPage() {
                   </div>
                 ))}
               </dl>
+
+              {/* Notes */}
+              {lead.notes && (
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-1">Notes</dt>
+                  <p className="text-[13px] text-[var(--ods-text-secondary)] whitespace-pre-wrap leading-relaxed">{lead.notes}</p>
+                </div>
+              )}
             </div>
           </WidgetCard>
-        </WidgetSlot>
+        </div>
 
-        {/* Notes | Contact Info | Recent Calls */}
-        <WidgetSlot id="notes" title="Notes" span={4}>
-          <WidgetCard title="Notes" className="h-full">
+        {/* SMS Conversations */}
+        <WidgetCard title="Conversations">
+          <ConversationsWidget
+            leadId={leadId ?? null}
+            toPhone={lead.phone ?? ""}
+            personName={`${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim()}
+          />
+        </WidgetCard>
+
+        {/* Bottom Row: Notes | Contact Info | Recent Calls */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[var(--ods-sp-6)]">
+          <WidgetCard title="Notes">
             <p className="text-[13px] text-[var(--ods-text-secondary)] whitespace-pre-wrap">
               {lead.notes ?? "No notes yet"}
             </p>
           </WidgetCard>
-          <WidgetCard title="Contact Info" className="h-full">
+          <WidgetCard title="Contact Info">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-[var(--ods-sp-3)]">
               {lead.phone && (
                 <div className="flex items-center gap-2 text-[13px]">
@@ -304,10 +312,8 @@ export function LeadDetailPage() {
               )}
             </div>
           </WidgetCard>
-        </WidgetSlot>
-          {recentCalls && recentCalls.length > 0 && (
-            <WidgetSlot id="recent-calls" title="Recent Calls" span={4}>
-              <WidgetCard title="Recent Calls" className="h-full">
+          <WidgetCard title="Recent Calls">
+            {recentCalls && recentCalls.length > 0 ? (
               <div className="flex flex-col gap-[var(--ods-sp-3)]">
                 {recentCalls.slice(0, 5).map((call) => (
                   <div key={call.id} className="border-l-2 border-[var(--ods-brand-300)] pl-3 py-2">
@@ -315,6 +321,20 @@ export function LeadDetailPage() {
                       <StatusBadge status={call.status ?? "unknown"} />
                       <span className="text-[11px] text-[var(--ods-text-tertiary)]">{call.durationSeconds}s</span>
                     </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <RatingBadge sentiment={call.aiSentiment} score={call.aiScore} />
+                      <button
+                        onClick={() => navigate(`/history/${call.id}`)}
+                        className="text-[11px] text-[var(--ods-brand-600)] hover:underline"
+                      >
+                        View details
+                      </button>
+                    </div>
+                    {(call.aiSummary || call.summary) && (
+                      <p className="text-[12px] text-[var(--ods-text-secondary)] mt-1 line-clamp-2">
+                        {call.aiSummary ?? call.summary}
+                      </p>
+                    )}
                     {(call.telnyxRecordingId || call.recordingUrl) && (
                       <a
                         href={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}
@@ -331,10 +351,12 @@ export function LeadDetailPage() {
                   </div>
                 ))}
               </div>
-            </WidgetCard>
-          </WidgetSlot>
-          )}
-      </WidgetLayout>
+            ) : (
+              <p className="text-[13px] text-[var(--ods-text-tertiary)] italic">No calls yet</p>
+            )}
+          </WidgetCard>
+        </div>
+      </div>
 
       {showDeleteConfirm && (
         <ConfirmDialog
@@ -348,9 +370,27 @@ export function LeadDetailPage() {
         />
       )}
 
-      {/* NOTE: `showEdit` opens nothing yet — same pre-existing gap as before this pass.
-          This is a functional/data-wiring issue (no edit form + unknown useUpdateLead
-          payload shape), not a styling one, so it's flagged here rather than guessed at. */}
+      {showEdit && (
+        <LeadForm
+          initialData={lead as any}
+          onClose={() => setShowEdit(false)}
+          onSubmit={async (data) => {
+            try {
+              await updateLeadMutation.mutateAsync({
+                id: lead.id,
+                ...data,
+              } as any);
+              success("Lead updated", `${data.first_name} ${data.last_name} has been updated`);
+              setShowEdit(false);
+            } catch {
+              toastError("Error", "Failed to update the lead");
+              // Re-throw so LeadForm keeps the modal open on failure
+              // instead of closing it while the update did not persist.
+              throw new Error("Failed to update the lead");
+            }
+          }}
+        />
+      )}
     </PageCanvas>
   );
 }

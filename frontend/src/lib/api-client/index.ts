@@ -187,6 +187,20 @@ export const api = {
       request<{ ok: boolean; analysis: any; call: any }>(`/api/calls/${id}/analyze`, { method: "POST" }),
   },
 
+  messages: {
+    list: (params: { prospectId?: string; leadId?: string }) => {
+      const q = new URLSearchParams();
+      if (params.prospectId) q.set("prospectId", params.prospectId);
+      if (params.leadId) q.set("leadId", params.leadId);
+      return request<any[]>(`/api/messages?${q.toString()}`);
+    },
+    send: (data: { prospectId?: string; leadId?: string; to: string; fromPhoneId?: string; from?: string; body: string }) =>
+      request<{ sent: any; resolution: any; message: any }>(`/api/messages/send`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+  },
+
   twentyMeta: {
     fields: (objectName: string) =>
       request<{

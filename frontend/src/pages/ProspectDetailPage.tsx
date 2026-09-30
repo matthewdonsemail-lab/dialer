@@ -1,26 +1,27 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { Softphone } from "@/components/softphone/Softphone";
+import { ConversationsWidget } from "@/components/messages/ConversationsWidget";
 import { CallScriptWidget } from "@/components/scripts/CallScriptWidget";
 import { SendWebsiteWidget } from "@/components/website/SendWebsiteWidget";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { StatusSelect } from "@/components/common/StatusSelect";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
-import { WidgetLayout, WidgetSlot } from "@/components/common/WidgetLayout";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
-import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin, Star, CheckCircle, XCircle, ExternalLink } from "lucide-react";
 import { CountryBadge } from "@/components/common/CountryBadge";
 import { Spokes } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { useCallsForRecord } from "@/hooks/useCallLogs";
+import { useCallsForRecord } from "@/hooks/use-call-logs";
+import { RatingBadge } from "@/components/calls/CallRating";
 
 interface Prospect {
   id: string;
@@ -70,7 +71,7 @@ export function ProspectDetailPage() {
   const [editingData, setEditingData] = useState<Partial<Prospect>>({});
   const [agencyFromNumber, setAgencyFromNumber] = useState("");
   const { user } = useAuth();
-  const member = user ? { id: user.twentyUserId ?? user.id, email: user.email } : null;
+  const member = user?.memberId ? { id: user.memberId, email: user.email } : null;
 
   // Resolve the selected sending number to its agencyPhones row (for claiming).
   // Shared ["twentyPhones"] cache with the widget: holder state stays live.
@@ -146,6 +147,8 @@ export function ProspectDetailPage() {
 
     // Update prospect status based on call outcome
     const statusMap: Record<string, string> = {
+      // Media opened but no human confirmed: not yet a contact.
+      connected: "callback",
       answered: "contacted",
       busy: "callback",
       voicemail: "callback",
@@ -231,15 +234,9 @@ export function ProspectDetailPage() {
         </>
       }
     >
-      <WidgetLayout storageKey="dialer:layout:prospect-detail">
-        {/* Softphone + Call Script + Prospect Details */}
-        <WidgetSlot
-          id="softphone"
-          title="Softphone"
-          span={4}
-          lockHide
-          lockHideReason="The phone can't be hidden — hiding it mid-call would drop the call."
-        >
+      <div className="flex flex-col gap-[var(--ods-sp-6)]">
+        {/* Main Dialing Row: Softphone + Call Script + Prospect Details */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[var(--ods-sp-6)] items-start">
           <Softphone
             lead={prospect as any}
             callerId={agencyFromNumber || undefined}
@@ -248,11 +245,7 @@ export function ProspectDetailPage() {
             prospectId={prospectId ?? null}
             onCallEnd={handleCallEnd}
           />
-        </WidgetSlot>
-        <WidgetSlot id="script" title="Call Script" span={4}>
           <CallScriptWidget campaignId={prospect?.campaign_id ?? null} />
-        </WidgetSlot>
-        <WidgetSlot id="details" title="Prospect Details" span={4}>
           <WidgetCard title="Prospect Details" className="h-[460px]">
             <div className="flex flex-col gap-[var(--ods-sp-4)] h-full overflow-y-auto pr-1">
               {/* Status with StatusSelect */}
@@ -281,13 +274,53 @@ export function ProspectDetailPage() {
                 )}
               </div>
 
-              {/* Industry Badge */}
-              {prospect.source && (
+              {/* Niche / Industry */}
+              {(prospect.niche || prospect.label) && (
                 <div>
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-2">
-                    Industry
+                    Industry / Niche
                   </dt>
-                  <Badge variant="indigo">{prospect.source}</Badge>
+                  <div className="flex flex-wrap gap-1">
+                    {prospect.niche && <Badge variant="indigo">{prospect.niche}</Badge>}
+                    {prospect.label && prospect.label !== prospect.niche && <Badge variant="purple">{prospect.label}</Badge>}
+                  </div>
+                </div>
+              )}
+
+              {/* Outbound State */}
+              {prospect.outboundState && (
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-2">
+                    Outbound State
+                  </dt>
+                  <Badge variant="amber">{prospect.outboundState}</Badge>
+                  {prospect.outboundLabel && (
+                    <span className="ml-2 text-[11px] text-[var(--ods-text-secondary)]">{prospect.outboundLabel}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Video Status */}
+              {prospect.videoStatus && (
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-2">
+                    Video Status
+                  </dt>
+                  <Badge variant={prospect.videoStatus === 'READY' ? 'green' : prospect.videoStatus === 'ERROR' ? 'red' : 'gray'}>
+                    {prospect.videoStatus}
+                  </Badge>
+                </div>
+              )}
+
+              {/* WhatsApp Status */}
+              {(prospect as any).whatsappStatus && (
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-2">
+                    WhatsApp
+                  </dt>
+                  <Badge variant={(prospect as any).whatsappValidated ? 'green' : 'gray'}>
+                    {(prospect as any).whatsappStatus}
+                  </Badge>
                 </div>
               )}
 
@@ -302,10 +335,41 @@ export function ProspectDetailPage() {
               )}
 
               <dl className="flex flex-col gap-[var(--ods-sp-3)]">
+                {/* Phone with validity badge */}
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Phone</dt>
+                  <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5 flex items-center gap-1.5">
+                    {prospect.phone ?? "—"}
+                    {(prospect as any).phoneValid === true && (
+                      <span title="Phone validated" className="flex items-center gap-0.5 text-[11px] text-emerald-600 font-medium">
+                        <CheckCircle className="w-3 h-3" /> Valid
+                      </span>
+                    )}
+                    {(prospect as any).phoneValid === false && (
+                      <span title="Phone invalid" className="flex items-center gap-0.5 text-[11px] text-red-500 font-medium">
+                        <XCircle className="w-3 h-3" /> Invalid
+                      </span>
+                    )}
+                  </dd>
+                </div>
+
+                {/* Rating & Reviews */}
+                {(prospect.rating != null || prospect.reviewCount != null) && (
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Rating</dt>
+                    <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5 flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                      <span className="font-medium">{prospect.rating != null ? Number(prospect.rating).toFixed(1) : "—"}</span>
+                      {prospect.reviewCount != null && (
+                        <span className="text-[var(--ods-text-secondary)]">({prospect.reviewCount} reviews)</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
+
                 {[
-                  ["Company", prospect.company ?? "—"],
-                  ["Phone", prospect.phone ?? "—"],
                   ["Email", prospect.email ?? "—"],
+                  ["Company", prospect.company ?? "—"],
                   ["City", prospect.city ?? "—"],
                   ["State", prospect.state ?? "—"],
                   ["Country", prospect.country ?? "—"],
@@ -318,24 +382,58 @@ export function ProspectDetailPage() {
                     <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5">{value as string}</dd>
                   </div>
                 ))}
+
+                {/* Website */}
+                {prospect.website && (
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Website</dt>
+                    <dd className="text-[13px] mt-0.5">
+                      <a href={prospect.website} target="_blank" rel="noopener noreferrer" className="text-[var(--ods-brand-600)] hover:underline flex items-center gap-1">
+                        <Globe className="w-3 h-3" />{prospect.website}
+                      </a>
+                    </dd>
+                  </div>
+                )}
+
+                {/* GHL Webhook URL */}
+                {(prospect as any).ghlWebhookUrl && (
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">GHL Webhook</dt>
+                    <dd className="text-[13px] mt-0.5">
+                      <a href={(prospect as any).ghlWebhookUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--ods-brand-600)] hover:underline flex items-center gap-1 truncate">
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{(prospect as any).ghlWebhookUrl}</span>
+                      </a>
+                    </dd>
+                  </div>
+                )}
+
+                {/* Google Reviews URL */}
+                {(prospect as any).googleReviewsUrl && (
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Google Reviews</dt>
+                    <dd className="text-[13px] mt-0.5">
+                      <a href={(prospect as any).googleReviewsUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--ods-brand-600)] hover:underline flex items-center gap-1 truncate">
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{(prospect as any).googleReviewsUrl}</span>
+                      </a>
+                    </dd>
+                  </div>
+                )}
               </dl>
             </div>
           </WidgetCard>
-        </WidgetSlot>
+        </div>
 
-        {/* Send Website: video status + template/offer links + SMS composer */}
-        <WidgetSlot id="website" title="Send Website" span={12}>
-          <SendWebsiteWidget
-            prospect={prospect}
-            fromNumber={agencyFromNumber}
-            onFromChange={setAgencyFromNumber}
-          />
-        </WidgetSlot>
+        {/* Send Website Row: video status + template/offer links + SMS composer */}
+        <SendWebsiteWidget
+          prospect={prospect}
+          fromNumber={agencyFromNumber}
+          onFromChange={setAgencyFromNumber}
+        />
 
-        {/* Recent Calls (agencyCalls: server-side Telnyx recordings via webhook) */}
-        {prospectCalls.length > 0 && (
-          <WidgetSlot id="recent-calls" title="Recent Calls" span={12}>
-            <WidgetCard title="Recent Calls">
+        <WidgetCard title="Recent Calls">
+          {prospectCalls.length > 0 ? (
             <div className="flex flex-col gap-[var(--ods-sp-3)]">
               {prospectCalls.slice(0, 5).map((call) => (
                 <div key={call.id} className="border-l-2 border-[var(--ods-brand-300)] pl-3 py-2">
@@ -343,6 +441,20 @@ export function ProspectDetailPage() {
                     <StatusBadge status={call.status ?? "unknown"} />
                     <span className="text-[11px] text-[var(--ods-text-tertiary)]">{call.durationSeconds}s</span>
                   </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <RatingBadge sentiment={call.aiSentiment} score={call.aiScore} />
+                    <button
+                      onClick={() => navigate(`/history/${call.id}`)}
+                      className="text-[11px] text-[var(--ods-brand-600)] hover:underline"
+                    >
+                      View details
+                    </button>
+                  </div>
+                  {(call.aiSummary || call.summary) && (
+                    <p className="text-[12px] text-[var(--ods-text-secondary)] mt-1 line-clamp-2">
+                      {call.aiSummary ?? call.summary}
+                    </p>
+                  )}
                   <div className="flex items-center gap-3 mt-1">
                     {call.telnyxRecordingId && (
                       <a
@@ -374,18 +486,28 @@ export function ProspectDetailPage() {
                 </div>
               ))}
             </div>
-          </WidgetCard>
-        </WidgetSlot>
-        )}
+          ) : (
+            <p className="text-[13px] text-[var(--ods-text-tertiary)] italic">No calls yet</p>
+          )}
+        </WidgetCard>
 
-        {/* Notes | Contact Info */}
-        <WidgetSlot id="notes" title="Notes" span={6}>
-          <WidgetCard title="Notes" className="h-full">
+        {/* SMS Conversations */}
+        <WidgetCard title="Conversations">
+          <ConversationsWidget
+            prospectId={prospectId ?? null}
+            toPhone={prospect.phone ?? ""}
+            personName={`${prospect.first_name ?? ""} ${prospect.last_name ?? ""}`.trim()}
+          />
+        </WidgetCard>
+
+        {/* Bottom Row: Notes | Contact Info */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-[var(--ods-sp-6)]">
+          <WidgetCard title="Notes">
             <p className="text-[13px] text-[var(--ods-text-secondary)] whitespace-pre-wrap">
               {prospect.notes ?? "No notes yet"}
             </p>
           </WidgetCard>
-          <WidgetCard title="Contact Info" className="h-full">
+          <WidgetCard title="Contact Info">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-[var(--ods-sp-3)]">
               {prospect.phone && (
                 <div className="flex items-center gap-2 text-[13px]">
@@ -421,8 +543,8 @@ export function ProspectDetailPage() {
               )}
             </div>
           </WidgetCard>
-        </WidgetSlot>
-      </WidgetLayout>
+        </div>
+      </div>
 
       <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Edit Prospect">
         <div className="flex flex-col gap-[var(--ods-sp-4)]">
