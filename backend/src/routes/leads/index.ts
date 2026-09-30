@@ -3,7 +3,7 @@ import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
 import { createLogger } from "../../lib/logger.js";
 import type { AgencyCampaign, AgencyLead } from "./types.js";
-import { mapLeadToFrontend, frontendStatusToTwenty } from "./helpers/index.js";
+import { mapLeadToFrontend, frontendStatusToTwenty, getLeadCallCounts } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -24,7 +24,10 @@ router.get("/", async (_req, res) => {
       // Campaign lookup is best-effort; proceed without it
     }
 
-    const mapped = leads.map(lead => mapLeadToFrontend(lead, campaignMap));
+    // Real per-lead call counts in one fetch (best-effort; see helper)
+    const callCounts = await getLeadCallCounts();
+
+    const mapped = leads.map(lead => mapLeadToFrontend(lead, campaignMap, callCounts.get(lead.id) ?? 0));
 
     log.info(`Returning ${mapped.length} leads`);
     res.json(mapped);
@@ -49,7 +52,7 @@ router.get("/:id", async (req, res) => {
       // Campaign lookup is best-effort; proceed without it
     }
 
-    const mapped = mapLeadToFrontend(lead, campaignMap);
+    const mapped = mapLeadToFrontend(lead, campaignMap, (await getLeadCallCounts()).get(lead.id) ?? 0);
 
     res.json(mapped);
   } catch (err: any) {
@@ -187,7 +190,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
 
     // Return mapped response
-    const mapped = mapLeadToFrontend(lead, campaignMap);
+    const mapped = mapLeadToFrontend(lead, campaignMap, (await getLeadCallCounts()).get(lead.id) ?? 0);
 
     log.info(`Updated lead ${lead.id}`);
     res.json(mapped);
