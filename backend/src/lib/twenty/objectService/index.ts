@@ -20,7 +20,7 @@ export function isFieldExistsError(err: any): boolean {
  */
 async function graphqlMutation<T = any>(mutation: string): Promise<T> {
   const cfg = loadSyncConfig();
-  const url = `${cfg.twentyBaseUrl}/graphql`;
+  const url = `${cfg.twentyBaseUrl}/metadata`;
 
   log.info(`GraphQL mutation to ${url}`);
 
@@ -117,7 +117,9 @@ export async function createSelectField(params: {
   description?: string;
   options: Array<{ label: string; value: string; color: string }>;
 }): Promise<{ id: string }> {
-  const optionsJson = JSON.stringify(params.options).replace(/"/g, '\\"');
+  // Options as GraphQL object literals (not escaped JSON — backslashes are
+  // a syntax error in a GraphQL document and abort setup re-runs).
+  const optionsGql = `[${params.options.map((o, idx) => `{ label: "${o.label}", value: "${o.value}", color: "${o.color}", position: ${idx} }`).join(', ')}]`;
   
   const mutation = `
     mutation {
@@ -129,7 +131,7 @@ export async function createSelectField(params: {
           label: "${params.label}"
           description: "${params.description || ''}"
           isNullable: true
-          options: ${optionsJson}
+          options: ${optionsGql}
         }
       }) {
         id
@@ -325,7 +327,7 @@ export async function setupTwentyCRM(): Promise<{
       });
       results.fields.push({ object: "agencyScripts", name: "campaignId", isNew: true });
     } catch (err: any) {
-      if (err.message?.includes("already exists")) {
+      if (isFieldExistsError(err)) {
         results.fields.push({ object: "agencyScripts", name: "campaignId", isNew: false });
       } else {
         throw err;
@@ -369,7 +371,7 @@ export async function setupTwentyCRM(): Promise<{
         results.fields.push({ object: "agencyProspects", name: field.name, isNew: true });
       } catch (err: any) {
         // Field may already exist
-        if (err.message?.includes("already exists")) {
+        if (isFieldExistsError(err)) {
           results.fields.push({ object: "agencyProspects", name: field.name, isNew: false });
         } else {
           throw err;
@@ -414,7 +416,7 @@ export async function setupTwentyCRM(): Promise<{
         });
         results.fields.push({ object: "agencyCampaigns", name: field.name, isNew: true });
       } catch (err: any) {
-        if (err.message?.includes("already exists")) {
+        if (isFieldExistsError(err)) {
           results.fields.push({ object: "agencyCampaigns", name: field.name, isNew: false });
         } else {
           throw err;

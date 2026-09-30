@@ -5,7 +5,7 @@ import { createLogger } from "../../lib/logger/index.js";
 import { resolveActor } from "../../lib/twenty/actor/index.js";
 import { broadcastNewLead, markLeadNotified } from "../../lib/leads/notify/index.js";
 import type { AgencyCampaign, AgencyLead } from "./types.js";
-import { mapLeadToFrontend, frontendStatusToTwenty } from "./helpers/index.js";
+import { mapLeadToFrontend, frontendStatusToTwenty, toTwentyPhone, toTwentyEmail, getLeadCallCounts } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -26,7 +26,10 @@ router.get("/", async (_req, res) => {
       // Campaign lookup is best-effort; proceed without it
     }
 
-    const mapped = leads.map(lead => mapLeadToFrontend(lead, campaignMap));
+    // Real per-lead call counts in one fetch (best-effort; see helper)
+    const callCounts = await getLeadCallCounts();
+
+    const mapped = leads.map(lead => mapLeadToFrontend(lead, campaignMap, callCounts.get(lead.id) ?? 0));
 
     log.info(`Returning ${mapped.length} leads`);
     res.json(mapped);
@@ -51,7 +54,7 @@ router.get("/:id", async (req, res) => {
       // Campaign lookup is best-effort; proceed without it
     }
 
-    const mapped = mapLeadToFrontend(lead, campaignMap);
+    const mapped = mapLeadToFrontend(lead, campaignMap, (await getLeadCallCounts()).get(lead.id) ?? 0);
 
     res.json(mapped);
   } catch (err: any) {
@@ -77,13 +80,8 @@ router.post("/", async (req: AuthRequest, res) => {
     
     const payload = {
       contactName: fullName,
-      email: email,
-      phone: phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined,
+      email: toTwentyEmail(email),
+      phone: toTwentyPhone(phone),
       company: company,
       status: coldCallStatus === "DO_NOT_CONTACT" ? "LOST" : "NEW",
       coldCallStatus,
@@ -114,7 +112,7 @@ router.post("/", async (req: AuthRequest, res) => {
       status: coldCallStatus === "DO_NOT_CONTACT" ? "not_interested" : "new",
       source,
       campaign_id: campaign_id,
-      assigned_to: req.twentyUserId,
+      assigned_to: req.workspaceMemberId ?? req.twentyUserId,
       tags: tags ? JSON.stringify(tags) : null,
       notes,
       dnc: Boolean(dnc),
@@ -162,15 +160,16 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
     
     if (company !== undefined) payload.company = company;
+    // Empty phone/email means "no value": omit the key so Twenty keeps its
+    // validated state instead of rejecting an empty composite.
     if (phone !== undefined) {
-      payload.phone = phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined;
+      const twentyPhone = toTwentyPhone(phone);
+      if (twentyPhone !== undefined) payload.phone = twentyPhone;
     }
-    if (email !== undefined) payload.email = email;
+    if (email !== undefined) {
+      const twentyEmail = toTwentyEmail(email);
+      if (twentyEmail !== undefined) payload.email = twentyEmail;
+    }
     if (notes !== undefined) payload.note = notes;
     if (source !== undefined) payload.source = source;
 
@@ -203,7 +202,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
 
     // Return mapped response
-    const mapped = mapLeadToFrontend(lead, campaignMap);
+    const mapped = mapLeadToFrontend(lead, campaignMap, (await getLeadCallCounts()).get(lead.id) ?? 0);
 
     log.info(`Updated lead ${lead.id}`);
     res.json(mapped);
