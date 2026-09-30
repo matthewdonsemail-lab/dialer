@@ -105,37 +105,48 @@ function emailsFromClaims(claims: Record<string, unknown>): string[] {
 }
 
 /**
- * Map a live token to its workspaceMember.
+ * Map a live Twenty token to its workspaceMember.
  *
- * Signals, cheapest and most authoritative first:
- *   1. `sub` as a workspaceMember record id  (exact, survives an email change)
- *   2. `sub` as the member's `userId`       (a user can hold several members)
- *   3. any email-shaped claim -> member by userEmail
- *
- * There is no fabricated fallback: a token that maps to nobody is an error, not
- * an "operator@twenty" session. That fake identity is what made the sidebar lie
- * and then failed every member-scoped route with a 401.
+ * Twenty application access tokens use the application id as `sub`, so
+ * introspection.sub must not be treated as the human identity. After
+ * introspection proves the token is active, read the authenticated user's
+ * identity from the JWT and resolve it against workspaceMembers.
  */
 async function resolveOperatorIdentity(
   introspection: Introspection,
+  accessToken: string,
 ): Promise<ResolvedIdentity> {
-  const sub = introspection.sub?.trim() || null;
-  const emails = emailsFromClaims(introspection.claims ?? {});
-
-  if (sub) {
-    const byMemberId = await findWorkspaceMember({ workspaceMemberId: sub });
-    if (byMemberId) return identityFrom(byMemberId, "sub:memberId");
-
-    const byUserId = await findWorkspaceMember({ userId: sub });
-    if (byUserId) return identityFrom(byUserId, "sub:userId");
+  let claims: TwentyAccessTokenClaims;
+  try {
+    claims = decodeJwtPayload<TwentyAccessTokenClaims>(accessToken);
+  } catch {
+    throw new UnresolvedMemberError([
+      ...Object.keys(introspection.claims ?? {}).sort(),
+      "token.userId",
+      "token.userWorkspaceId",
+    ]);
   }
 
-  for (const email of emails) {
+  if (claims.userWorkspaceId) {
+    const byMemberId = await findWorkspaceMember({ workspaceMemberId: claims.userWorkspaceId });
+    if (byMemberId) return identityFrom(byMemberId, "jwt:userWorkspaceId");
+  }
+
+  if (claims.userId) {
+    const byUserId = await findWorkspaceMember({ userId: claims.userId });
+    if (byUserId) return identityFrom(byUserId, "jwt:userId");
+  }
+
+  for (const email of emailsFromClaims(introspection.claims ?? {})) {
     const byEmail = await findWorkspaceMember({ email });
     if (byEmail) return identityFrom(byEmail, "claim:email");
   }
 
-  throw new UnresolvedMemberError(Object.keys(introspection.claims ?? {}).sort());
+  throw new UnresolvedMemberError([
+    ...Object.keys(introspection.claims ?? {}).sort(),
+    "token.userId",
+    "token.userWorkspaceId",
+  ]);
 }
 
 function identityFrom(member: WorkspaceMemberRecord, via: string): ResolvedIdentity {
