@@ -75,9 +75,9 @@ router.get("/status", async (_req, res) => {
       { object: "agencyCalls", name: "endedAt" },
       { object: "agencyCalls", name: "durationSeconds" },
       { object: "agencyCalls", name: "telnyxCallId" },
-      { object: "agencyCalls", name: "agencyPhoneId" },
-      { object: "agencyCalls", name: "agencyLeadId" },
-      { object: "agencyCalls", name: "agencyProspectId" },
+      { object: "agencyCalls", name: "agencyPhone" },
+      { object: "agencyCalls", name: "agencyLead" },
+      { object: "agencyCalls", name: "agencyProspect" },
       { object: "agencyCalls", name: "createdByMemberId" },
       { object: "agencyCalls", name: "debugLog" },
       // AI call analysis: written by POST/PATCH /api/calls, so they belong in
