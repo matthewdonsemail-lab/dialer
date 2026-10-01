@@ -1,11 +1,9 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
+import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
 import { twentyClient } from "../../lib/twenty/client/index.js";
 
-interface AuthRequest extends Request {
-  user?: { id: string; email: string };
-}
-
 const router = Router();
+router.use(authMiddleware);
 
 // List all profiles
 router.get("/", async (req: AuthRequest, res: Response) => {

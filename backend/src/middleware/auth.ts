@@ -1,7 +1,24 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "cold-dialer-dev-secret-change-in-production";
+// Evaluated lazily (not at import time): this module is imported before
+// index.ts runs dotenv.config(), so reading the env at module top would
+// always see an empty environment and refuse to boot.
+let cachedSecret: string | null = null;
+
+function getJwtSecret(): string {
+  if (!cachedSecret) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        "JWT_SECRET must be set to a random value of at least 32 characters. " +
+        "Refusing to boot with an insecure default."
+      );
+    }
+    cachedSecret = secret;
+  }
+  return cachedSecret;
+}
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -27,7 +44,7 @@ export interface TokenPayload {
 }
 
 export function generateToken(payload: TokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "24h" });
 }
 
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
@@ -39,7 +56,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
 
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const payload = jwt.verify(token, getJwtSecret()) as TokenPayload;
     req.userId = payload.userId;
     req.twentyUserId = payload.twentyUserId;
     req.userEmail = payload.email;

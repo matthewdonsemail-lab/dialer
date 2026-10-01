@@ -17,7 +17,11 @@ if (result.error) {
 
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
+import { randomUUID } from "crypto";
 import { getRequestListener } from "@hono/node-server";
+import { authMiddleware } from "./middleware/auth.js";
 import { oauthApp } from "./routes/twenty/oauth/index.js";
 import { loadOAuthConfig } from "./lib/twenty/oauth/index.js";
 import authRoutes from "./routes/auth/index.js";
@@ -60,7 +64,44 @@ const upload = multer({
   },
 });
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(helmet());
+
+// CORS allowlist: the deployed frontend origin plus local dev servers.
+// Reflecting arbitrary origins with credentials would let any hijacked
+// site call authenticated APIs.
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL || "",
+  "http://localhost:5173",
+  "http://localhost:5174",
+].filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Origin not allowed"));
+    }
+  },
+  credentials: true,
+}));
+
+// Disallowed origins get a clean 403 JSON instead of Express's default
+// 500 HTML error page. Scoped to the CORS origin error only — every other
+// error delegates to the default handler unchanged.
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err?.message === "Origin not allowed") {
+    res.status(403).json({ error: "Origin not allowed" });
+    return;
+  }
+  next(err);
+});
+
+// Abuse tiers: general API traffic, sensitive auth/upload paths, and the
+// unauthenticated network probe each get their own budget.
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300 });
+const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
+const probeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+app.use("/api/", generalLimiter);
 
 // Hono owns /api/oauth (Twenty PKCE). Mounted before express.json() — the
 // node-server listener reads the raw request stream, which body parsing
@@ -98,7 +139,7 @@ const NETCHECK_ALLOW = new Map<string, number[]>([
   ["rtc.telnyx.com", [443]],
 ]);
 
-app.get("/api/netcheck", (req, res) => {
+app.get("/api/netcheck", probeLimiter, (req, res) => {
   const host = String(req.query.host || "");
   const port = Number(req.query.port || 0);
   const allowed = NETCHECK_ALLOW.get(host) || [];
@@ -118,7 +159,7 @@ app.get("/api/netcheck", (req, res) => {
   socket.once("error", (err: any) => done(false, err?.message || "connect failed"));
 });
 
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", sensitiveLimiter, authRoutes);
 app.use("/api/leads", leadsRoutes);
 app.use("/api/prospects", prospectsRoutes);
 app.use("/api/campaigns", campaignsRoutes);
@@ -139,21 +180,27 @@ app.use("/api/notify", notifyRouter);
 
 /**
  * POST /api/calls/recording
- * Accept and store call recording uploads
+ * Accept and store call recording uploads (authenticated agents only)
  */
-app.post("/api/calls/recording", upload.single("recording"), async (req, res) => {
+app.post("/api/calls/recording", authMiddleware, sensitiveLimiter, upload.single("recording"), async (req, res) => {
   try {
-    const file = req.file;
+    const file = (req as any).file;
     const { leadId, callId } = req.body;
 
     if (!file) {
       return res.status(400).json({ error: "No recording file provided" });
     }
 
-    // Generate unique filename
-    const timestamp = Date.now();
-    const extension = path.extname(file.originalname) || ".webm";
-    const filename = `${timestamp}-${timestamp}-${extension}`;
+    // Audio extension allowlist (in addition to the multer mimetype check):
+    // the extension comes from the uploader and must not be trusted blindly.
+    const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".webm"]);
+    const extension = path.extname(file.originalname).toLowerCase() || ".webm";
+    if (!AUDIO_EXTENSIONS.has(extension)) {
+      return res.status(400).json({ error: "Unsupported audio format" });
+    }
+
+    // Unpredictable uuid filename (timestamp names are enumerable/guessable).
+    const filename = `${randomUUID()}${extension}`;
     const filePath = path.join(RECORDINGS_DIR, filename);
 
     // Save file
@@ -178,10 +225,19 @@ app.post("/api/calls/recording", upload.single("recording"), async (req, res) =>
 
 /**
  * GET /api/calls/recordings/:filename
- * Serve stored recordings
+ * Serve stored recordings (authenticated agents only)
  */
-app.get("/api/calls/recordings/:filename", (req, res) => {
-  const filename = req.params.filename;
+app.get("/api/calls/recordings/:filename", authMiddleware, (req, res) => {
+  const filename = String(req.params.filename || "");
+  // Containment: reject traversal/absolute segments and anything outside
+  // the recordings directory before touching the filesystem.
+  if (
+    !filename ||
+    filename !== path.basename(filename) ||
+    !path.resolve(RECORDINGS_DIR, filename).startsWith(path.resolve(RECORDINGS_DIR) + path.sep)
+  ) {
+    return res.status(400).json({ error: "Invalid recording filename" });
+  }
   const filePath = path.join(RECORDINGS_DIR, filename);
 
   if (!fs.existsSync(filePath)) {
