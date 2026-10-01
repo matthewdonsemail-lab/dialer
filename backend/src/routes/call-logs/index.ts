@@ -1,9 +1,11 @@
 import { Router, Response } from "express";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { twentyClient } from "../../lib/twenty/client/index.js";
-import type { CallLogsAuthRequest as AuthRequest, CreateCallLogBody } from "./types.js";
+import type { CreateCallLogBody } from "./types.js";
 import { buildCallLogPayload } from "./helpers/index.js";
 
 const router = Router();
+router.use(authMiddleware);
 
 // List all call logs
 router.get("/", async (req: AuthRequest, res: Response) => {
