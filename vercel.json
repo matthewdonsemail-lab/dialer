@@ -6,7 +6,7 @@
     },
     "backend": {
       "root": "backend",
-      "buildCommand": "npm run build",
+      "buildCommand": "bun run --cwd .. build:shared && bun run build",
       "entrypoint": "dist/server.mjs"
     }
   },
