@@ -419,25 +419,13 @@ export function ProspectPage() {
   }
 
   async function handleSyncFromTwenty() {
+    // No sync endpoint exists (reads are live from Twenty) — refetch instead.
     setSyncing(true);
     try {
-      const token = localStorage.getItem("cold-dialer-token");
-      const res = await fetch("/api/sync/inbound", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      
-      if (!res.ok) {
-        throw new Error(`Sync failed (${res.status}): ${await res.text()}`);
-      }
-      
       await queryClient.invalidateQueries({ queryKey: ["prospects"] });
-      success("Sync complete", "Prospects synced from Twenty");
+      success("Sync complete", "Prospects refreshed from Twenty");
     } catch (err: any) {
-      toastError("Erreur de sync", err.message || "Impossible de synchroniser");
+      toastError("Sync error", err.message || "Failed to sync");
     } finally {
       setSyncing(false);
     }
