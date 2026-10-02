@@ -6,8 +6,8 @@
     },
     "backend": {
       "root": "backend",
-      "buildCommand": "bun run --cwd .. build:shared && bun run build",
-      "entrypoint": "dist/server.mjs"
+      "framework": "express",
+      "buildCommand": "bun run --cwd .. build:shared && bun run build"
     }
   },
   "rewrites": [
