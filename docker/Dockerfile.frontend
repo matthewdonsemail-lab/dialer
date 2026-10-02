@@ -1,10 +1,12 @@
 # Build stage
 FROM node:20-alpine AS builder
 WORKDIR /app
+COPY packages/shared/ ./packages/shared/
+RUN cd packages/shared && npm install --no-audit --no-fund && npm run build
 COPY frontend/package*.json ./frontend/
-RUN cd frontend && npm ci
+RUN cd frontend && npm install --no-audit --no-fund
 COPY frontend/ ./frontend/
-RUN cd frontend && npm run build
+RUN cd frontend && npm rebuild esbuild && npm run build
 
 # Production stage
 FROM nginx:alpine

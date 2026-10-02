@@ -1,8 +1,11 @@
 FROM node:20-alpine
 WORKDIR /app
-COPY backend/package*.json ./
-RUN npm ci
-COPY backend/ .
-RUN npm run build
+COPY packages/shared/ ./packages/shared/
+RUN cd packages/shared && npm install --no-audit --no-fund && npm run build
+COPY backend/package*.json ./backend/
+RUN cd backend && npm install --no-audit --no-fund
+COPY backend/ ./backend/
+RUN cd backend && npm rebuild esbuild && npm run build
 EXPOSE 4000
-CMD ["node", "dist/index.js"]
+WORKDIR /app/backend
+CMD ["node", "dist/server.mjs"]
