@@ -1,11 +1,25 @@
-FROM node:20-alpine
+# Build stage (bun, matching the repo toolchain and CI)
+FROM oven/bun:1 AS builder
 WORKDIR /app
+COPY package.json bun.lock ./
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
+COPY packages/shared/package.json ./packages/shared/
+RUN bun install --frozen-lockfile || bun install
 COPY packages/shared/ ./packages/shared/
-RUN cd packages/shared && npm install --no-audit --no-fund && npm run build
-COPY backend/package*.json ./backend/
-RUN cd backend && npm install --no-audit --no-fund
 COPY backend/ ./backend/
-RUN cd backend && npm rebuild esbuild && npm run build
+RUN bun run build:shared
+RUN cd backend && bun run build
+
+# Runtime stage (node, matching the app's node runtime)
+FROM node:20-slim
+WORKDIR /app
+COPY package.json ./
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
+COPY packages/shared/package.json ./packages/shared/
+RUN npm install --omit=dev --no-audit --no-fund
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/backend/dist ./backend/dist
 EXPOSE 4000
-WORKDIR /app/backend
-CMD ["node", "dist/server.mjs"]
+CMD ["node", "backend/dist/server.mjs"]

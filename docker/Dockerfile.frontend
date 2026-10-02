@@ -1,12 +1,15 @@
-# Build stage
-FROM node:20-alpine AS builder
+# Build stage (bun, matching the repo toolchain and CI)
+FROM oven/bun:1 AS builder
 WORKDIR /app
+COPY package.json bun.lock ./
+COPY frontend/package.json frontend/bun.lock ./frontend/
+COPY backend/package.json ./backend/
+COPY packages/shared/package.json ./packages/shared/
+RUN bun install --frozen-lockfile || bun install
 COPY packages/shared/ ./packages/shared/
-RUN cd packages/shared && npm install --no-audit --no-fund && npm run build
-COPY frontend/package*.json ./frontend/
-RUN cd frontend && npm install --no-audit --no-fund
 COPY frontend/ ./frontend/
-RUN cd frontend && npm rebuild esbuild && npm run build
+RUN bun run build:shared
+RUN cd frontend && bun run build
 
 # Production stage
 FROM nginx:alpine

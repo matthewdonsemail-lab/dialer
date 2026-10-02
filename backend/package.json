@@ -9,7 +9,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@dialer/shared": "file:../packages/shared",
+    "@dialer/shared": "*",
     "@hono/node-server": "^1.13.7",
     "@types/dotenv": "^6.1.1",
     "cors": "^2.8.5",
