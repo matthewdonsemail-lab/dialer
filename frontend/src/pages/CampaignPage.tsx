@@ -4,8 +4,8 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { ColumnVisibilityDropdown, ColumnDef } from "@/components/common/ColumnVisibilityDropdown";
 import { Spokes } from "@/components/ui/Spinner";
-import { api } from "@/lib/apiClient";
-import { mapCampaignStatusOptions } from "@/lib/twentyOptions";
+import { api } from "@/lib/api-client";
+import { mapCampaignStatusOptions } from "@/lib/twenty/options";
 import { Plus, Search, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
@@ -126,21 +126,11 @@ export function CampaignPage() {
   }
 
   async function handleSyncFromTwenty() {
+    // No sync endpoint exists (reads are live from Twenty) — refetch instead.
     setSyncing(true);
     try {
-      const token = localStorage.getItem("cold-dialer-token");
-      const res = await fetch("/api/sync/campaigns", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        throw new Error(`Sync failed (${res.status}): ${await res.text()}`);
-      }
       await queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      success("Sync complete", "Campaigns synced from Twenty");
+      success("Sync complete", "Campaigns refreshed from Twenty");
     } catch (err: any) {
       toastError("Sync error", err.message || "Failed to sync");
     } finally {

@@ -10,9 +10,19 @@ venv/
 .env
 .env.local
 .env.*.local
+# Bare env dumps: ad-hoc `env.txt` / `NOKIA/frontend/env.txt` style secret
+# files. They are NOT covered by `.env*` and would otherwise be swept in by
+# `git add -A`. Never commit these.
+env.txt
+**/env.txt
 *.pem
 *.key
 temp_login.json
+# HTTP Archive files: browser/devtools HAR exports record every request and
+# response header, so they capture Authorization and Cookie values verbatim.
+# Treat them as secrets; never commit.
+*.har
+**/*.har
 
 # Build & dist
 dist/

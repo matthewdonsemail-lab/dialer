@@ -74,7 +74,7 @@ export function frontendStatusToTwenty(status: string | undefined, dnc: unknown)
 }
 
 /** AgencyLead -> frontend lead shape. Pure. */
-export function mapLeadToFrontend(lead: AgencyLead, campaignMap: Record<string, string> = {}) {
+export function mapLeadToFrontend(lead: AgencyLead, campaignMap: Record<string, string> = {}, callCount = 0) {
   const fullName = lead.name || lead.contactName || "";
   const parts = fullName.split(" ");
   const status = twentyStatusToFrontend(lead);
@@ -93,13 +93,13 @@ export function mapLeadToFrontend(lead: AgencyLead, campaignMap: Record<string, 
     status,
     source: lead.source,
     campaign_id: lead.campaignIdId || undefined,
-    campaign_type: lead.createdById ? (campaignMap[lead.createdById] || undefined) : undefined,
+    campaign_type: lead.campaignIdId ? (campaignMap[lead.campaignIdId] || undefined) : undefined,
     assigned_to: lead.createdById,
     tags: null,
     notes: lead.note,
     dnc: status === "not_interested" || status === "converted",
     last_called_at: null,
-    call_count: 0,
+    call_count: callCount,
     sync_id: lead.outboundMessage,
     created_at: lead.createdAt || new Date().toISOString(),
     updated_at: lead.updatedAt || new Date().toISOString(),

@@ -1,14 +1,26 @@
-import { createLogger } from "./logger.js";
-import { loadSyncConfig } from "./twenty-client.js";
+import { createLogger } from "../../logger/index.js";
+import { loadSyncConfig } from "../client/index.js";
+import { setupCallHistorySchema } from "../agencyCall/index.js";
 
 const log = createLogger('twenty-object-service');
+
+/**
+ * Twenty reports name collisions several ways depending on version/path
+ * ("already exists" vs METADATA_VALIDATION_FAILED/NOT_AVAILABLE "already
+ * used by another field"). All mean the same for idempotent setup: the
+ * field is there, record isNew:false and continue. Pure string match.
+ */
+export function isFieldExistsError(err: any): boolean {
+  const msg = String(err?.message || "");
+  return /already exists|already used by another field/i.test(msg);
+}
 
 /**
  * Execute a GraphQL mutation against Twenty's metadata API
  */
 async function graphqlMutation<T = any>(mutation: string): Promise<T> {
   const cfg = loadSyncConfig();
-  const url = `${cfg.twentyBaseUrl}/graphql`;
+  const url = `${cfg.twentyBaseUrl}/metadata`;
 
   log.info(`GraphQL mutation to ${url}`);
 
@@ -54,7 +66,7 @@ export async function getObjectByName(objectName: string): Promise<any> {
   `;
 
   const data = await graphqlMutation<{ objects: { edges: { node: any }[] } }>(query);
-  return data.objects.edges.find((e: { node: any }) => 
+  return data.objects.edges.find((e: { node: any }) =>
     e.node.nameSingular === objectName || e.node.namePlural === objectName
   )?.node;
 }
@@ -91,8 +103,9 @@ export async function createObject(params: {
   `;
 
   const result = await graphqlMutation(mutation);
-  log.info(`Created object: ${result.object.nameSingular}`);
-  return { id: result.object.id };
+  const createdObj = result.createOneObject || result.object;
+  log.info(`Created object: ${createdObj?.nameSingular}`);
+  return { id: createdObj?.id };
 }
 
 /**
@@ -105,7 +118,9 @@ export async function createSelectField(params: {
   description?: string;
   options: Array<{ label: string; value: string; color: string }>;
 }): Promise<{ id: string }> {
-  const optionsJson = JSON.stringify(params.options).replace(/"/g, '\\"');
+  // Options as GraphQL object literals (not escaped JSON — backslashes are
+  // a syntax error in a GraphQL document and abort setup re-runs).
+  const optionsGql = `[${params.options.map((o, idx) => `{ label: "${o.label}", value: "${o.value}", color: "${o.color}", position: ${idx} }`).join(', ')}]`;
   
   const mutation = `
     mutation {
@@ -117,7 +132,7 @@ export async function createSelectField(params: {
           label: "${params.label}"
           description: "${params.description || ''}"
           isNullable: true
-          options: ${optionsJson}
+          options: ${optionsGql}
         }
       }) {
         id
@@ -127,8 +142,9 @@ export async function createSelectField(params: {
   `;
 
   const result = await graphqlMutation(mutation);
+  const createdField = result.createOneField || result.field;
   log.info(`Created field ${params.name} on object ${params.objectMetadataId}`);
-  return { id: result.field.id };
+  return { id: createdField?.id };
 }
 
 /**
@@ -159,8 +175,42 @@ export async function createTextField(params: {
   `;
 
   const result = await graphqlMutation(mutation);
+  const createdField = result.createOneField || result.field;
   log.info(`Created field ${params.name} on object ${params.objectMetadataId}`);
-  return { id: result.field.id };
+  return { id: createdField?.id };
+}
+
+/**
+ * Create a DATE_TIME field
+ */
+export async function createDateTimeField(params: {
+  objectMetadataId: string;
+  name: string;
+  label: string;
+  description?: string;
+}): Promise<{ id: string }> {
+  const mutation = `
+    mutation {
+      createOneField(input: {
+        field: {
+          objectMetadataId: "${params.objectMetadataId}"
+          type: DATE_TIME
+          name: "${params.name}"
+          label: "${params.label}"
+          description: "${params.description || ''}"
+          isNullable: true
+        }
+      }) {
+        id
+        name
+      }
+    }
+  `;
+
+  const result = await graphqlMutation(mutation);
+  const createdField = result.createOneField || result.field;
+  log.info(`Created date_time field ${params.name} on object ${params.objectMetadataId}`);
+  return { id: createdField?.id };
 }
 
 /**
@@ -190,8 +240,8 @@ export async function createRelationField(params: {
           }
           relationCreationPayload: {
             targetObjectMetadataId: "${params.relatedObjectMetadataId}"
-            targetFieldLabel: "Name"
-            targetFieldIcon: "IconBuildingSkyscraper"
+            targetFieldLabel: "Scripts"
+            targetFieldIcon: "IconFileText"
             type: "MANY_TO_ONE"
           }
         }
@@ -203,8 +253,9 @@ export async function createRelationField(params: {
   `;
 
   const result = await graphqlMutation(mutation);
+  const createdField = result.createOneField || result.field;
   log.info(`Created relation field ${params.name} on object ${params.objectMetadataId}`);
-  return { id: result.createOneField.id };
+  return { id: createdField?.id };
 }
 
 /**
@@ -219,7 +270,7 @@ export async function getOrCreateObject(params: {
   icon?: string;
 }): Promise<{ id: string; isNew: boolean }> {
   const existing = await getObjectByName(params.nameSingular);
-  
+
   if (existing) {
     log.info(`Object ${params.nameSingular} already exists with id: ${existing.id}`);
     return { id: existing.id, isNew: false };
@@ -252,6 +303,22 @@ export async function setupTwentyCRM(): Promise<{
       icon: "IconBuildingSkyscraper",
     });
     results.objects.push({ name: "agencyProspects", id: prospectsObj.id, isNew: prospectsObj.isNew });
+
+    // 1a. Member attribution field on agencyProspects (server-derived creator).
+    try {
+      await createTextField({
+        objectMetadataId: prospectsObj.id,
+        name: "createdByMemberId",
+        label: "Created By Member ID",
+      });
+      results.fields.push({ object: "agencyProspects", name: "createdByMemberId", isNew: true });
+    } catch (err: any) {
+      if (isFieldExistsError(err)) {
+        results.fields.push({ object: "agencyProspects", name: "createdByMemberId", isNew: false });
+      } else {
+        throw err;
+      }
+    }
 
     // 2. Create agencyLeads object
     const leadsObj = await getOrCreateObject({
@@ -297,21 +364,89 @@ export async function setupTwentyCRM(): Promise<{
       });
       results.fields.push({ object: "agencyScripts", name: "campaignId", isNew: true });
     } catch (err: any) {
-      if (err.message?.includes("already exists")) {
+      if (isFieldExistsError(err)) {
         results.fields.push({ object: "agencyScripts", name: "campaignId", isNew: false });
       } else {
         throw err;
       }
     }
 
-    // 5. Create SELECT fields for agencyProspects
+    // 5. Create agencyPhones object
+    const phonesObj = await getOrCreateObject({
+      nameSingular: "agencyPhone",
+      namePlural: "agencyPhones",
+      labelSingular: "Agency Phone",
+      labelPlural: "Agency Phones",
+      description: "Agency pool phone numbers",
+      icon: "IconPhoneCall",
+    });
+    results.objects.push({ name: "agencyPhones", id: phonesObj.id, isNew: phonesObj.isNew });
+
+    // 5a. Create custom fields for agencyPhones
+    const phoneTextFields = [
+      { name: "phoneNumber", label: "Phone Number" },
+      { name: "claimedByMemberId", label: "Claimed By Member ID" },
+      { name: "claimedByEmail", label: "Claimed By Email" },
+      { name: "currentCallId", label: "Current Call ID" },
+    ];
+    for (const f of phoneTextFields) {
+      try {
+        await createTextField({ objectMetadataId: phonesObj.id, name: f.name, label: f.label });
+        results.fields.push({ object: "agencyPhones", name: f.name, isNew: true });
+      } catch (err: any) {
+        if (isFieldExistsError(err)) {
+          results.fields.push({ object: "agencyPhones", name: f.name, isNew: false });
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const phoneDateTimeFields = [
+      { name: "claimedAt", label: "Claimed At" },
+      { name: "lastHeartbeatAt", label: "Last Heartbeat At" },
+    ];
+    for (const f of phoneDateTimeFields) {
+      try {
+        await createDateTimeField({ objectMetadataId: phonesObj.id, name: f.name, label: f.label });
+        results.fields.push({ object: "agencyPhones", name: f.name, isNew: true });
+      } catch (err: any) {
+        if (isFieldExistsError(err)) {
+          results.fields.push({ object: "agencyPhones", name: f.name, isNew: false });
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    try {
+      await createSelectField({
+        objectMetadataId: phonesObj.id,
+        name: "callState",
+        label: "Call State",
+        options: [
+          { label: "Idle", value: "IDLE", color: "gray" },
+          { label: "Dialing", value: "DIALING", color: "amber" },
+          { label: "Active", value: "ACTIVE", color: "green" },
+        ],
+      });
+      results.fields.push({ object: "agencyPhones", name: "callState", isNew: true });
+    } catch (err: any) {
+      if (isFieldExistsError(err)) {
+        results.fields.push({ object: "agencyPhones", name: "callState", isNew: false });
+      } else {
+        throw err;
+      }
+    }
+
+    // 6. Create SELECT fields for agencyProspects
     const prospectFields = [
       {
         name: "coldCallStatus",
         label: "Cold Call Status",
         options: [
           { label: "New", value: "NEW", color: "blue" },
-          { label: "Contacted", value: "CONTACTED", color: "emerald" },
+          { label: "Contacted", value: "CONTACTED", color: "green" },
           { label: "Interested", value: "INTERESTED", color: "green" },
           { label: "Not Interested", value: "NOT_INTERESTED", color: "red" },
           { label: "Callback", value: "CALLBACK", color: "amber" },
@@ -324,7 +459,7 @@ export async function setupTwentyCRM(): Promise<{
         label: "UTM Source",
         options: [
           { label: "Outbound", value: "OUTBOUND", color: "blue" },
-          { label: "Inbound", value: "INBOUND", color: "emerald" },
+          { label: "Inbound", value: "INBOUND", color: "green" },
           { label: "Blended", value: "BLENDED", color: "purple" },
         ],
       },
@@ -341,7 +476,7 @@ export async function setupTwentyCRM(): Promise<{
         results.fields.push({ object: "agencyProspects", name: field.name, isNew: true });
       } catch (err: any) {
         // Field may already exist
-        if (err.message?.includes("already exists")) {
+        if (isFieldExistsError(err)) {
           results.fields.push({ object: "agencyProspects", name: field.name, isNew: false });
         } else {
           throw err;
@@ -365,12 +500,12 @@ export async function setupTwentyCRM(): Promise<{
         label: "Campaign Type",
         options: [
           { label: "Outbound", value: "OUTBOUND", color: "blue" },
-          { label: "Inbound", value: "INBOUND", color: "emerald" },
+          { label: "Inbound", value: "INBOUND", color: "green" },
           { label: "Blended", value: "BLENDED", color: "purple" },
           { label: "Referral", value: "REFERRAL", color: "amber" },
-          { label: "Cold Call", value: "COLD_CALL", color: "rose" },
+          { label: "Cold Call", value: "COLD_CALL", color: "red" },
           { label: "Website", value: "WEBSITE", color: "cyan" },
-          { label: "Twenty Import", value: "TWENTY_IMPORT", color: "slate" },
+          { label: "Twenty Import", value: "TWENTY_IMPORT", color: "gray" },
           { label: "Other", value: "OTHER", color: "gray" },
         ],
       },
@@ -386,12 +521,20 @@ export async function setupTwentyCRM(): Promise<{
         });
         results.fields.push({ object: "agencyCampaigns", name: field.name, isNew: true });
       } catch (err: any) {
-        if (err.message?.includes("already exists")) {
+        if (isFieldExistsError(err)) {
           results.fields.push({ object: "agencyCampaigns", name: field.name, isNew: false });
         } else {
           throw err;
         }
       }
+    }
+
+    // 7. Create agencyCalls object + call-history fields (call log persistence,
+    // including the own-field member attribution column).
+    const callsSchema = await setupCallHistorySchema();
+    results.objects.push({ name: "agencyCalls", id: callsSchema.objectId, isNew: callsSchema.objectIsNew });
+    for (const f of callsSchema.fields) {
+      results.fields.push({ object: "agencyCalls", name: f.name, isNew: f.isNew });
     }
 
     log.info(`Setup completed. Created ${results.objects.length} objects and ${results.fields.length} fields.`);

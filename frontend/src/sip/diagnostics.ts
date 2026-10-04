@@ -176,17 +176,30 @@ export interface SipReport {
   events: SipEvent[];
 }
 
-/** Snapshot everything (config redacted — no password) for clipboard or server log. */
+/** Snapshot everything (credentials redacted — never persisted) for clipboard or server log. */
 export function getReport(
-  sipConfig: { uri: string; wsUrl: string; callerId: string; provider: string },
+  sipConfig: { uri: string; wsUrl: string; callerId: string; provider: string; password?: string },
   failure: ClassifiedFailure,
   telnyxCallControlId: string | null,
 ): SipReport {
+  // Allowlist only: the caller passes the full SipConfig (which includes the
+  // SIP password), but persistence must never see it. The URI userinfo is the
+  // auth username, so only the domain is kept for debuggability.
+  const { uri, wsUrl, callerId, provider } = sipConfig;
   return {
     generatedAt: new Date().toISOString(),
-    sipConfig: { ...sipConfig },
+    sipConfig: { uri: redactSipUri(uri), wsUrl, callerId, provider },
     failure,
     telnyxCallControlId,
     events: [...events],
   };
+}
+
+/** Keep only the host portion of a `sip:user@host` URI (the user is auth material). Pure. */
+export function redactSipUri(uri: string): string {
+  const at = uri.lastIndexOf("@");
+  if (at < 0) return uri;
+  const schemeEnd = uri.indexOf(":");
+  const scheme = schemeEnd >= 0 && schemeEnd < at ? uri.slice(0, schemeEnd + 1) : "";
+  return `${scheme}***@${uri.slice(at + 1)}`;
 }

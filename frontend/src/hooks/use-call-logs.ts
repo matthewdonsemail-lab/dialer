@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import type { Database } from "@/types/database";
 
 type CallLog = Database["public"]["Tables"]["call_logs"]["Row"];
@@ -53,6 +53,14 @@ export interface AgencyCallRecord {
   transcript: string | null;
   transcriptionStatus: string | null;
   summary: string | null;
+  aiSummary: string | null;
+  aiSentiment: string | null;
+  aiScore: number | null;
+  aiKeyPoints: string | null;
+  aiScores: string | null;
+  aiConfidence: number | null;
+  aiModel: string | null;
+  aiAnalyzedAt: string | null;
   meetingUrl: string | null;
   meetingProvider: string | null;
   meetingAt: string | null;

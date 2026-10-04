@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { createLogger } from "../../lib/logger/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
 import type { AgencyProspect, AgencyCampaign, IndustryRouting } from "./types.js";
 import {
   selectValue,
@@ -10,6 +11,7 @@ import {
   mapProspectDetail,
   mapProspectUpdateResult,
   frontendStatusToTwenty,
+  normalizeRequiredProspectFields,
 } from "./helpers/index.js";
 
 const router = Router();
@@ -108,24 +110,44 @@ router.post("/", async (req: AuthRequest, res) => {
 
     log.info(`Creating prospect: ${fullName}`);
 
-    const payload = {
+    // agencyProspect is shared with the offer funnel, whose NOT NULL contract
+    // (website, geo, niche, label, slug) the manual-entry form cannot always
+    // satisfy. Normalize rather than relax the object, so the funnel's
+    // workflows keep working.
+    const normalized = normalizeRequiredProspectFields({
       name: fullName,
-      phone: phone,
-      email: email,
-      website: website,
-      fullAddress: fullAddress || undefined,
-      city: city,
+      phone,
+      email,
+      website,
+      fullAddress,
+      city,
       region: state,
-      country: "US",
-      niche: source || "general",
+      source,
+      now: Date.now(),
+    });
+    if (normalized.missing.length > 0) {
+      res.status(400).json({
+        error:
+          normalized.missing.includes("phone")
+            ? "A prospect needs a phone number - there is nothing to call without one."
+            : "A prospect needs a city - the campaign routes on geography.",
+        missing: normalized.missing,
+      });
+      return;
+    }
+
+    const payload = {
+      ...normalized.payload,
       rating: 0,
       reviewCount: 0,
       externalId: undefined,
       outboundState: tags?.[0],
       coldCallStatus,
+      // Own-field member attribution (omitted for legacy/fallback sessions).
+      ...(req.workspaceMemberId ? { createdByMemberId: req.workspaceMemberId } : {}),
     };
 
-    const result = await createTwenty<any>('agencyProspects', payload);
+    const result = await createTwenty<any>('agencyProspects', payload, await resolveActor(req));
     const prospect = result.data || result;
 
     const mapped = {
@@ -152,6 +174,16 @@ router.post("/", async (req: AuthRequest, res) => {
     log.info(`Created prospect ${prospect.id}`);
     res.status(201).json(mapped);
   } catch (err: any) {
+    // website and slug carry UNIQUE indexes, so re-adding a business the funnel
+    // already knows about is a real outcome, not a server fault.
+    if (/duplicate entry|unique constraint/i.test(String(err?.message || ""))) {
+      log.info(`Prospect create rejected as duplicate: ${err.message}`);
+      res.status(409).json({
+        error: "A prospect with that website already exists.",
+        conflict: "website",
+      });
+      return;
+    }
     log.error("Failed to create prospect:", err.message);
     res.status(500).json({ error: "Failed to create prospect in Twenty", details: err.message });
   }
@@ -203,7 +235,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
 
     const id = req.params.id as string;
-    const result = await updateTwenty<any>('agencyProspects', id, payload);
+    const result = await updateTwenty<any>('agencyProspects', id, payload, await resolveActor(req));
     const prospect = result.data || result;
 
     const mapped = mapProspectUpdateResult(prospect);
@@ -361,7 +393,7 @@ router.post("/:id/website-sent", async (req: AuthRequest, res) => {
       const current = await getTwenty<AgencyProspect>('agencyProspects', id);
       const currentLabel = selectValue(current.outboundLabel);
       if (!currentLabel || ["NEEDS_ENRICHMENT", "NEEDS_VIDEO", "READY_FOR_SMS"].includes(currentLabel)) {
-        await updateTwenty('agencyProspects', id, { outboundLabel: "SMS_IN_PROGRESS" });
+        await updateTwenty('agencyProspects', id, { outboundLabel: "SMS_IN_PROGRESS" }, await resolveActor(req));
         advancedLabel = "SMS_IN_PROGRESS";
       }
     } catch (err: any) {

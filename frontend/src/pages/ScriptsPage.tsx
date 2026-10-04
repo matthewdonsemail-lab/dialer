@@ -5,9 +5,9 @@ import { Badge } from "@/components/ui/Badge";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { StatusSelect } from "@/components/common/StatusSelect";
-import { api } from "@/lib/apiClient";
-import { useScripts, Script } from "@/hooks/useScripts";
-import { useCreateScript, useDeleteScript, useUpdateScript } from "@/hooks/useScripts";
+import { api } from "@/lib/api-client";
+import { useScripts, Script } from "@/hooks/use-scripts";
+import { useCreateScript, useDeleteScript, useUpdateScript } from "@/hooks/use-scripts";
 
 interface Campaign {
   id: string;

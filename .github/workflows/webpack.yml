@@ -13,6 +13,7 @@ jobs:
     strategy:
       matrix:
         node-version: [18.x, 20.x, 22.x]
+      fail-fast: false
 
     steps:
     - uses: actions/checkout@v4
@@ -22,7 +23,18 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
 
-    - name: Build
-      run: |
-        npm install
-        npx webpack
+    - uses: oven-sh/setup-bun@v2
+
+    - name: Install dependencies
+      run: bun install --frozen-lockfile
+
+    - name: Build shared workspace
+      run: bun run build:shared
+
+    - name: TypeScript check (backend)
+      working-directory: backend
+      run: npx tsc --noEmit
+
+    - name: TypeScript check (frontend)
+      working-directory: frontend
+      run: npx tsc --noEmit

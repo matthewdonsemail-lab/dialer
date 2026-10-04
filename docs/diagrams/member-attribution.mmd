@@ -1,0 +1,66 @@
+%% Dialer - member identity and record attribution
+%% How a signed-in operator becomes a named workspaceMember on every Twenty
+%% record the dialer writes, and the claim heartbeat that is bound to that
+%% same member. Two attribution channels are written side by side.
+%% -
+%% Implemented in the following files (see each for the exact route):
+%%   backend/src/routes/twenty/oauth/index.ts   session -> member resolution
+%%   backend/src/middleware/auth.ts             member on req, requireMember guard
+%%   backend/src/lib/twenty/actor/index.ts      native createdBy Actor
+%%   backend/src/lib/twenty/workspaceMember/    member lookup by id/userId/email
+%%   backend/src/routes/calls/index.ts           agencyCalls write
+%%   backend/src/routes/leads/index.ts           agencyLeads write
+%%   backend/src/routes/prospects/index.ts       agencyProspects write
+%%   backend/src/routes/twenty/phones/index.ts   claim/heartbeat/state/release
+%% -
+%% DEPENDENCY (important): every field written below must exist on the
+%% Twenty object or the REST call 400s. The migration lives in
+%% backend/src/lib/twenty/objectService/index.ts (setupTwentyCRM) and
+%% backend/src/lib/twenty/agencyCall/index.ts (setupCallHistorySchema).
+%% GET /api/setup/twenty/status reports what is still missing.
+
+flowchart TB
+    subgraph twenty ["Twenty (identity provider + system of record)"]
+        wm["workspaceMember<br/>the signed-in human<br/>id, userId, userEmail, name"]
+        actor["createdBy Actor<br/>system actor, source API<br/>SETTABLE via REST"]
+        own["createdByMemberId<br/>own TEXT field on the object<br/>queryable UUID, SETTABLE"]
+        beat["agencyPhone.lastHeartbeatAt<br/>DATE_TIME, SETTABLE"]
+    end
+
+    subgraph auth ["Identity (backend)"]
+        sess["POST /api/oauth/session<br/>introspect token -> resolve member"]
+        jwt["dialer JWT<br/>workspaceMemberId, memberName"]
+        mw["authMiddleware<br/>req.workspaceMemberId, req.memberName"]
+        guard["requireMember()<br/>401 when the session has no member"]
+    end
+
+    subgraph writes ["Attribution on write"]
+        calls["POST /api/calls<br/>createdBy Actor + createdByMemberId"]
+        leads["POST /api/leads<br/>createdById, assigned_to"]
+        pro["POST /api/prospects<br/>createdBy Actor + createdByMemberId"]
+    end
+
+    subgraph claim ["Number claim lifecycle (same member)"]
+        hb["POST /phones/:id/heartbeat<br/>every 3s, holder only"]
+        rel["POST /phones/:id/release<br/>holder only, or force"]
+    end
+
+    twenty -->|"introspect sub / username"| sess
+    sess --> wm
+    wm -->|"resolved row"| sess
+    sess --> jwt --> mw --> guard
+    guard -->|"member id is server-derived,<br/>never taken from the request body"| calls
+    guard --> leads
+    guard --> pro
+    guard --> hb
+    guard --> rel
+
+    calls --> actor
+    calls --> own
+    pro --> own
+    pro --> actor
+    hb --> beat
+    rel --> beat
+
+    note1["updatedBy is NOT settable.<br/>Twenty recomputes it from the<br/>authenticated caller, so it stays<br/>the API actor. Read createdBy."]
+    actor -.- note1
