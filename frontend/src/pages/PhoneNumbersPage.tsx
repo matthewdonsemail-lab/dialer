@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Phone, MapPin, Building, Globe } from "lucide-react";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
 
@@ -36,6 +36,14 @@ export function PhoneNumbersPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Single canonical agency number: all dialing derives from this row.
+  const { data: primary } = useQuery<{ phone: { id: string } | null }>({
+    queryKey: ["primaryPhone"],
+    queryFn: async () => api.twentyPhones.primary(),
+    staleTime: 60_000,
+  });
+  const primaryId = (primary as any)?.phone?.id ?? null;
 
   const filtered = useMemo(() => {
     if (!phones) return [];
@@ -121,6 +129,11 @@ export function PhoneNumbersPage() {
                   <div className="flex items-center gap-2">
                     <Phone className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
                     <span className="text-[13px] font-mono text-[var(--ods-text-primary)]">{phone.phoneNumber}</span>
+                    {primaryId === phone.id && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[4px] border border-[var(--ods-brand-500)] text-[var(--ods-brand-600)]">
+                        Primary
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-3 text-[13px] text-[var(--ods-text-secondary)]">{phone.provider}</td>

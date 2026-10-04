@@ -1,12 +1,23 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { api, getAuthToken } from "@/lib/apiClient";
+import { api, getAuthToken } from "@/lib/api-client";
 
 export interface DialerUser {
   id: string;
   email: string;
   fullName: string | null;
   role: string;
+  /**
+   * The core."user" id of the signed-in person. NOT a member id - never send
+   * this as `memberId`, the backend rejects it against the workspace member.
+   */
   twentyUserId?: string;
+  /**
+   * The workspaceMember row id - the only identity the backend accepts in a
+   * `memberId` body field. Null for a session minted before member resolution
+   * existed; the backend answers 401 in that case, so send nothing rather than
+   * a wrong id.
+   */
+  memberId?: string | null;
   /** Present so Layout's `user_metadata?.full_name` access keeps working. */
   user_metadata: { full_name: string | null };
 }
@@ -31,6 +42,7 @@ function toDialerUser(raw: any): DialerUser {
     fullName,
     role: raw?.role ?? "agent",
     twentyUserId: raw?.twentyUserId,
+    memberId: raw?.workspaceMemberId ?? raw?.member?.id ?? null,
     user_metadata: { full_name: fullName },
   };
 }

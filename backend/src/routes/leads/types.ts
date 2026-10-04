@@ -7,8 +7,11 @@ export interface AgencyLead {
   id: string;
   name?: string;
   contactName?: string;
-  email?: string;
-  phone?: {
+  email?: string | {
+    primaryEmail?: string;
+    additionalEmails?: unknown[];
+  };
+  phone?: string | {
     primaryPhoneNumber?: string;
     primaryPhoneCountryCode?: string;
     primaryPhoneCallingCode?: string;

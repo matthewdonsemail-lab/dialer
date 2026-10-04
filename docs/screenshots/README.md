@@ -11,7 +11,7 @@ Add screenshots here:
 ## How to Take Screenshots
 
 1. Start the app: `cd frontend && npm run dev`
-2. Open http://localhost:3000
+2. Open http://localhost:5173
 3. Take screenshots of each page
 4. Save them in this directory
 5. Uncomment the screenshot lines in README.md

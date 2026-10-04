@@ -1,5 +1,5 @@
 import { createClient } from "@dialer/shared/api";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("twenty-graphql");
 

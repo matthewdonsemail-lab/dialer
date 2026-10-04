@@ -344,8 +344,10 @@ sequenceDiagram
     participant API as API (Express / Hono)
     participant TW as Twenty CRM
     participant TX as Telnyx
+    participant AI as AI (OpenAI-compatible)
 
-    A->>SP: press dial
+    A->>SP: press dial (phone = GET /api/twenty/phones/primary row)
+    Note over SP,API: one canonical agency number from agencyPhones -<br/>no hardcoded caller id, no per-call pool picks
     SP->>API: POST /api/twenty/phones/:id/claim {memberId}
     API->>TW: PATCH agencyPhones callState=DIALING, claimedBy*
     API-->>SP: 200, or 409 heldBy when another member holds it
@@ -382,6 +384,15 @@ sequenceDiagram
     TX-->>SP: call.recording.transcription.saved
     Note over TX,SP: delivered to the webhook receiver, not the API.<br/>receiver PATCHes recordingUrl then transcript + transcriptionStatus=READY
 
+    TX->>API: POST /api/webhooks/telnyx?token= (or Vercel /api/telnyx-webhook?token=)
+    Note over TX,API: same contract both surfaces:<br/>token-gated, 200 on unknown events, 500 only on real errors (Telnyx retries)
+    API->>TW: PATCH agencyCalls telnyxRecordingId/recordingUrl, transcriptionStatus=PENDING
+    API->>TW: PATCH agencyCalls transcript, transcriptionStatus=READY
+    API->>AI: chat/completions {transcript} (single OPENAI-compatible key)
+    AI-->>API: {summary, sentiment, score 0-100, keyPoints, confidence}
+    API->>TW: PATCH agencyCalls aiSummary/aiSentiment/aiScore/aiKeyPoints/aiConfidence/aiModel/aiAnalyzedAt (+summary mirror)
+    Note over API,TW: every call row carries its own rating -<br/>no side tables, visible in Twenty CRM directly
+
     A->>SP: hang up
     SP->>TX: BYE
     SP->>API: PATCH /api/calls/:id {status, endedAt, durationSeconds, telnyxCallId, debugLog}
@@ -400,6 +411,13 @@ sequenceDiagram
     TX-->>API: download_urls.mp3 (expires in about 10 minutes)
     API-->>SP: 302 to the fresh URL
     Note over API,TX: the Telnyx API key never leaves the server
+
+    A->>SP: analyze (or auto after transcription webhook)
+    SP->>API: POST /api/calls/:id/analyze
+    API->>AI: chat/completions {transcript}
+    AI-->>API: {summary, sentiment, score, keyPoints, confidence}
+    API->>TW: PATCH agencyCalls ai* fields (+summary mirror)
+    API-->>SP: ok + analysis - Rating column shows score/sentiment
 ```
 
 > Source: [`docs/diagrams/call-lifecycle.mmd`](docs/diagrams/call-lifecycle.mmd).
@@ -539,6 +557,7 @@ erDiagram
         text claimedByMemberId
         text claimedByEmail
         datetime claimedAt
+        datetime lastHeartbeatAt
         text currentCallId
         text lastSyncedAt
     }
@@ -557,7 +576,15 @@ erDiagram
         text recordingUrl "expires, play via /api/calls/:id/audio"
         text transcript
         select transcriptionStatus "NONE PENDING READY FAILED"
-        text summary
+        text summary "mirrors aiSummary once analyzed"
+        text aiSummary "1-2 sentence AI summary, on the row itself"
+        text aiSentiment "POSITIVE NEUTRAL NEGATIVE MIXED, the prospect"
+        number aiScore "0-100, how the call went"
+        text aiKeyPoints "JSON string array, max 5"
+        text aiScores "JSON 1-5: conversion, politeness, questioning, engagement, sentiment"
+        number aiConfidence "0-1 model confidence"
+        text aiModel "OPENAI_ANALYSIS_MODEL id"
+        datetime aiAnalyzedAt
         text debugLog "SIP event trail, 8KB cap"
         text meetingUrl
         text meetingProvider
@@ -596,6 +623,116 @@ exist in the workspace already.
 One API rule worth memorising: Twenty writes relation fields as
 `{fieldName}Id`, so a relation declared as `campaignId` is sent as
 `campaignIdId`.
+
+### New-lead phone notifications
+
+<!-- mermaid:bark-new-lead-notify.mmd -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SRC as Lead source<br/>dialer UI, Twenty UI,<br/>CSV import, API
+    participant API as API (Express)
+    participant TW as Twenty CRM
+    participant BARK as Bark server<br/>api.day.app or self-hosted
+    participant APNS as Apple APNs
+    participant IPH as Member iPhone<br/>Bark app installed
+
+    SRC->>API: POST /api/leads {contact, company, phone}
+    API->>TW: POST /rest/agencyLeads
+    TW-->>API: lead row id
+    API->>API: markLeadNotified(id)<br/>10-minute cross-path dedupe
+    API->>API: broadcastNewLead (fire-and-forget)<br/>a push failure never fails the lead
+
+    SRC->>TW: lead created outside the dialer<br/>Twenty UI, CSV, API, workflow
+    TW-->>API: POST /api/twenty/webhooks<br/>{event: agencyLead.created, data}
+    Note over TW,API: token or HMAC gate, non-lead events<br/>ack 2xx and ignore, known ids dedupe-skip
+    API->>TW: GET /rest/agencyLeads/:id<br/>full lead metadata (webhook payload can be partial)
+
+    API->>TW: GET /rest/workspaceMembers
+    TW-->>API: members with barkKey<br/>BARK_KEY metadata field, RICH_TEXT markdown
+    Note over API,TW: members without a BARK_KEY are skipped<br/>their key was never stored on the object
+
+    loop every member that has a BARK_KEY
+        API->>BARK: POST /push {device_key, title, body, url}<br/>url is {FRONTEND_URL}/leads/:leadId
+        BARK->>APNS: push payload
+        APNS-->>IPH: notification appears
+    end
+
+    IPH->>IPH: member taps the notification
+    IPH->>API: open /leads/:leadId<br/>LeadDetailPage, the lead itself, not a list
+```
+
+> Source: [`docs/diagrams/bark-new-lead-notify.mmd`](docs/diagrams/bark-new-lead-notify.mmd).
+
+### Member identity and record attribution
+
+Records the dialer writes are attributed to the member who is signed in, not to
+the API key. Two channels are written side by side, and both depend on schema
+that `POST /api/setup/twenty` creates.
+
+<!-- mermaid:member-attribution.mmd -->
+```mermaid
+flowchart TB
+    subgraph twenty ["Twenty (identity provider + system of record)"]
+        wm["workspaceMember<br/>the signed-in human<br/>id, userId, userEmail, name"]
+        actor["createdBy Actor<br/>system actor, source API<br/>SETTABLE via REST"]
+        own["createdByMemberId<br/>own TEXT field on the object<br/>queryable UUID, SETTABLE"]
+        beat["agencyPhone.lastHeartbeatAt<br/>DATE_TIME, SETTABLE"]
+    end
+
+    subgraph auth ["Identity (backend)"]
+        sess["POST /api/oauth/session<br/>introspect token -> resolve member"]
+        jwt["dialer JWT<br/>workspaceMemberId, memberName"]
+        mw["authMiddleware<br/>req.workspaceMemberId, req.memberName"]
+        guard["requireMember()<br/>401 when the session has no member"]
+    end
+
+    subgraph writes ["Attribution on write"]
+        calls["POST /api/calls<br/>createdBy Actor + createdByMemberId"]
+        leads["POST /api/leads<br/>createdById, assigned_to"]
+        pro["POST /api/prospects<br/>createdBy Actor + createdByMemberId"]
+    end
+
+    subgraph claim ["Number claim lifecycle (same member)"]
+        hb["POST /phones/:id/heartbeat<br/>every 3s, holder only"]
+        rel["POST /phones/:id/release<br/>holder only, or force"]
+    end
+
+    twenty -->|"introspect sub / username"| sess
+    sess --> wm
+    wm -->|"resolved row"| sess
+    sess --> jwt --> mw --> guard
+    guard -->|"member id is server-derived,<br/>never taken from the request body"| calls
+    guard --> leads
+    guard --> pro
+    guard --> hb
+    guard --> rel
+
+    calls --> actor
+    calls --> own
+    pro --> own
+    pro --> actor
+    hb --> beat
+    rel --> beat
+
+    note1["updatedBy is NOT settable.<br/>Twenty recomputes it from the<br/>authenticated caller, so it stays<br/>the API actor. Read createdBy."]
+    actor -.- note1
+```mermaid
+```
+
+> Source: [`docs/diagrams/member-attribution.mmd`](docs/diagrams/member-attribution.mmd).
+
+The member id is derived server-side from the JWT, never read from a request
+body, so a caller cannot claim to be someone else. Two consequences worth
+knowing:
+
+- `createdBy` is settable and reads back the real member.
+- `updatedBy` is **not** settable. Twenty recomputes it from the authenticated
+  caller, so it keeps reporting the API actor. Attribution reads `createdBy`.
+
+Because both channels write plain fields, the object must actually have them.
+`GET /api/setup/twenty/status` lists every field the routes read or write and
+reports `exists: false` for anything the workspace is still missing.
 
 ### Key status values
 
@@ -647,7 +784,7 @@ cp frontend/.env.example frontend/.env.local
 bun run dev                  # backend on :4000, frontend on :3000
 ```
 
-Open http://localhost:3000 and sign in with an account that already exists in
+Open http://localhost:5173 and sign in with an account that already exists in
 Twenty. Signup is disabled: the dialer verifies credentials against Twenty's
 `core."user"` table rather than keeping its own.
 

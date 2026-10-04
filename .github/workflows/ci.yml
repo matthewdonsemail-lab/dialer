@@ -11,15 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
+        run: bun install
+
+      - name: Build shared workspace
+        run: bun run build:shared
 
       - name: TypeScript check
         working-directory: frontend
@@ -40,15 +38,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        working-directory: backend
-        run: npm ci
+        run: bun install
+
+      - name: Build shared workspace
+        run: bun run build:shared
 
       - name: TypeScript check
         working-directory: backend
@@ -57,10 +53,6 @@ jobs:
       - name: Build
         working-directory: backend
         run: npm run build
-
-      - name: Seed database
-        working-directory: backend
-        run: npm run seed
 
   docker:
     runs-on: ubuntu-latest

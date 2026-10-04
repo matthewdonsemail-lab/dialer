@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useCalls } from "@/hooks/useCallLogs";
+import { useCalls } from "@/hooks/use-call-logs";
 import { Search, Phone, User, AudioLines } from "lucide-react";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
-import { api } from "@/lib/apiClient";
+import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
+import { api } from "@/lib/api-client";
 
 export function CallHistoryPage() {
   const navigate = useNavigate();
@@ -47,6 +48,7 @@ export function CallHistoryPage() {
           (call.toNumber ?? "").includes(q) ||
           (call.fromNumber ?? "").includes(q) ||
           (call.summary ?? "").toLowerCase().includes(q) ||
+          (call.aiSummary ?? "").toLowerCase().includes(q) ||
           recordNameOf(call).toLowerCase().includes(q);
         return matchesStatus && matchesSearch;
       })
@@ -109,13 +111,14 @@ export function CallHistoryPage() {
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Duration</th>
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Recording</th>
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Summary</th>
+              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Rating</th>
               <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Date</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--ods-border)]">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-[13px] text-[var(--ods-text-secondary)]">
+                <td colSpan={8} className="text-center py-8 text-[13px] text-[var(--ods-text-secondary)]">
                   No call records found
                 </td>
               </tr>
@@ -159,18 +162,34 @@ export function CallHistoryPage() {
                       <span className="text-[11px] text-[var(--ods-text-tertiary)]">—</span>
                     )}
                   </td>
-                  <td className="px-3 text-[13px] text-[var(--ods-text-secondary)] max-w-xs truncate">{call.summary ?? "—"}</td>
+                  <td className="px-3 text-[13px] text-[var(--ods-text-secondary)] max-w-xs truncate">{call.aiSummary ?? call.summary ?? "—"}</td>
+                  <td className="px-3"><RatingBadge sentiment={call.aiSentiment} score={call.aiScore} /></td>
                   <td className="px-3 text-[12px] text-[var(--ods-text-tertiary)]">{call.created_at ? new Date(call.created_at).toLocaleString() : "—"}</td>
                 </tr>
                 {audioOpen && (
                   <tr key={`${call.id}-audio`}>
-                    <td colSpan={7} className="px-3 py-2 bg-[var(--ods-bg-secondary)]">
-                      <audio
-                        controls
-                        preload="none"
-                        src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}
-                        className="w-full max-w-xl"
-                      />
+                    <td colSpan={8} className="px-3 py-3 bg-[var(--ods-bg-secondary)]">
+                      <div className="flex flex-col lg:flex-row gap-3 items-stretch">
+                        <div className="flex-1 min-w-0">
+                          {hasAudio ? (
+                            <WaveformPlayer
+                              src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}
+                              seed={call.id}
+                              detailHref={`/history/${call.id}`}
+                            />
+                          ) : (
+                            <p className="text-[12px] text-[var(--ods-text-secondary)]">No recording yet.</p>
+                          )}
+                          {call.transcript && (
+                            <p className="mt-2 text-[12px] text-[var(--ods-text-secondary)] whitespace-pre-wrap max-h-32 overflow-y-auto">
+                              {call.transcript}
+                            </p>
+                          )}
+                        </div>
+                        <div className="lg:w-80 shrink-0">
+                          <CallQualityScores scores={parseAiScores(call.aiScores)} />
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 )}

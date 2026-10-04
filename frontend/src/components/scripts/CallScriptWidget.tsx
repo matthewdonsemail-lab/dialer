@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { BookOpen, ChevronDown, ChevronRight, ChevronLeft, HelpCircle } from "lucide-react";
-import { useScripts, Script } from "@/hooks/useScripts";
+import { useScripts, Script } from "@/hooks/use-scripts";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Badge } from "@/components/ui/Badge";
 import { Spokes } from "@/components/ui/Spinner";

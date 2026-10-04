@@ -162,9 +162,11 @@ memory so it survives a restart and every surface reads the same value.
 - The claim protocol authorises by a **body-supplied `memberId`**, which is
   never compared against the authenticated user. Any authenticated caller can
   claim, advance, or release a number as another member, and `force: true` on
-  release skips the holder check entirely. There is also no stale-claim
-  timeout, and the check-then-write is not atomic, so two simultaneous claims
-  can both succeed.
+  release skips the holder check entirely. Abandoned claims do expire: a
+  non-`IDLE` claim older than `CLAIM_STALE_AFTER_MINUTES` (default 60) may be
+  taken by a new claim and released by anyone, and the softphone also sends a
+  keepalive release/row-close on tab `pagehide` — but the check-then-write is
+  still not atomic, so two simultaneous claims can both succeed.
 - In the native app, `phone-state` and `phone-release` treat `memberId` as
   optional, so omitting it bypasses the holder check there too. `phone-claim`
   requires it and answers 409; the other two answer 403.
