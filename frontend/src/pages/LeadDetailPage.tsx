@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { LeadForm } from "@/components/leads/LeadForm";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Button } from "@/components/ui/Button";
@@ -233,13 +234,10 @@ export function LeadDetailPage() {
                   ["Company", lead.company ?? "—"],
                   ["Phone", lead.phone ?? "—"],
                   ["Email", lead.email ?? "—"],
-                  ["Website", lead.website ?? "—"],
-                  ["Address", lead.address ?? "—"],
-                  ["City", locationLine || "—"],
-                  ["Country", (lead as any).country ?? "—"],
                   ["Calls", String(lead.call_count ?? 0)],
                   ["Last Called", lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : "Never"],
                   ["Created", new Date(lead.created_at).toLocaleDateString()],
+                  ["Updated", new Date(lead.updated_at).toLocaleDateString()],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">
@@ -249,6 +247,14 @@ export function LeadDetailPage() {
                   </div>
                 ))}
               </dl>
+
+              {/* Notes */}
+              {lead.notes && (
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-1">Notes</dt>
+                  <p className="text-[13px] text-[var(--ods-text-secondary)] whitespace-pre-wrap leading-relaxed">{lead.notes}</p>
+                </div>
+              )}
             </div>
           </WidgetCard>
         </div>
@@ -296,8 +302,8 @@ export function LeadDetailPage() {
               )}
             </div>
           </WidgetCard>
-          {recentCalls && recentCalls.length > 0 && (
-            <WidgetCard title="Recent Calls">
+          <WidgetCard title="Recent Calls">
+            {recentCalls && recentCalls.length > 0 ? (
               <div className="flex flex-col gap-[var(--ods-sp-3)]">
                 {recentCalls.slice(0, 5).map((call) => (
                   <div key={call.id} className="border-l-2 border-[var(--ods-brand-300)] pl-3 py-2">
@@ -335,8 +341,10 @@ export function LeadDetailPage() {
                   </div>
                 ))}
               </div>
-            </WidgetCard>
-          )}
+            ) : (
+              <p className="text-[13px] text-[var(--ods-text-tertiary)] italic">No calls yet</p>
+            )}
+          </WidgetCard>
         </div>
       </div>
 
@@ -352,9 +360,27 @@ export function LeadDetailPage() {
         />
       )}
 
-      {/* NOTE: `showEdit` opens nothing yet — same pre-existing gap as before this pass.
-          This is a functional/data-wiring issue (no edit form + unknown useUpdateLead
-          payload shape), not a styling one, so it's flagged here rather than guessed at. */}
+      {showEdit && (
+        <LeadForm
+          initialData={lead as any}
+          onClose={() => setShowEdit(false)}
+          onSubmit={async (data) => {
+            try {
+              await updateLeadMutation.mutateAsync({
+                id: lead.id,
+                ...data,
+              } as any);
+              success("Lead updated", `${data.first_name} ${data.last_name} has been updated`);
+              setShowEdit(false);
+            } catch {
+              toastError("Error", "Failed to update the lead");
+              // Re-throw so LeadForm keeps the modal open on failure
+              // instead of closing it while the update did not persist.
+              throw new Error("Failed to update the lead");
+            }
+          }}
+        />
+      )}
     </PageCanvas>
   );
 }

@@ -26,6 +26,14 @@ interface LeadFormProps {
   initialData?: Partial<LeadFormData>;
 }
 
+const COUNTRY_CODES = [
+  { code: '+1', label: '+1 (US)' },
+  { code: '+91', label: '+91 (IN)' },
+  { code: '+44', label: '+44 (UK)' },
+  { code: '+353', label: '+353 (IE)' },
+  { code: '+61', label: '+61 (AU)' },
+];
+
 export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
   const [formData, setFormData] = useState<LeadFormData>({
     first_name: initialData?.first_name ?? '',
@@ -45,12 +53,21 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
   });
 
   useEffect(() => {
-    if (initialData?.phone && initialData.phone.startsWith('+1')) {
-      setFormData((prev) => ({
-        ...prev,
-        phone_country: '+1',
-        phone: initialData?.phone?.slice(2) ?? '',
-      }));
+    if (initialData?.phone) {
+      const trimmed = initialData.phone.trim();
+      const matched = COUNTRY_CODES.find((c) => trimmed.startsWith(c.code));
+      if (matched) {
+        setFormData((prev) => ({
+          ...prev,
+          phone_country: matched.code,
+          phone: trimmed.slice(matched.code.length),
+        }));
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          phone: trimmed,
+        }));
+      }
     }
   }, [initialData]);
 
@@ -58,7 +75,15 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
     e.preventDefault();
     const cleaned: LeadFormData = { ...formData };
     if (!cleaned.campaign_id) cleaned.campaign_id = null as any;
-    const fullPhone = `${cleaned.phone_country}${cleaned.phone}`;
+
+    let rawDigits = (cleaned.phone || '').trim();
+    if (rawDigits.startsWith(cleaned.phone_country)) {
+      rawDigits = rawDigits.slice(cleaned.phone_country.length).trim();
+    } else if (rawDigits.startsWith('+')) {
+      rawDigits = rawDigits.replace(/^\+/, '').trim();
+    }
+
+    const fullPhone = rawDigits ? `${cleaned.phone_country}${rawDigits}` : '';
     await onSubmit({ ...cleaned, phone: fullPhone, phone_country: undefined as any });
     onClose();
   }
@@ -106,9 +131,13 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
               <select
                 value={formData.phone_country}
                 onChange={(e) => setFormData((prev) => ({ ...prev, phone_country: e.target.value }))}
-                className="w-20 px-2 py-2 border border-gray-300 rounded-l-lg text-sm bg-gray-50 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                className="w-24 px-2 py-2 border border-gray-300 rounded-l-lg text-sm bg-gray-50 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               >
-                <option value="+1">+1 (US)</option>
+                {COUNTRY_CODES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
               </select>
               <input
                 type="tel"

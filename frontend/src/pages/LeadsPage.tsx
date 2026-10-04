@@ -355,8 +355,8 @@ export function LeadsPage() {
     switch (key) {
       case 'name':
         return (
-          <td className={`${cellBorder} px-3 text-[13px] font-medium text-[var(--ods-text-primary)] truncate max-w-[200px] cursor-pointer hover:text-[var(--ods-brand-600)]`} onClick={() => navigate(`/leads/${lead.id}`)}>
-            {lead.first_name} {lead.last_name}
+          <td className={`${cellBorder} px-3 text-[13px] font-medium text-[var(--ods-text-primary)] truncate max-w-[200px] cursor-pointer hover:text-[var(--ods-brand-600)] group`} onClick={() => navigate(`/leads/${lead.id}`)}>
+            <span className="group-hover:underline underline-offset-2">{lead.first_name} {lead.last_name}</span>
           </td>
         );
       case 'company':
@@ -406,9 +406,14 @@ export function LeadsPage() {
       case 'type':
         return (
           <td className={`${cellBorder} px-3`}>
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] text-[11px] font-medium bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] text-[var(--ods-text-primary)]">
-              {lead.source || "—"}
-            </span>
+            {lead.source ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[11px] font-medium bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] text-[var(--ods-text-secondary)]">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
+                {lead.source}
+              </span>
+            ) : (
+              <span className="text-[11px] text-[var(--ods-text-tertiary)]">—</span>
+            )}
           </td>
         );
       case 'campaign':
@@ -555,7 +560,7 @@ export function LeadsPage() {
               pointerX.current = e.clientX;
             }}
           >
-            <tr className="h-8 border-b border-[var(--ods-border)]">
+            <tr className="h-9 border-b border-[var(--ods-border)]">
               <th className="w-8 px-2 text-center border border-[var(--ods-border)]">
                 <input
                   type="checkbox"
@@ -565,7 +570,7 @@ export function LeadsPage() {
                 />
               </th>
               {nameCol && (
-                <th className="group/th relative px-3 text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
+<th className="group/th relative px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
                   <span className="inline-flex items-center">
                     {nameCol.label}
                     <TwentyFieldLink objectName="agencyLeads" fieldName="name" />
@@ -625,7 +630,7 @@ export function LeadsPage() {
                 </td>
               </tr>
             ) : filteredLeads.map((lead) => (
-              <tr key={lead.id} className={`h-8 transition-colors ${selectedIds.has(lead.id) ? 'bg-[var(--ods-bg-secondary)]' : 'hover:bg-[var(--ods-bg-secondary)]'}`}>
+              <tr key={lead.id} className={`h-9 transition-colors ${selectedIds.has(lead.id) ? 'bg-[var(--ods-bg-secondary)]' : 'hover:bg-[var(--ods-bg-secondary)]'}`}>
                 <td className="w-8 px-2 text-center border border-[var(--ods-border)]">
                   <input
                     type="checkbox"
