@@ -89,7 +89,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const [recWarning, setRecWarning] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Unanswered-call watchdog + session heartbeat (configurable timeout).
+// Unanswered-call watchdog + session heartbeat (configurable timeout).
   // Armed once the outbound INVITE is sent. The watchdog dies on establish;
   // the heartbeat survives into the answered call and dies on terminate/
   // manual end/unmount/redial. Neither ever survives into another call.
@@ -198,8 +198,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
       }
     };
   }, [clearDialTimers]);
-
-  // Last-breath flush on tab close. Closing the tab runs NO React cleanup
+// Last-breath flush on tab close. Closing the tab runs NO React cleanup
   // (the effect above never fires), so without this a closed tab leaves the
   // agencyCalls row stuck IN_PROGRESS and the number claimed forever.
   // pagehide + keepalive fetch is the one channel that survives unload:
@@ -721,7 +720,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
 
       inviter.stateChange.addListener((state: string) => {
         if (state === SessionState.Established) {
-          // Media path open: kill the unanswered watchdog, but KEEP the
+// Media path open: kill the unanswered watchdog, but KEEP the
           // heartbeat — the claim must stay fresh for the whole established
           // call. An open media path is NOT evidence a human answered (an IVR
           // menu or voicemail greeting opens it identically), which is why
@@ -813,8 +812,9 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         }, timeoutSeconds * 1000);
         if (holdRef.current) {
           // Keep the number claim fresh while ringing: the backend treats a
-          // claim as stale 15s after the last heartbeat — without ticks
-          // another agent could claim this number mid-ring.
+// claim as stale 15s after the last heartbeat, which is sooner
+          // than the unanswered timeout — without ticks another agent could
+          // claim this number mid-ring.
           ringHeartbeatTimerRef.current = setInterval(() => {
             // Beat for the whole live session (connecting, ringing, active,
             // muted, on hold). Stop only when the session is over or the
@@ -846,7 +846,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
       await failLoud(classifyFailure({ wsUrl: getSipConfig().wsUrl }));
       return;
     }
-  }, [phoneNumber, callerId, recentCalls, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow,
+}, [phoneNumber, callerId, recentCalls, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow,
     maybeStartServerRecording, clearDialTimers, handleUnansweredTimeout]);
 
   const endCall = useCallback(async () => {
