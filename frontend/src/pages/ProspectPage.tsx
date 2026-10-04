@@ -2,10 +2,10 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { StatusFilterDropdown } from "@/components/common/StatusFilterDropdown";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";
 import { ColumnVisibilityDropdown, ColumnDef } from "@/components/common/ColumnVisibilityDropdown";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -32,14 +32,34 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { useColumnOrder } from "@/hooks/useColumnOrder";
-import { useColumnWidths } from "@/hooks/useColumnWidths";
+import { useColumnOrder } from "@/hooks/use-column-order";
+import { useColumnWidths } from "@/hooks/use-column-widths";
 import {
   SortableHeaderCell,
   ColumnResizeHandle,
 } from "@/components/common/SortableHeaderCell";
+import { TwentyFieldLink } from "@/components/common/TwentyFieldLink";
 
 type StatusFilter = string | "all";
+
+/** Display country for a prospect; blanks group under "Unknown". */
+function countryOf(p: { country?: string }): string {
+  const c = (p.country ?? "").trim();
+  return c || "Unknown";
+}
+
+/** Table column key -> ACTUAL Twenty agencyProspects field (null = object page). */
+const PROSPECT_FIELD_FOR_KEY: Record<string, string | null> = {
+  name: "name",
+  company: "niche",
+  phone: "phone",
+  status: "coldCallStatus",
+  state: "region",
+  city: "city",
+  qualification: null,
+  type: "niche",
+  campaign: "campaignIdId",
+};
 
 interface Prospect {
   id: string;
@@ -130,6 +150,7 @@ export function ProspectPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [headerFilters, setHeaderFilters] = useState({ qualification: "all", industry: "all" });
   const [searchQuery, setSearchQuery] = useState("");
@@ -308,21 +329,34 @@ export function ProspectPage() {
   const facetOptions = useMemo(() => {
     const qualification = new Map<string, number>();
     const industry = new Map<string, number>();
+    const country = new Map<string, number>();
     for (const p of prospects ?? []) {
       const q = (p as any).qualificationStatus as string | undefined;
       if (q) qualification.set(q, (qualification.get(q) ?? 0) + 1);
       if (p.source) industry.set(p.source, (industry.get(p.source) ?? 0) + 1);
+      country.set(countryOf(p), (country.get(countryOf(p)) ?? 0) + 1);
     }
     const toOptions = (m: Map<string, number>) =>
       [...m.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([value, count]) => ({ value, label: value, count }));
-    return { qualification: toOptions(qualification), industry: toOptions(industry) };
+    // Status-style options for the country dropdown (label shows the count).
+    const countryOptions = [...country.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([value, count]) => ({
+        value,
+        label: `${value} (${count})`,
+        dotColor: "bg-[var(--ods-text-tertiary)]",
+        bgTint: "",
+        textColor: "",
+      }));
+    return { qualification: toOptions(qualification), industry: toOptions(industry), country: countryOptions };
   }, [prospects]);
 
   const hasActiveFilters =
     campaignFilter !== "all" ||
     statusFilter !== "all" ||
+    countryFilter !== "all" ||
     headerFilters.qualification !== "all" ||
     headerFilters.industry !== "all" ||
     searchQuery.trim() !== "";
@@ -330,6 +364,7 @@ export function ProspectPage() {
   const clearFilters = () => {
     setCampaignFilter("all");
     setStatusFilter("all");
+    setCountryFilter("all");
     setHeaderFilters({ qualification: "all", industry: "all" });
     setSearchQuery("");
   };
@@ -368,6 +403,7 @@ export function ProspectPage() {
       }
       const matchesStatus = statusFilter === "all" || prospect.status === statusFilter;
       if (!matchesStatus) return false;
+      if (countryFilter !== "all" && countryOf(prospect) !== countryFilter) return false;
       if (headerFilters.qualification !== "all" && (prospect as any).qualificationStatus !== headerFilters.qualification) return false;
       if (headerFilters.industry !== "all" && prospect.source !== headerFilters.industry) return false;
       const q = searchQuery.toLowerCase();
@@ -375,10 +411,11 @@ export function ProspectPage() {
         `${prospect.first_name ?? ""} ${prospect.last_name ?? ""}`.toLowerCase().includes(q) ||
         (prospect.company ?? "").toLowerCase().includes(q) ||
         (prospect.phone ?? "").includes(q) ||
-        (prospect.email ?? "").toLowerCase().includes(q);
+        (prospect.email ?? "").toLowerCase().includes(q) ||
+        countryOf(prospect).toLowerCase().includes(q);
       return matchesSearch;
     });
-  }, [prospects, campaignFilter, statusFilter, headerFilters, searchQuery]);
+  }, [prospects, campaignFilter, statusFilter, countryFilter, headerFilters, searchQuery]);
 
   async function handleDelete() {
     if (!deleteConfirm) return;
@@ -410,25 +447,13 @@ export function ProspectPage() {
   }
 
   async function handleSyncFromTwenty() {
+    // No sync endpoint exists (reads are live from Twenty) — refetch instead.
     setSyncing(true);
     try {
-      const token = localStorage.getItem("cold-dialer-token");
-      const res = await fetch("/api/sync/inbound", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      
-      if (!res.ok) {
-        throw new Error(`Sync failed (${res.status}): ${await res.text()}`);
-      }
-      
       await queryClient.invalidateQueries({ queryKey: ["prospects"] });
-      success("Sync complete", "Prospects synced from Twenty");
+      success("Sync complete", "Prospects refreshed from Twenty");
     } catch (err: any) {
-      toastError("Erreur de sync", err.message || "Impossible de synchroniser");
+      toastError("Sync error", err.message || "Failed to sync");
     } finally {
       setSyncing(false);
     }
@@ -530,6 +555,12 @@ export function ProspectPage() {
                 options={statusOptions}
                 onChange={setStatusFilter}
               />
+              <StatusFilterDropdown
+                value={countryFilter}
+                options={facetOptions.country}
+                onChange={setCountryFilter}
+                allLabel="All countries"
+              />
               <ColumnVisibilityDropdown
                 columns={columns}
                 onChange={handleColumnToggle}
@@ -626,8 +657,11 @@ export function ProspectPage() {
                 />
               </th>
               {nameCol && (
-                <th className="relative px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
-                  <span className="inline-flex items-center">{nameCol.label}</span>
+<th className="group/th relative px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
+                  <span className="inline-flex items-center">
+                    {nameCol.label}
+                    <TwentyFieldLink objectName="agencyProspects" fieldName="name" />
+                  </span>
                   <ColumnResizeHandle
                     colKey="name"
                     tableRef={tableRef}
@@ -648,6 +682,9 @@ export function ProspectPage() {
                       edge={overId === key ? edge : null}
                       registerHeader={registerHeader}
                       filter={headerFilterFor(key)}
+                      settingsLink={
+                        <TwentyFieldLink objectName="agencyProspects" fieldName={PROSPECT_FIELD_FOR_KEY[key] ?? null} />
+                      }
                       resizeHandle={
                         <ColumnResizeHandle
                           colKey={key}

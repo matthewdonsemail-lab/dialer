@@ -161,9 +161,12 @@ export const api = {
 
   twentyPhones: {
     list: () => request<any[]>("/api/twenty/phones"),
+    primary: () => request<{ phone: any; isPrimary: boolean; total: number }>("/api/twenty/phones/primary"),
     claim: (id: string, member: { memberId: string; memberEmail?: string }) =>
       request<any>(`/api/twenty/phones/${id}/claim`, { method: "POST", body: JSON.stringify(member) }),
-    setState: (id: string, data: { memberId: string; state: "DIALING" | "ACTIVE" }) =>
+    heartbeat: (id: string, member: { memberId: string }) =>
+      request<any>(`/api/twenty/phones/${id}/heartbeat`, { method: "POST", body: JSON.stringify(member) }),
+    setState: (id: string, data: { memberId: string; state: "DIALING" | "ACTIVE" | "IDLE" }) =>
       request<any>(`/api/twenty/phones/${id}/state`, { method: "POST", body: JSON.stringify(data) }),
     release: (id: string, data: { memberId: string; force?: boolean; callId?: string }) =>
       request<any>(`/api/twenty/phones/${id}/release`, { method: "POST", body: JSON.stringify(data) }),
@@ -180,11 +183,17 @@ export const api = {
       request<{ ok: boolean; telnyxRecordingId: string | null }>(`/api/calls/${id}/record`, { method: "POST" }),
     reconcile: (id: string) =>
       request<{ attached: boolean }>(`/api/calls/${id}/reconcile`, { method: "POST" }),
+    analyze: (id: string) =>
+      request<{ ok: boolean; analysis: any; call: any }>(`/api/calls/${id}/analyze`, { method: "POST" }),
   },
 
   twentyMeta: {
     fields: (objectName: string) =>
-      request<{ fields: Record<string, Array<{ label: string; value: string; color: string }>> }>(
+      request<{
+        object: { singular: string; plural: string };
+        baseUrl: string;
+        fields: Record<string, Array<{ label: string; value: string; color: string }>>;
+      }>(
         `/api/twenty/meta/${objectName}`
       ),
   },

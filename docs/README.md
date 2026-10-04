@@ -7,6 +7,7 @@ Start at the [README](../README.md). This page is the index of everything else.
 | Document | What it answers |
 |---|---|
 | [architecture.md](./architecture.md) | What the three deployable surfaces are, which one is current, and where the auth is thin. |
+| [ai-analysis.md](./ai-analysis.md) | Call transcripts, AI ratings, and the single canonical agency number. |
 | [data-flow.md](./data-flow.md) | How a read or write becomes a row in Twenty, and why pagination is a keyset walk. |
 | [diagrams/](./diagrams/README.md) | Seven Mermaid diagrams, each linked to the source file that implements it. |
 | [identity.md](./identity.md) | Sign-in: Twenty OAuth PKCE, what the user sees, what happens underneath, and operator config. |

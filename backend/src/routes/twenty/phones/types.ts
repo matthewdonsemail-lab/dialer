@@ -17,6 +17,7 @@ export interface AgencyPhone {
   claimedByMemberId?: string;
   claimedByEmail?: string;
   claimedAt?: string;
+  lastHeartbeatAt?: string;
   currentCallId?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -30,6 +31,10 @@ export interface ClaimBody {
 export interface CallStateBody {
   memberId?: string;
   state?: string;
+}
+
+export interface HeartbeatBody {
+  memberId?: string;
 }
 
 export interface ReleaseBody {

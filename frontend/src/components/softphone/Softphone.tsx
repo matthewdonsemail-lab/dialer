@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Phone,
   PhoneOff,
@@ -12,9 +12,12 @@ import {
 } from "lucide-react";
 import { getSipConfig, isSipConfigured, getSipDomain, getSipExtension } from "@/sip";
 import { sipLog, classifyFailure, getReport, type ClassifiedFailure } from "@/sip";
+import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/config";
 import { Button } from "@/components/ui/Button";
 import { OutcomeSelect } from "@/components/common/OutcomeSelect";
-import { api } from "@/lib/apiClient";
+import { api, getAuthToken } from "@/lib/api-client";
+import { mapOutcomeToCallStatus, isWithinCooldown, lastDialTo, DIAL_COOLDOWN_HOURS } from "@/lib/call-outcome";
+import { useCalls } from "@/hooks/use-call-logs";
 import type { Database } from "@/types/database";
 
 // Explicit opt-in only: simulated calls NEVER happen silently. Ordinary dials
@@ -67,6 +70,14 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const [dialNumber, setDialNumber] = useState("");
   const [holdActive, setHoldActive] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Used by the dial cooldown: recent agencyCalls rows, so a number dialled
+  // minutes ago is not dialled again.
+  const { data: recentCallRows } = useCalls();
+  const recentCalls = useMemo(() => recentCallRows ?? [], [recentCallRows]);
+  // One-shot "Dial anyway" escape from the cooldown, for genuine callbacks.
+  const cooldownOverrideRef = useRef(false);
   const [incomingCall, setIncomingCall] = useState<{
     callerNumber: string;
     callerName: string;
@@ -78,6 +89,12 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const [recWarning, setRecWarning] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Unanswered-call watchdog + session heartbeat (configurable timeout).
+  // Armed once the outbound INVITE is sent. The watchdog dies on establish;
+  // the heartbeat survives into the answered call and dies on terminate/
+  // manual end/unmount/redial. Neither ever survives into another call.
+  const unansweredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ringHeartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef<any>(null);
   const inboundSessionRef = useRef<any>(null);
   const wasEstablishedRef = useRef(false);
@@ -116,10 +133,59 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   useEffect(() => { durationRef.current = duration; }, [duration]);
   useEffect(() => { directionRef.current = direction; }, [direction]);
 
+  // Stop the unanswered watchdog only (answered calls keep beating).
+  const clearUnansweredTimer = useCallback(() => {
+    if (unansweredTimerRef.current) {
+      clearTimeout(unansweredTimerRef.current);
+      unansweredTimerRef.current = null;
+    }
+  }, []);
+
+  // Stop the unanswered watchdog + session heartbeat on every exit path.
+  // NOTE: the Established branch must use clearUnansweredTimer instead —
+  // the heartbeat has to survive into the answered call.
+  const clearDialTimers = useCallback(() => {
+    clearUnansweredTimer();
+    if (ringHeartbeatTimerRef.current) {
+      clearInterval(ringHeartbeatTimerRef.current);
+      ringHeartbeatTimerRef.current = null;
+    }
+  }, [clearUnansweredTimer]);
+
+  // Unanswered timeout: the outbound INVITE went unanswered for the
+  // configured duration. Cancel the unestablished session and mark NO_ANSWER.
+  // Deliberately NOT failLoud (no banner, no claim release) and NOT
+  // handleSaveOutcome (manual disposition stays with the agent via Save &
+  // Next). The existing Terminated listener performs the normal finalize.
+  const handleUnansweredTimeout = useCallback(() => {
+    if (wasEstablishedRef.current) return;
+    const session = sessionRef.current;
+    if (!session) return;
+    const st = callStateRef.current;
+    if (st !== "ringing" && st !== "connecting") return;
+    const timeoutSeconds = getUnansweredTimeoutSeconds();
+    sipLog.warn("session", `unanswered timeout (${timeoutSeconds}s) — cancelling INVITE, marking NO_ANSWER`);
+    setOutcome("no_answer");
+    setCallState("ended");
+    clearDialTimers();
+    try {
+      // SIP.js Inviter.cancel() sends CANCEL for the early dialog; it rejects
+      // when the session already established/terminated (200-race), in which
+      // case the state listener below already owns the outcome.
+      const p = session.cancel?.();
+      if (p && typeof (p as any).catch === "function") {
+        (p as Promise<void>).catch(() => { });
+      }
+    } catch {
+      // Already terminating — the Terminated listener finishes the job.
+    }
+  }, [clearDialTimers]);
+
   // Cleanup media streams on unmount (release any held number)
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      clearDialTimers();
       stopLocalStream();
       const hold = holdRef.current;
       if (hold) {
@@ -131,6 +197,57 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         inboundSessionRef.current = null;
       }
     };
+  }, [clearDialTimers]);
+
+  // Last-breath flush on tab close. Closing the tab runs NO React cleanup
+  // (the effect above never fires), so without this a closed tab leaves the
+  // agencyCalls row stuck IN_PROGRESS and the number claimed forever.
+  // pagehide + keepalive fetch is the one channel that survives unload:
+  // close the call row (stamping the call-control-id so the Telnyx webhook
+  // can match it later) and release the number. Reconcile is deliberately
+  // skipped here — it can take longer than unload allows; the webhook's
+  // from/to fallback covers the recording attach instead.
+  useEffect(() => {
+    const flushOnHide = () => {
+      try {
+        const token = getAuthToken();
+        if (!token) return;
+        const base = import.meta.env.VITE_API_URL || "";
+        const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+        const hold = holdRef.current;
+        const callId = callLogIdRef.current;
+        if (hold) {
+          holdRef.current = null;
+          try {
+            fetch(`${base}/api/twenty/phones/${hold.phoneId}/release`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ memberId: hold.memberId, callId: callId ?? undefined }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch { /* unload in progress */ }
+        }
+        if (callId) {
+          const ccid = telnyxCallControlIdRef.current;
+          try {
+            fetch(`${base}/api/calls/${callId}`, {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify({
+                status: mapOutcomeToCallStatus(outcomeRef.current),
+                endedAt: new Date().toISOString(),
+                durationSeconds: durationRef.current,
+                ...(ccid ? { telnyxCallId: ccid } : {}),
+              }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch { /* unload in progress */ }
+        }
+      } catch { /* never throw during unload */ }
+    };
+    window.addEventListener("pagehide", flushOnHide);
+    return () => window.removeEventListener("pagehide", flushOnHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Duration timer
@@ -206,13 +323,8 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     }
   }, []);
 
-  const mapOutcomeToCallStatus = (o: string): string => {
-    if (o === "answered") return "COMPLETED";
-    if (o === "no_answer") return "NO_ANSWER";
-    if (o === "busy") return "BUSY";
-    if (o === "failed") return "FAILED";
-    return "COMPLETED";
-  };
+  // Outcome -> agencyCalls.status now comes from @/lib/call-outcome (total,
+  // no silent COMPLETED default). See OUTCOME_TO_STATUS there.
 
   // Create the agencyCalls row once per call (guarded: SIP Terminated + manual end both land here).
   // NOTE: lead?.id is deliberately NOT used as agencyLeadId — on prospect pages
@@ -238,6 +350,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         return callLogIdRef.current;
       } catch (err) {
         console.error("Failed to create agencyCalls row:", err);
+        sipLog.error("app", `call history persistence failed at dial time: ${(err as any)?.message || err}`);
         return null;
       } finally {
         creatingRowRef.current = null;
@@ -292,6 +405,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         });
       } catch (err) {
         console.error("Failed to close agencyCalls row:", err);
+        sipLog.error("app", `call history persistence failed at finalize: ${(err as any)?.message || err}`);
       }
       return;
     }
@@ -313,6 +427,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
       callLogIdRef.current = row?.id ?? null;
     } catch (err) {
       console.error("Failed to log call to agencyCalls:", err);
+      sipLog.error("app", `call history persistence failed at wrap-up: ${(err as any)?.message || err}`);
     }
   }, [callerId, phoneId, prospectId, leadId]);
 
@@ -405,9 +520,33 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     if (!phoneNumber) return;
 
     setClaimError(null);
+    setCooldownNotice(null);
+    setSaveError(null);
     setFatalError(null);
     lastFailureRef.current = null;
     sipLog.clear();
+
+    // Per-prospect dial cooldown. Repeat dials inside the same session (one
+    // number three times in 12s on 2026-10-02) burn carrier minutes and inflate
+    // the attempt count, so block them here rather than in a per-browser
+    // setting. Simulation mode bypasses it - it makes no real calls. The guard
+    // is a speed bump, not a wall: "Dial anyway" overrides it for one call.
+    if (
+      !SIMULATE_CALLS &&
+      phoneNumber &&
+      !cooldownOverrideRef.current &&
+      isWithinCooldown(recentCalls, phoneNumber)
+    ) {
+      const last = lastDialTo(recentCalls, phoneNumber);
+      const when = last ? last.toLocaleString() : "earlier today";
+      sipLog.warn("app", `dial blocked by cooldown`, { to: phoneNumber, lastDial: when });
+      setCooldownNotice(
+        `Already dialled ${phoneNumber} at ${when}. Cooldown is ${DIAL_COOLDOWN_HOURS}h.`,
+      );
+      return;
+    }
+    cooldownOverrideRef.current = false;
+
     sipLog.info("app", `dial requested`, { to: phoneNumber, phoneId: phoneId ?? null });
     // Claim the sending number first: another member holding it blocks the dial
     const claimed = await claimNumber();
@@ -417,6 +556,8 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     setDuration(0);
     setNotes("");
     setOutcome("no_answer");
+    // Fresh call: no watchdog/heartbeat may survive from a previous dial.
+    clearDialTimers();
     wasEstablishedRef.current = false;
     callLogIdRef.current = null;
     creatingRowRef.current = null;
@@ -580,9 +721,16 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
 
       inviter.stateChange.addListener((state: string) => {
         if (state === SessionState.Established) {
+          // Media path open: kill the unanswered watchdog, but KEEP the
+          // heartbeat — the claim must stay fresh for the whole established
+          // call. An open media path is NOT evidence a human answered (an IVR
+          // menu or voicemail greeting opens it identically), which is why
+          // every call used to be labelled "Answered". Default to `connected`
+          // and let the operator confirm the disposition before Save & Next.
+          clearUnansweredTimer();
           wasEstablishedRef.current = true;
           setCallState("active");
-          setOutcome("answered");
+          setOutcome("connected");
           setPhoneActive();
           sipLog.info("session", "call established — attaching remote media");
           setupRemoteMedia(inviter);
@@ -590,6 +738,9 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
           // trigger here (guarded — runs once).
           void maybeStartServerRecording();
         } else if (state === SessionState.Terminated) {
+          // Defensive: nothing may outlive the session (covers local CANCEL
+          // from the unanswered watchdog as well as remote BYE/rejects).
+          clearDialTimers();
           if (!wasEstablishedRef.current && callStateRef.current === "ringing") {
             setOutcome("no_answer");
           }
@@ -649,6 +800,37 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
         } as any);
         setCallState("ringing");
         sipLog.info("invite", `INVITE sent`, { to: phoneNumber });
+
+        // Arm the unanswered watchdog + session heartbeat now that the
+        // outbound INVITE is on the wire. Single interval (cleared first, so
+        // no duplicates); the watchdog dies on establish, the heartbeat
+        // keeps beating until terminate/manual end (see its stop guard).
+        clearDialTimers();
+        const timeoutSeconds = getUnansweredTimeoutSeconds();
+        sipLog.info("session", `unanswered watchdog armed (${timeoutSeconds}s)`);
+        unansweredTimerRef.current = setTimeout(() => {
+          handleUnansweredTimeout();
+        }, timeoutSeconds * 1000);
+        if (holdRef.current) {
+          // Keep the number claim fresh while ringing: the backend treats a
+          // claim as stale 15s after the last heartbeat — without ticks
+          // another agent could claim this number mid-ring.
+          ringHeartbeatTimerRef.current = setInterval(() => {
+            // Beat for the whole live session (connecting, ringing, active,
+            // muted, on hold). Stop only when the session is over or the
+            // claim is gone — never merely because the call was answered.
+            const st = callStateRef.current;
+            const hold = holdRef.current;
+            if (st === "idle" || st === "ended" || !hold) {
+              if (ringHeartbeatTimerRef.current) {
+                clearInterval(ringHeartbeatTimerRef.current);
+                ringHeartbeatTimerRef.current = null;
+              }
+              return;
+            }
+            api.twentyPhones.heartbeat(hold.phoneId, { memberId: hold.memberId }).catch(() => { });
+          }, HEARTBEAT_INTERVAL_MS);
+        }
       } catch (err: any) {
         sipLog.error("invite", `invite() threw: ${err?.message || err}`);
         await failLoud(classifyFailure({
@@ -664,10 +846,13 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
       await failLoud(classifyFailure({ wsUrl: getSipConfig().wsUrl }));
       return;
     }
-  }, [phoneNumber, callerId, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow, maybeStartServerRecording]);
+  }, [phoneNumber, callerId, recentCalls, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow,
+    maybeStartServerRecording, clearDialTimers, handleUnansweredTimeout]);
 
   const endCall = useCallback(async () => {
     stopLocalStream();
+    // Manual hangup wins over the watchdog: no timeout firing afterwards.
+    clearDialTimers();
 
     if (sessionRef.current) {
       try {
@@ -696,7 +881,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     // Covers simulated calls (no SIP Terminated event) and user hangup:
     // guarded, so the SIP listener path won't double-log.
     void finalizeCall(outcomeRef.current, durationRef.current, directionRef.current);
-  }, [stopLocalStream, finalizeCall]);
+  }, [stopLocalStream, finalizeCall, clearDialTimers]);
 
   const toggleMute = useCallback(() => {
     const isCurrentlyMuted = callState === "muted";
@@ -746,9 +931,24 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     // row (it was stamped at dial/end time with the hangup-time outcome). If
     // Telnyx server recording never started (no call-control-id captured),
     // reconcile against Telnyx by from/to/time window before releasing.
+    setSaveError(null);
     const callId = callLogIdRef.current;
     if (callId) {
-      api.calls.update(callId, { status: mapOutcomeToCallStatus(outcome) }).catch(() => {});
+      // Await the disposition write. It used to be fire-and-forget with a
+      // swallowed catch, so a failed PATCH looked identical to a saved one -
+      // the label "flicked back" to the hangup-time value and the operator had
+      // no way to tell the write never landed.
+      try {
+        await api.calls.update(callId, { status: mapOutcomeToCallStatus(outcome) });
+      } catch (err) {
+        sipLog.error(
+          "app",
+          `disposition not saved for call ${callId}: ${(err as any)?.message || err}`,
+        );
+        setSaveError(
+          `Disposition not saved: the ${outcome} outcome failed to write to call ${callId} (${(err as any)?.message || err}). The hangup-time value is still on the record.`,
+        );
+      }
       api.calls.reconcile(callId).catch(() => {});
     }
     await releaseNumber(callId);
@@ -904,6 +1104,29 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
           {claimError && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-ods-sm p-2 text-[11px] text-amber-700">
               Number in use — {claimError}. It releases when the holder wraps up.
+            </div>
+          )}
+
+          {/* Disposition write failure */}
+          {saveError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-ods-sm p-2 text-[11px] text-red-600">
+              {saveError}
+            </div>
+          )}
+
+          {/* Per-prospect dial cooldown */}
+          {cooldownNotice && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-ods-sm p-2 text-[11px] text-amber-700 flex items-center gap-2">
+              <span className="flex-1">{cooldownNotice}</span>
+              <button
+                onClick={() => {
+                  cooldownOverrideRef.current = true;
+                  void startCall();
+                }}
+                className="underline font-medium hover:brightness-95"
+              >
+                Dial anyway
+              </button>
             </div>
           )}
 

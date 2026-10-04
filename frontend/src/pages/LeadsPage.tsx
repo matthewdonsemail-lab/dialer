@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useLeads } from "@/hooks/useLeads";
-import { useCreateLead, useDeleteLead, useUpdateLead } from "@/hooks/useLeads";
+import { useLeads } from "@/hooks/use-leads";
+import { useCreateLead, useDeleteLead, useUpdateLead } from "@/hooks/use-leads";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { StatusFilterDropdown } from "@/components/common/StatusFilterDropdown";
-import { mapLeadProspectStatusOptions } from "@/lib/twentyOptions";
+import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";
 import { ColumnVisibilityDropdown, ColumnDef } from "@/components/common/ColumnVisibilityDropdown";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -27,19 +27,34 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { useColumnOrder } from "@/hooks/useColumnOrder";
-import { useColumnWidths } from "@/hooks/useColumnWidths";
+import { useColumnOrder } from "@/hooks/use-column-order";
+import { useColumnWidths } from "@/hooks/use-column-widths";
 import {
   SortableHeaderCell,
   ColumnResizeHandle,
 } from "@/components/common/SortableHeaderCell";
+import { TwentyFieldLink } from "@/components/common/TwentyFieldLink";
 import { ActionsMenu } from "@/components/common/ActionsMenu";
 import { CampaignSelect } from "@/components/common/CampaignSelect";
 import { HeaderFilter } from "@/components/common/HeaderFilter";
-import { api } from "@/lib/apiClient";
+import { api } from "@/lib/api-client";
 import { useQuery } from "@tanstack/react-query";
 
 type StatusFilter = string | "all";
+
+/** Table column key -> ACTUAL Twenty agencyLeads field (null = object page). */
+const LEAD_FIELD_FOR_KEY: Record<string, string | null> = {
+  name: "name",
+  company: "company",
+  phone: "phone",
+  status: "coldCallStatus",
+  state: null,
+  city: null,
+  qualification: null,
+  last_called: null,
+  type: "source",
+  campaign: "campaignIdId",
+};
 
 function CampaignTab({
   label,
@@ -555,8 +570,11 @@ export function LeadsPage() {
                 />
               </th>
               {nameCol && (
-                <th className="relative px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
-                  <span className="inline-flex items-center">{nameCol.label}</span>
+<th className="group/th relative px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
+                  <span className="inline-flex items-center">
+                    {nameCol.label}
+                    <TwentyFieldLink objectName="agencyLeads" fieldName="name" />
+                  </span>
                   <ColumnResizeHandle
                     colKey="name"
                     tableRef={tableRef}
@@ -577,6 +595,9 @@ export function LeadsPage() {
                       edge={overId === key ? edge : null}
                       registerHeader={registerHeader}
                       filter={headerFilterFor(key)}
+                      settingsLink={
+                        <TwentyFieldLink objectName="agencyLeads" fieldName={LEAD_FIELD_FOR_KEY[key] ?? null} />
+                      }
                       resizeHandle={
                         <ColumnResizeHandle
                           colKey={key}

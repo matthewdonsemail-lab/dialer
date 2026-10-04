@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../../middleware/auth.js";
-import { fetchTwenty } from "../../../lib/twenty-client.js";
-import { createLogger } from "../../../lib/logger.js";
+import { fetchTwenty } from "../../../lib/twenty/client/index.js";
+import { createLogger } from "../../../lib/logger/index.js";
 import type { TwentyObject } from "./types.js";
 import { findTargetObject, extractFieldOptions } from "./helpers/index.js";
 
@@ -36,6 +36,9 @@ router.get("/:object", async (req, res) => {
         singular: targetObject.nameSingular,
         plural: targetObject.namePlural,
       },
+      // Public base URL so the frontend can deep-link column headers into
+      // Twenty settings (not a secret — it's the workspace address).
+      baseUrl: (process.env.TWENTY_BASE_URL || "").replace(/\/$/, ""),
       fields: fieldOptions,
     });
   } catch (err: any) {

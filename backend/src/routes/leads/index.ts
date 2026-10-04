@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty-client.js";
-import { createLogger } from "../../lib/logger.js";
+import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { createLogger } from "../../lib/logger/index.js";
+import { resolveActor } from "../../lib/twenty/actor/index.js";
+import { broadcastNewLead, markLeadNotified } from "../../lib/leads/notify/index.js";
 import type { AgencyCampaign, AgencyLead } from "./types.js";
-import { mapLeadToFrontend, frontendStatusToTwenty } from "./helpers/index.js";
+import { mapLeadToFrontend, frontendStatusToTwenty, toTwentyPhone, toTwentyEmail, getLeadCallCounts } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -24,7 +26,10 @@ router.get("/", async (_req, res) => {
       // Campaign lookup is best-effort; proceed without it
     }
 
-    const mapped = leads.map(lead => mapLeadToFrontend(lead, campaignMap));
+    // Real per-lead call counts in one fetch (best-effort; see helper)
+    const callCounts = await getLeadCallCounts();
+
+    const mapped = leads.map(lead => mapLeadToFrontend(lead, campaignMap, callCounts.get(lead.id) ?? 0));
 
     log.info(`Returning ${mapped.length} leads`);
     res.json(mapped);
@@ -49,7 +54,7 @@ router.get("/:id", async (req, res) => {
       // Campaign lookup is best-effort; proceed without it
     }
 
-    const mapped = mapLeadToFrontend(lead, campaignMap);
+    const mapped = mapLeadToFrontend(lead, campaignMap, (await getLeadCallCounts()).get(lead.id) ?? 0);
 
     res.json(mapped);
   } catch (err: any) {
@@ -75,23 +80,21 @@ router.post("/", async (req: AuthRequest, res) => {
     
     const payload = {
       contactName: fullName,
-      email: email,
-      phone: phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined,
+      email: toTwentyEmail(email),
+      phone: toTwentyPhone(phone),
       company: company,
       status: coldCallStatus === "DO_NOT_CONTACT" ? "LOST" : "NEW",
       coldCallStatus,
       source: source,
       note: notes,
       outboundMessage: undefined,
-      createdById: req.twentyUserId,
+      // createdById: the resolved workspaceMember UUID when the session
+      // resolved to one, otherwise the legacy email. The Actor below is the
+      // authoritative "created by" stamp Twenty displays.
+      createdById: req.workspaceMemberId ?? req.twentyUserId,
     };
 
-    const result = await createTwenty<any>('agencyLeads', payload);
+    const result = await createTwenty<any>('agencyLeads', payload, await resolveActor(req));
     const lead = result.data || result;
     
     const mapped = {
@@ -109,7 +112,7 @@ router.post("/", async (req: AuthRequest, res) => {
       status: coldCallStatus === "DO_NOT_CONTACT" ? "not_interested" : "new",
       source,
       campaign_id: campaign_id,
-      assigned_to: req.twentyUserId,
+      assigned_to: req.workspaceMemberId ?? req.twentyUserId,
       tags: tags ? JSON.stringify(tags) : null,
       notes,
       dnc: Boolean(dnc),
@@ -121,6 +124,17 @@ router.post("/", async (req: AuthRequest, res) => {
     };
 
     log.info(`Created lead ${lead.id}`);
+    // Global Bark broadcast to every member with a BARK_KEY.
+    // Fire-and-forget: a push failure must never fail the lead creation.
+    // Mark first so the Twenty webhook (agencyLead.created) dedupes this id.
+    markLeadNotified(String(lead.id));
+    void broadcastNewLead(req, {
+      id: String(lead.id),
+      contactName: fullName || null,
+      company: company || null,
+      phone: phone || null,
+      email: email || null,
+    }).catch((err: any) => log.error(`New-lead broadcast failed: ${err?.message || err}`));
     res.status(201).json(mapped);
   } catch (err: any) {
     log.error("Failed to create lead:", err.message);
@@ -146,15 +160,16 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
     
     if (company !== undefined) payload.company = company;
+    // Empty phone/email means "no value": omit the key so Twenty keeps its
+    // validated state instead of rejecting an empty composite.
     if (phone !== undefined) {
-      payload.phone = phone ? {
-        primaryPhoneNumber: phone.replace(/\D/g, ""),
-        primaryPhoneCountryCode: "",
-        primaryPhoneCallingCode: "",
-        additionalPhones: [],
-      } : undefined;
+      const twentyPhone = toTwentyPhone(phone);
+      if (twentyPhone !== undefined) payload.phone = twentyPhone;
     }
-    if (email !== undefined) payload.email = email;
+    if (email !== undefined) {
+      const twentyEmail = toTwentyEmail(email);
+      if (twentyEmail !== undefined) payload.email = twentyEmail;
+    }
     if (notes !== undefined) payload.note = notes;
     if (source !== undefined) payload.source = source;
 
@@ -174,7 +189,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
 
     const id = req.params.id as string;
-    const result = await updateTwenty<any>('agencyLeads', id, payload);
+    const result = await updateTwenty<any>('agencyLeads', id, payload, await resolveActor(req));
     const lead = result.data || result;
 
     // Fetch campaigns to resolve campaign types
@@ -187,7 +202,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     }
 
     // Return mapped response
-    const mapped = mapLeadToFrontend(lead, campaignMap);
+    const mapped = mapLeadToFrontend(lead, campaignMap, (await getLeadCallCounts()).get(lead.id) ?? 0);
 
     log.info(`Updated lead ${lead.id}`);
     res.json(mapped);

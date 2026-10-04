@@ -21,20 +21,52 @@ There is exactly one place the dialer still asks for credentials: your
 1. The dialer login page shows one button: **Continue with Twenty**.
 2. Clicking it redirects the browser to the Twenty instance
    (`/authorize?...code_challenge=...`).
-3. Because this instance is fronted by an auth-guard nginx with HTTP
-   basic auth, the browser shows its **native `user:pass` prompt once**
-   (the `twenty` admin account configured on the instance). The browser
-   caches those credentials for the origin, so it only happens once per
-   browser profile/session.
-4. Twenty's normal sign-in/consent screen appears (email + workspace
+3. Twenty's normal sign-in/consent screen appears (email + workspace
    password, or a second-factor step if your workspace has one). If you
    are already signed in to Twenty in that browser, the consent screen
    appears directly.
-5. Click **Authorize** and the browser lands back on the dialer
+4. Click **Authorize** and the browser lands back on the dialer
    (`/callback?code=...&state=...`), which finishes in under a second
    and takes you straight to **/dashboard**.
 
 No dialer password is ever created, stored, or asked for.
+
+### auth-guard must not gate the OAuth handshake
+
+The instance is fronted by an auth-guard nginx that puts HTTP basic auth on
+everything except `/rest`, `/graphql`, `/metadata` and `/webhooks`. That gate
+**must not** cover `/authorize` or `/oauth/token`, and the `Authorization` header
+must be stripped on both:
+
+```nginx
+location = /authorize {
+  proxy_pass http://127.0.0.1:3005;
+  include /etc/nginx/proxy-params.conf;
+  proxy_set_header Authorization "";
+}
+location ^~ /oauth/token {
+  proxy_pass http://127.0.0.1:3005;
+  include /etc/nginx/proxy-params.conf;
+  proxy_set_header Authorization "";
+}
+```
+
+`proxy-params.conf` forwards `Authorization $upstream_authorization`, so without
+the strip the browser's cached basic header reaches Twenty. Twenty then treats
+the caller as a service and returns an `APPLICATION_ACCESS` token whose
+`sub === applicationId` and whose `userId` / `userWorkspaceId` are placeholders
+that match no `core."user"` row. No human is left in the token, so the session
+cannot be mapped to a workspace member and the dialer shows `operator@twenty`.
+
+`/oauth/introspect` stays gated: the backend calls it with its own credentials.
+`token_endpoint_auth_methods_supported` includes `none`, so the public PKCE
+client authenticates on `client_id` in the form body alone.
+
+The config lives at `/home/deepman/services/auth-guard/nginx.conf` on node01 and
+is bind-mounted **read-only** into the container — edit the host file, then
+`nginx -t` and `nginx -s reload` inside `auth-guard`. `docker cp` fails with
+`EBUSY` and in-place writes with `EROFS`.
+
 
 ## What happens underneath
 
@@ -104,7 +136,7 @@ TWENTY_BASIC_PASSWORD=...
 ```
 
 The client is a **public PKCE-only** client (dynamic registration via
-`POST /oauth/register`, no `token_endpoint_auth`). Its registered redirect
+`POST /oauth/register`, with `token_endpoint_auth_method: none`). Its registered redirect
 URI must match `TWENTY_OAUTH_REDIRECT_URI` exactly, so the frontend dev
 server is pinned to port **5173** (`--strictPort`) and the callback path is
 `/callback`.
@@ -117,6 +149,7 @@ server is pinned to port **5173** (`--strictPort`) and the callback path is
 | Native `user:pass` prompt loops / 401 at `/authorize` | Basic creds for the auth-guard are wrong or expired. | [twenty-troubleshooting.md](./twenty-troubleshooting.md) |
 | "Twenty OAuth is not configured" from `/api/oauth/*` | OAuth vars missing from the **root** `.env.local`. | This file's config section. |
 | Consent 302s to `/callback?error=...` | The redirect URI in the client record doesn't match `--port 5173`. | This file's config section. |
+| Browser shows `ERR_CONNECTION_REFUSED` at `localhost:5173/callback` after clicking Authorize | The frontend dev server is not on 5173 (e.g. it was started with `--port 3000`, or Vite silently hopped ports because 5173 was busy). `frontend/vite.config.ts` pins `port: 5173` with `strictPort: true`; start it with plain `npm run dev` / `bun run dev:frontend` and open http://localhost:5173. The login page also refuses to start sign-in with a plain-English error when the origins differ. | [vite.config.ts](../frontend/vite.config.ts) |
 
 ## What the dialer deliberately does not do
 

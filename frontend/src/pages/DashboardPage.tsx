@@ -1,6 +1,6 @@
 import React from "react";
-import { useLeads } from "@/hooks/useLeads";
-import { useCalls } from "@/hooks/useCallLogs";
+import { useLeads } from "@/hooks/use-leads";
+import { useCalls } from "@/hooks/use-call-logs";
 import {
   Users,
   Phone,

@@ -27,7 +27,9 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000
+Open http://localhost:5173 (the dev server is pinned to 5173 — see
+[Identity](../docs/identity.md), the Twenty OAuth callback lives at
+`http://localhost:5173/callback`)
 
 ## Docker
 

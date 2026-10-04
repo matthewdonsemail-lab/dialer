@@ -2,11 +2,14 @@
   "services": {
     "frontend": {
       "root": "frontend",
-      "framework": "vite"
+      "framework": "vite",
+      "buildCommand": "bun run --cwd .. build:shared && bun run build"
     },
     "backend": {
       "root": "backend",
-      "entrypoint": "src/index.ts"
+      "framework": "express",
+      "buildCommand": "bun run --cwd .. build:shared && bun run build",
+      "entrypoint": "dist/server.mjs"
     }
   },
   "rewrites": [

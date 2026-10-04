@@ -1,6 +1,6 @@
 import React from "react";
-import { useLeads } from "@/hooks/useLeads";
-import { useCalls } from "@/hooks/useCallLogs";
+import { useLeads } from "@/hooks/use-leads";
+import { useCalls } from "@/hooks/use-call-logs";
 import { BarChart3, Users, Phone, TrendingUp, Clock } from "lucide-react";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";

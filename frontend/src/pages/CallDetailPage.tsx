@@ -1,22 +1,45 @@
-﻿import React from "react";
+﻿import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
-import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines } from "lucide-react";
+import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines, Star } from "lucide-react";
+import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 
 export function CallDetailPage() {
   const { callId } = useParams<{ callId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: call, isLoading: callLoading } = useQuery<any>({
     queryKey: ["call", callId],
     queryFn: () => api.calls.get(callId ?? ""),
     enabled: !!callId,
     staleTime: 30000,
+  });
+
+  const analyzeMutation = useMutation({
+    mutationFn: () => api.calls.analyze(callId ?? ""),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["call", callId] });
+      queryClient.invalidateQueries({ queryKey: ["calls"] });
+    },
+    onError: (err: any) => setActionError(err?.message || "Analysis failed"),
+  });
+
+  const reconcileMutation = useMutation({
+    mutationFn: () => api.calls.reconcile(callId ?? ""),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["call", callId] });
+      queryClient.invalidateQueries({ queryKey: ["calls"] });
+    },
+    onError: (err: any) => setActionError(err?.message || "Reconcile failed"),
   });
 
   const { data: lead } = useQuery<any>({
@@ -150,9 +173,24 @@ export function CallDetailPage() {
         {/* Recording + transcript (Telnyx server-side; proxied so URLs never expire) */}
         <WidgetCard title="Recording" icon={AudioLines}>
           {call.telnyxRecordingId || call.recordingUrl ? (
-            <audio controls src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl} className="w-full" />
+            <WaveformPlayer
+              src={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl}
+              seed={call.id}
+            />
           ) : (
-            <p className="text-[13px] text-[var(--ods-text-secondary)]">No recording yet</p>
+            <div className="flex flex-col gap-2">
+              <p className="text-[13px] text-[var(--ods-text-secondary)]">No recording yet</p>
+              <button
+                onClick={() => reconcileMutation.mutate()}
+                disabled={reconcileMutation.isPending}
+                className="self-start px-2 py-1 text-[12px] border border-[var(--ods-border)] rounded-[4px] text-[var(--ods-brand-600)] hover:underline disabled:opacity-50"
+              >
+                {reconcileMutation.isPending ? "Reconciling…" : "Reconcile with Telnyx"}
+              </button>
+            </div>
+          )}
+          {actionError && (
+            <p className="mt-2 text-[12px] text-red-600">{actionError}</p>
           )}
           <p className="mt-2 text-[11px] text-[var(--ods-text-tertiary)]">
             Transcription: {call.transcriptionStatus ?? "NONE"}
@@ -162,6 +200,64 @@ export function CallDetailPage() {
               {call.transcript}
             </p>
           )}
+        </WidgetCard>
+
+        {/* AI analysis — rating lives on the call row itself */}
+        <WidgetCard title="AI Analysis" icon={Star}>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[22px] font-bold text-[var(--ods-text-primary)]">
+                {call.aiScore ?? "—"}
+              </span>
+              {call.aiScore !== null && call.aiScore !== undefined && (
+                <span className="text-[12px] text-[var(--ods-text-tertiary)]">/ 100</span>
+              )}
+              <RatingBadge sentiment={call.aiSentiment} score={call.aiScore} />
+            </div>
+            <CallQualityScores
+              scores={parseAiScores(call.aiScores)}
+              fallback={
+                <div className="flex flex-col gap-2">
+                  <p className="text-[13px] text-[var(--ods-text-secondary)]">
+                    {call.transcript ? "No analysis yet for this call." : "Analyze unlocks once a transcript lands."}
+                  </p>
+                  {call.transcript && (
+                    <button
+                      onClick={() => analyzeMutation.mutate()}
+                      disabled={analyzeMutation.isPending}
+                      className="self-start px-2 py-1 text-[12px] border border-[var(--ods-border)] rounded-[4px] text-[var(--ods-brand-600)] hover:underline disabled:opacity-50"
+                    >
+                      {analyzeMutation.isPending ? "Analyzing…" : "Analyze this call"}
+                    </button>
+                  )}
+                </div>
+              }
+            />
+            {(call.aiSummary || call.summary) && (
+              <p className="text-[13px] text-[var(--ods-text-primary)] whitespace-pre-wrap">
+                {call.aiSummary || call.summary}
+              </p>
+            )}
+            {(() => {
+              try {
+                const points: string[] = JSON.parse(call.aiKeyPoints || "[]");
+                if (!Array.isArray(points) || points.length === 0) return null;
+                return (
+                  <ul className="list-disc pl-5 text-[12px] text-[var(--ods-text-secondary)] flex flex-col gap-1">
+                    {points.map((pt, i) => <li key={i}>{pt}</li>)}
+                  </ul>
+                );
+              } catch {
+                return null;
+              }
+            })()}
+            {(call.aiModel || call.aiAnalyzedAt || typeof call.aiConfidence === "number") && (
+              <p className="text-[11px] text-[var(--ods-text-tertiary)]">
+                {call.aiModel || "ai"} {call.aiAnalyzedAt ? `· ${new Date(call.aiAnalyzedAt).toLocaleString()}` : ""}
+                {typeof call.aiConfidence === "number" ? ` · ${(call.aiConfidence * 100).toFixed(0)}% confident` : ""}
+              </p>
+            )}
+          </div>
         </WidgetCard>
 
         {/* Meeting (booked from this call) */}
@@ -199,7 +295,7 @@ export function CallDetailPage() {
         {/* Notes */}
         <WidgetCard title="Summary" icon={FileText}>
           <p className="text-[13px] text-[var(--ods-text-secondary)] whitespace-pre-wrap min-h-[100px]">
-            {call.summary || "No summary recorded"}
+            {call.aiSummary || call.summary || "No summary recorded"}
           </p>
         </WidgetCard>
 

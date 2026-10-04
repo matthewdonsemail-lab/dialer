@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { signOut } from '@/lib/auth';
-import { api } from '@/lib/apiClient';
+import { api } from '@/lib/api-client';
 import { Spokes } from '@/components/ui/Spinner';
 import { cn } from '@/lib/utils';
 import {
