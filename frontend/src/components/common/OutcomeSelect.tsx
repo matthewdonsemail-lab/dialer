@@ -18,6 +18,9 @@ export interface OutcomeOption {
 }
 
 export const OUTCOME_CONFIG: Record<string, OutcomeOption> = {
+  // Auto-set when the SIP media path opens. Shown first so an operator can see
+  // that the default disposition is not yet a human answer.
+  connected: { value: "connected", label: "Connected (no answer confirmed)", dotColor: "bg-sky-500", bgTint: "bg-sky-500/10", textColor: "text-sky-700" },
   answered: { value: "answered", label: "Answered", dotColor: "bg-emerald-500", bgTint: "bg-emerald-500/10", textColor: "text-emerald-700" },
   no_answer: { value: "no_answer", label: "No Answer", dotColor: "bg-gray-500", bgTint: "bg-gray-500/10", textColor: "text-gray-600" },
   busy: { value: "busy", label: "Busy", dotColor: "bg-red-500", bgTint: "bg-red-500/10", textColor: "text-red-700" },

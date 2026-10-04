@@ -146,6 +146,8 @@ export function ProspectDetailPage() {
 
     // Update prospect status based on call outcome
     const statusMap: Record<string, string> = {
+      // Media opened but no human confirmed: not yet a contact.
+      connected: "callback",
       answered: "contacted",
       busy: "callback",
       voicemail: "callback",

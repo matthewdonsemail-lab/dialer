@@ -58,7 +58,15 @@ async function findOpenCallByParties(from?: string, to?: string): Promise<Agency
 }
 
 async function maybeAnalyze(callId: string, transcript: string, call: AgencyCall): Promise<void> {
-  if (!isAiConfigured()) return;
+  if (!isAiConfigured()) {
+    // Logged, not silent: a missing OPENAI_API_KEY used to return here with no
+    // trace, so an unconfigured deployment looked identical to one where
+    // analysis simply had not run yet.
+    log.warn(
+      `AI analysis skipped for call=${callId}: OPENAI_API_KEY not configured - ai* fields left unset`,
+    );
+    return;
+  }
   try {
     const analysis = await analyzeCallTranscript(transcript, {
       direction: call.direction,

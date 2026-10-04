@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Phone,
   PhoneOff,
@@ -16,6 +16,8 @@ import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/config";
 import { Button } from "@/components/ui/Button";
 import { OutcomeSelect } from "@/components/common/OutcomeSelect";
 import { api, getAuthToken } from "@/lib/api-client";
+import { mapOutcomeToCallStatus, isWithinCooldown, lastDialTo, DIAL_COOLDOWN_HOURS } from "@/lib/call-outcome";
+import { useCalls } from "@/hooks/use-call-logs";
 import type { Database } from "@/types/database";
 
 // Explicit opt-in only: simulated calls NEVER happen silently. Ordinary dials
@@ -68,6 +70,14 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const [dialNumber, setDialNumber] = useState("");
   const [holdActive, setHoldActive] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Used by the dial cooldown: recent agencyCalls rows, so a number dialled
+  // minutes ago is not dialled again.
+  const { data: recentCallRows } = useCalls();
+  const recentCalls = useMemo(() => recentCallRows ?? [], [recentCallRows]);
+  // One-shot "Dial anyway" escape from the cooldown, for genuine callbacks.
+  const cooldownOverrideRef = useRef(false);
   const [incomingCall, setIncomingCall] = useState<{
     callerNumber: string;
     callerName: string;
@@ -313,13 +323,8 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     }
   }, []);
 
-  const mapOutcomeToCallStatus = (o: string): string => {
-    if (o === "answered") return "COMPLETED";
-    if (o === "no_answer") return "NO_ANSWER";
-    if (o === "busy") return "BUSY";
-    if (o === "failed") return "FAILED";
-    return "COMPLETED";
-  };
+  // Outcome -> agencyCalls.status now comes from @/lib/call-outcome (total,
+  // no silent COMPLETED default). See OUTCOME_TO_STATUS there.
 
   // Create the agencyCalls row once per call (guarded: SIP Terminated + manual end both land here).
   // NOTE: lead?.id is deliberately NOT used as agencyLeadId — on prospect pages
@@ -515,9 +520,33 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     if (!phoneNumber) return;
 
     setClaimError(null);
+    setCooldownNotice(null);
+    setSaveError(null);
     setFatalError(null);
     lastFailureRef.current = null;
     sipLog.clear();
+
+    // Per-prospect dial cooldown. Repeat dials inside the same session (one
+    // number three times in 12s on 2026-10-02) burn carrier minutes and inflate
+    // the attempt count, so block them here rather than in a per-browser
+    // setting. Simulation mode bypasses it - it makes no real calls. The guard
+    // is a speed bump, not a wall: "Dial anyway" overrides it for one call.
+    if (
+      !SIMULATE_CALLS &&
+      phoneNumber &&
+      !cooldownOverrideRef.current &&
+      isWithinCooldown(recentCalls, phoneNumber)
+    ) {
+      const last = lastDialTo(recentCalls, phoneNumber);
+      const when = last ? last.toLocaleString() : "earlier today";
+      sipLog.warn("app", `dial blocked by cooldown`, { to: phoneNumber, lastDial: when });
+      setCooldownNotice(
+        `Already dialled ${phoneNumber} at ${when}. Cooldown is ${DIAL_COOLDOWN_HOURS}h.`,
+      );
+      return;
+    }
+    cooldownOverrideRef.current = false;
+
     sipLog.info("app", `dial requested`, { to: phoneNumber, phoneId: phoneId ?? null });
     // Claim the sending number first: another member holding it blocks the dial
     const claimed = await claimNumber();
@@ -692,12 +721,16 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
 
       inviter.stateChange.addListener((state: string) => {
         if (state === SessionState.Established) {
-          // Answered: kill the unanswered watchdog, but KEEP the heartbeat —
-          // the claim must stay fresh for the whole established call.
+          // Media path open: kill the unanswered watchdog, but KEEP the
+          // heartbeat — the claim must stay fresh for the whole established
+          // call. An open media path is NOT evidence a human answered (an IVR
+          // menu or voicemail greeting opens it identically), which is why
+          // every call used to be labelled "Answered". Default to `connected`
+          // and let the operator confirm the disposition before Save & Next.
           clearUnansweredTimer();
           wasEstablishedRef.current = true;
           setCallState("active");
-          setOutcome("answered");
+          setOutcome("connected");
           setPhoneActive();
           sipLog.info("session", "call established — attaching remote media");
           setupRemoteMedia(inviter);
@@ -813,7 +846,8 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
       await failLoud(classifyFailure({ wsUrl: getSipConfig().wsUrl }));
       return;
     }
-  }, [phoneNumber, callerId, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow, maybeStartServerRecording, clearDialTimers, handleUnansweredTimeout]);
+  }, [phoneNumber, callerId, recentCalls, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow,
+    maybeStartServerRecording, clearDialTimers, handleUnansweredTimeout]);
 
   const endCall = useCallback(async () => {
     stopLocalStream();
@@ -897,9 +931,24 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     // row (it was stamped at dial/end time with the hangup-time outcome). If
     // Telnyx server recording never started (no call-control-id captured),
     // reconcile against Telnyx by from/to/time window before releasing.
+    setSaveError(null);
     const callId = callLogIdRef.current;
     if (callId) {
-      api.calls.update(callId, { status: mapOutcomeToCallStatus(outcome) }).catch(() => {});
+      // Await the disposition write. It used to be fire-and-forget with a
+      // swallowed catch, so a failed PATCH looked identical to a saved one -
+      // the label "flicked back" to the hangup-time value and the operator had
+      // no way to tell the write never landed.
+      try {
+        await api.calls.update(callId, { status: mapOutcomeToCallStatus(outcome) });
+      } catch (err) {
+        sipLog.error(
+          "app",
+          `disposition not saved for call ${callId}: ${(err as any)?.message || err}`,
+        );
+        setSaveError(
+          `Disposition not saved: the ${outcome} outcome failed to write to call ${callId} (${(err as any)?.message || err}). The hangup-time value is still on the record.`,
+        );
+      }
       api.calls.reconcile(callId).catch(() => {});
     }
     await releaseNumber(callId);
@@ -1055,6 +1104,29 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
           {claimError && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-ods-sm p-2 text-[11px] text-amber-700">
               Number in use — {claimError}. It releases when the holder wraps up.
+            </div>
+          )}
+
+          {/* Disposition write failure */}
+          {saveError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-ods-sm p-2 text-[11px] text-red-600">
+              {saveError}
+            </div>
+          )}
+
+          {/* Per-prospect dial cooldown */}
+          {cooldownNotice && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-ods-sm p-2 text-[11px] text-amber-700 flex items-center gap-2">
+              <span className="flex-1">{cooldownNotice}</span>
+              <button
+                onClick={() => {
+                  cooldownOverrideRef.current = true;
+                  void startCall();
+                }}
+                className="underline font-medium hover:brightness-95"
+              >
+                Dial anyway
+              </button>
             </div>
           )}
 
