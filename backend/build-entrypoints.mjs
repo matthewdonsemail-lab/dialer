@@ -12,7 +12,6 @@ const shared = {
   bundle: true,
   platform: "node",
   target: "node22",
-  packages: "external",
   logLevel: "warning",
 };
 
