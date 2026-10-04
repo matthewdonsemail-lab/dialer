@@ -6,8 +6,8 @@ import fs from "fs";
 import net from "net";
 
 // Load environment variables from project root .env.local
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.resolve(__dirname, "../../.env.local");
+const moduleDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.resolve(moduleDir, "../../.env.local");
 const result = config({ path: envPath });
 if (result.error) {
   console.warn("[env] failed to load .env.local:", result.error.message);
