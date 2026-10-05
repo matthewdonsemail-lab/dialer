@@ -59,11 +59,12 @@ export function StatusSelect({ value, onChange, disabled, options }: StatusSelec
           if (!disabled) setIsOpen(!isOpen);
         }}
         disabled={disabled}
-        className={`h-5 inline-flex items-center gap-1.5 px-2 rounded-[4px] text-[11px] font-medium border border-[var(--ods-border)] ${current.bgTint} ${current.textColor} hover:brightness-95 transition-all select-none`}
+        title={current.label}
+        className={`h-5 max-w-full inline-flex items-center gap-1.5 px-2 rounded-[4px] text-[11px] font-medium border border-[var(--ods-border)] ${current.bgTint} ${current.textColor} hover:brightness-95 transition-all select-none whitespace-nowrap overflow-hidden`}
       >
-        <span className={`w-1.5 h-1.5 rounded-full ${current.dotColor}`} />
-        <span>{current.label}</span>
-        <ChevronDown className="w-3 h-3 opacity-60 ml-0.5" />
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dotColor}`} />
+        <span className="min-w-0 truncate">{current.label}</span>
+        <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
       </button>
 
       {isOpen && (
@@ -77,14 +78,15 @@ export function StatusSelect({ value, onChange, disabled, options }: StatusSelec
               <div
                 key={option.value}
                 onClick={() => handleOptionClick(option.value)}
+                title={option.label}
                 className={`h-7 px-2.5 mx-1 rounded-[4px] flex items-center gap-2 text-[12px] cursor-pointer transition-colors ${
                   option.value === value
                     ? "bg-[var(--ods-bg-secondary)] font-medium text-[var(--ods-text-primary)]"
                     : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-bg-secondary)] hover:text-[var(--ods-text-primary)]"
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${option.dotColor}`} />
-                <span>{option.label}</span>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${option.dotColor}`} />
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
               </div>
             ))}
           </div>

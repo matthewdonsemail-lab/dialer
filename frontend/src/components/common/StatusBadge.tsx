@@ -40,8 +40,10 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const label = String(status ?? '').toLowerCase().replace(/_/g, ' ');
 
   return (
-    <Badge variant={variant} size="sm">
-      {label}
+    <Badge variant={variant} size="sm" className="max-w-full">
+      <span className="truncate" title={label}>
+        {label}
+      </span>
     </Badge>
   );
 }
