@@ -9,7 +9,7 @@
       "root": "backend",
       "framework": "express",
       "buildCommand": "bun run --cwd .. build:shared && bun run build",
-      "entrypoint": "dist/server.mjs"
+      "entrypoint": "dist/index.cjs"
     }
   },
   "rewrites": [
