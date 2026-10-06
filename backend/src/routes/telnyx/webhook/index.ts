@@ -155,7 +155,9 @@ async function handleTranscriptionSaved(p: any): Promise<string> {
   return `transcript attached to ${existing.id}`;
 }
 
-router.post("/telnyx", async (req, res) => {
+// "/" as well as "/telnyx": the router is also mounted at the legacy
+// /api/telnyx-webhook path, where the event POST lands on the mount root.
+router.post(["/telnyx", "/"], async (req, res) => {
   const expected = process.env.TELNYX_WEBHOOK_TOKEN || "";
   const provided = typeof req.query.token === "string" ? req.query.token : "";
   if (!expected || provided !== expected) {

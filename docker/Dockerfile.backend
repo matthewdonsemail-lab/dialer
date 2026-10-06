@@ -22,4 +22,4 @@ RUN npm install --omit=dev --no-audit --no-fund
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/backend/dist ./backend/dist
 EXPOSE 4000
-CMD ["node", "backend/dist/server.mjs"]
+CMD ["node", "backend/dist/index.cjs"]

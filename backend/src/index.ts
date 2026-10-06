@@ -44,10 +44,17 @@ const log = createLogger('server');
 const app = express();
 const PORT = parseInt(process.env.PORT || "4000", 10);
 
-// Ensure recordings directory exists
+// Ensure recordings directory exists. On read-only filesystems (Vercel
+// functions) this mkdir fails — warn and continue so a storage problem can
+// never take the whole API down at import time. Upload/serve endpoints
+// degrade to their own 500/404 in that case.
 const RECORDINGS_DIR = path.join(process.cwd(), "data", "recordings");
-if (!fs.existsSync(RECORDINGS_DIR)) {
-  fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(RECORDINGS_DIR)) {
+    fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+  }
+} catch (err: any) {
+  log.warn(`recordings dir not writable (${RECORDINGS_DIR}): ${err.message}`);
 }
 
 // Multer configuration for file uploads
@@ -175,6 +182,11 @@ app.use("/api/calls", callsRouter);
 // NOTE: the Twenty CRM webhook lives at /api/twenty/webhook (HMAC); this is
 // the Telnyx telephony webhook. Different senders, different auth.
 app.use("/api/webhooks", webhooksRouter);
+// Legacy alias: the Telnyx Call Control app still posts to /api/telnyx-webhook
+// (the standalone-function path from before the Vercel services deploy).
+// Same router, same token gate — keeps webhook delivery working without
+// needing Telnyx dashboard access to repoint the URL.
+app.use("/api/telnyx-webhook", webhooksRouter);
 app.use("/api/profiles", profilesRouter);
 app.use("/api/notify", notifyRouter);
 
