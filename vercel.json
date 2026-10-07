@@ -3,7 +3,13 @@
     "frontend": {
       "root": "frontend",
       "framework": "vite",
-      "buildCommand": "bun run --cwd .. build:shared && bun run build"
+      "buildCommand": "bun run --cwd .. build:shared && bun run build",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
     },
     "backend": {
       "root": "backend",
