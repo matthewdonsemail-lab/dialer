@@ -15,7 +15,7 @@
       "root": "backend",
       "framework": "express",
       "buildCommand": "bun run --cwd .. build:shared && bun run build",
-      "entrypoint": "dist/index.cjs"
+      "entrypoint": "src/index.ts"
     }
   },
   "rewrites": [
