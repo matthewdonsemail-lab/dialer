@@ -1,6 +1,6 @@
-// Vercel's express preset runs dist/index.js as CommonJS, so the raw ESM output
-// of tsc crashes at import time. Emit one bundle per module system and drop the
-// tsc-emitted dist/index.js so nothing resolves to unrunnable ESM.
+// Vercel's Express service uses the explicit CommonJS entrypoint in
+// vercel.json; Docker and `start` use the ESM bundle. The tsc-emitted
+// dist/index.js is removed so nothing resolves to un-runnable ESM.
 import { build } from "esbuild";
 import { rm } from "fs/promises";
 import path from "path";
