@@ -32,6 +32,7 @@ Telnyx; the recording is Telnyx server-side.
 - [Data model](#data-model)
 - [Running it](#running-it)
 - [Configuration](#configuration)
+- [Production authentication](#production-authentication)
 - [Repository layout](#repository-layout)
 - [API reference](#api-reference)
 - [Documentation map](#documentation-map)
@@ -812,12 +813,6 @@ Full reference in [SETUP.md](SETUP.md). The shape of it:
 TWENTY_BASE_URL=https://twenty.example.com
 TWENTY_API_KEY=
 
-# Only for backend/. Used for exactly one query: verify a password
-# against core."user". Locally this goes through an SSH tunnel
-# because the tailnet ACL blocks direct 5432:
-#   ssh -L 5433:localhost:5432 -N <host>
-TWENTY_DATABASE_URL=postgres://twenty:xxx@127.0.0.1:5433/twenty
-
 # backend/ only. Signs its own JWTs.
 JWT_SECRET=
 PORT=4000
@@ -842,6 +837,17 @@ also why a redeploy can serve a bundle with stale SIP config if the CDN is
 cached; the app detects a stale chunk and reloads with a cache buster.
 
 SIP is not Telnyx-specific. See [docs/sip-providers.md](docs/sip-providers.md).
+
+## Production authentication
+
+Production sign-in is a Twenty OAuth PKCE flow: the browser receives a code,
+the backend redeems it, introspects the Twenty token, resolves a real workspace
+member, and mints a 24-hour dialer JWT. The October 2026 Vercel incident came
+from a failed backend entrypoint, missing SPA deep-link routing, and incomplete
+Production environment variables. That produced distinct errors in sequence:
+missing OAuth config, a CORS 403, and a session-mint 502. The commit history,
+fixes, required settings, and status-code guide are in the
+[production OAuth incident and runbook](docs/production-oauth-runbook.md).
 
 ## Repository layout
 
@@ -890,8 +896,11 @@ served inside Twenty at `/dialer/*`.
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/auth/login` | Twenty `core."user"` + bcrypt. Signup is disabled. |
-| GET | `/api/auth/me` | Current user from the JWT. |
+| GET | `/api/oauth/config` | Public OAuth client and callback configuration for the SPA. |
+| POST | `/api/oauth/token` | Redeems a Twenty authorization code using the PKCE verifier. |
+| POST | `/api/oauth/session` | Introspects the Twenty token, resolves a workspace member, and mints the dialer JWT. |
+| GET | `/api/auth/me` | Current workspace member from the dialer JWT. |
+| POST | `/api/auth/signup` | Disabled; create the member in Twenty, then use Twenty SSO. |
 | GET POST PATCH DELETE | `/api/leads` | CRUD. |
 | GET POST PATCH DELETE | `/api/prospects` | CRUD. |
 | GET | `/api/prospects/:id/website-status` | Resolves the industry funnel and offer URLs. |
@@ -942,6 +951,7 @@ Full index with descriptions: [docs/README.md](docs/README.md).
 
 **When it breaks**
 
+- [Production OAuth incident and runbook](docs/production-oauth-runbook.md) - Vercel deployment history, production config, and status-code triage
 - [Twenty troubleshooting](docs/twenty-troubleshooting.md)
 - [Telnyx reference](docs/telnyx/README.md)
 

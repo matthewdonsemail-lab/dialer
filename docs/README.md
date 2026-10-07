@@ -26,6 +26,7 @@ Start at the [README](../README.md). This page is the index of everything else.
 | Document | What it answers |
 |---|---|
 | [deployment.md](./deployment.md) | Where each piece is deployed and what it needs. |
+| [production-oauth-runbook.md](./production-oauth-runbook.md) | The Vercel OAuth incident timeline, production settings, status-code triage, and deployment verification. |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Local hooks, checks, and the commit convention. |
 | [../CHANGELOG.md](../CHANGELOG.md) | What changed. |
 
@@ -33,6 +34,7 @@ Start at the [README](../README.md). This page is the index of everything else.
 
 | Document | What it answers |
 |---|---|
+| [production-oauth-runbook.md](./production-oauth-runbook.md) | Diagnosing production PKCE, Vercel routing/config, and session-mint failures. |
 | [twenty-troubleshooting.md](./twenty-troubleshooting.md) | Twenty 401s, 502s, nginx proxy ports, and the schema bootstrap. |
 | [oauth-migration-notes.md](./oauth-migration-notes.md) | The working record of the password→OAuth switch: what was deleted/added, what broke, how each break was proven out. |
 | [telnyx/](./telnyx/README.md) | SIP, Call Control, recording, and the Telnyx API surface we depend on. |

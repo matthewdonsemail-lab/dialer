@@ -109,11 +109,14 @@ Route map (backend Hono sub-app at `/api/oauth`):
 |---|---|---|---|
 | PKCE `state` + `verifier` | browser | one sign-in (~15 min) | `sessionStorage` |
 | Twenty `access` / `refresh` | browser (+ backend memory) | per Twenty defaults | `sessionStorage` (cleared when the tab closes) |
-| Dialer JWT (minted) | browser | 7 days | `localStorage` (`cold-dialer-token`) |
+| Dialer JWT (minted) | browser | 24 hours | `localStorage` (`cold-dialer-token`) |
 
 The dialer JWT is what every existing API route checks. It is minted from a
 token that Twenty's introspection just proved live, so a token stolen from
 `localStorage` is only worth what the presented Twenty token was.
+
+For Vercel Production settings and diagnosis of `/api/oauth/config`, `/token`,
+and `/session`, see the [production OAuth runbook](./production-oauth-runbook.md).
 
 ## Configuring it (operator)
 
@@ -147,7 +150,10 @@ server is pinned to port **5173** (`--strictPort`) and the callback path is
 |---|---|---|
 | "OAuth state mismatch. Start sign-in again." | PKCE state didn't survive the redirect (tab closed, or an old frontend bundle still running — restart the dev server). | [oauth-migration-notes.md](./oauth-migration-notes.md) |
 | Native `user:pass` prompt loops / 401 at `/authorize` | Basic creds for the auth-guard are wrong or expired. | [twenty-troubleshooting.md](./twenty-troubleshooting.md) |
-| "Twenty OAuth is not configured" from `/api/oauth/*` | OAuth vars missing from the **root** `.env.local`. | This file's config section. |
+| "Twenty OAuth is not configured" from `/api/oauth/*` | `TWENTY_BASE_URL`, `TWENTY_OAUTH_CLIENT_ID`, or `TWENTY_OAUTH_REDIRECT_URI` is missing from the runtime environment. | [Production OAuth runbook](./production-oauth-runbook.md) |
+| `POST /api/oauth/token` returns `403 Origin not allowed` | `FRONTEND_URL` is missing or does not exactly match the production page origin. | [Production OAuth runbook](./production-oauth-runbook.md) |
+| `POST /api/oauth/session` returns `502` mentioning `JWT_SECRET` | The backend cannot mint its dialer JWT because the Production secret is absent or shorter than 32 characters. | [Production OAuth runbook](./production-oauth-runbook.md) |
+| `POST /api/oauth/session` returns `403` with workspace-member guidance | Introspection worked, but the Twenty identity could not be matched to a workspace member. Do not restore the fake-operator fallback. | [Production OAuth runbook](./production-oauth-runbook.md) |
 | Consent 302s to `/callback?error=...` | The redirect URI in the client record doesn't match `--port 5173`. | This file's config section. |
 | Browser shows `ERR_CONNECTION_REFUSED` at `localhost:5173/callback` after clicking Authorize | The frontend dev server is not on 5173 (e.g. it was started with `--port 3000`, or Vite silently hopped ports because 5173 was busy). `frontend/vite.config.ts` pins `port: 5173` with `strictPort: true`; start it with plain `npm run dev` / `bun run dev:frontend` and open http://localhost:5173. The login page also refuses to start sign-in with a plain-English error when the origins differ. | [vite.config.ts](../frontend/vite.config.ts) |
 
@@ -157,5 +163,5 @@ server is pinned to port **5173** (`--strictPort`) and the callback path is
 - Hold the client secret (the client is public; the secret column is empty).
 - Trust a token that does not pass Twenty introspection at session-mint time.
 - Keep the Twenty refresh-token flow wired to the SPA yet: the server route
-  exists and is exercised in tests, but the SPA presently finishes with a 7-day
-  dialer JWT and re-signs-in on expiry rather than silently refreshing.
+  exists and is exercised in tests, but the SPA presently finishes with a
+  24-hour dialer JWT and re-signs-in on expiry rather than silently refreshing.
