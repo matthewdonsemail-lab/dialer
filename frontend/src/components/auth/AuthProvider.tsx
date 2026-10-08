@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { api, getAuthToken } from "@/lib/api-client";
+import { decodeJwtPayload } from "@dialer/shared";
+import { api, ApiError, getAuthToken, setAuthToken } from "@/lib/api-client";
 
 export interface DialerUser {
   id: string;
@@ -47,40 +48,71 @@ function toDialerUser(raw: any): DialerUser {
   };
 }
 
+/** Re-verify with the server at most this often when the window regains focus. */
+const REVALIDATE_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * The session the stored dialer JWT describes, or null when there is none or
+ * it has expired. `/api/auth/me` only echoes these claims, so the UI can be
+ * restored without a round-trip; the server still verifies the signature on
+ * every API call.
+ */
+function userFromStoredToken(): DialerUser | null {
+  const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const claims = decodeJwtPayload<Record<string, unknown>>(token);
+    if (typeof claims.exp === "number" && claims.exp * 1000 <= Date.now()) return null;
+    return toDialerUser({
+      id: claims.userId,
+      email: claims.email,
+      fullName: claims.memberName || claims.fullName || null,
+      twentyUserId: claims.twentyUserId,
+      workspaceMemberId: claims.workspaceMemberId,
+    });
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<DialerUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<DialerUser | null>(userFromStoredToken);
+  const lastVerifiedAt = React.useRef(0);
 
   const refreshUser = React.useCallback(async () => {
-    const token = getAuthToken();
-    if (!token) {
+    const local = userFromStoredToken();
+    if (!local) {
+      setAuthToken(null);
       setUser(null);
-      setLoading(false);
       return;
     }
+    setUser((current) => current ?? local);
     try {
       const raw = await api.auth.me();
+      lastVerifiedAt.current = Date.now();
       setUser(toDialerUser(raw));
-    } catch {
-      setUser(null);
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      // Only the server saying "not signed in" ends the session. A rate limit,
+      // network blip or 5xx must not log an operator out mid-call.
+      if (error instanceof ApiError && error.status === 401) {
+        setAuthToken(null);
+        setUser(null);
+      }
     }
   }, []);
 
   useEffect(() => {
     refreshUser();
 
-    // Re-verify on window focus (e.g. returning to the tab).
     const onFocus = () => {
-      refreshUser();
+      if (Date.now() - lastVerifiedAt.current >= REVALIDATE_INTERVAL_MS) refreshUser();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading: false, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -3,6 +3,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import type { Database } from '@/types/database';
+import { useToast } from '@/components/ui/Toast';
 
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
 
@@ -17,11 +18,10 @@ export function CampaignForm({ onClose, onSubmit, initialData }: CampaignFormPro
   const [type, setType] = useState<'outbound' | 'inbound' | 'blended'>(initialData?.type ?? 'outbound');
   const [status, setStatus] = useState<'active' | 'paused' | 'completed'>(initialData?.status ?? 'active');
   const [settingsText, setSettingsText] = useState<string>(JSON.stringify(initialData?.settings ?? {}, null, 2));
-  const [settingsError, setSettingsError] = useState('');
+  const { error: toastError } = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSettingsError('');
 
     let parsedSettings: Record<string, unknown> | null = null;
     const trimmed = settingsText.trim();
@@ -29,7 +29,7 @@ export function CampaignForm({ onClose, onSubmit, initialData }: CampaignFormPro
       try {
         parsedSettings = JSON.parse(trimmed);
       } catch {
-        setSettingsError('Invalid JSON. Please check your syntax.');
+        toastError('Invalid JSON. Please check your syntax.');
         return;
       }
     }
@@ -97,12 +97,9 @@ export function CampaignForm({ onClose, onSubmit, initialData }: CampaignFormPro
             onChange={(e) => setSettingsText(e.target.value)}
             rows={4}
             className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none resize-none ${
-              settingsError ? 'border-red-300 bg-red-50' : 'border-gray-300'
+              'border-gray-300'
             }`}
           />
-          {settingsError && (
-            <p className="text-xs text-red-600 mt-1">{settingsError}</p>
-          )}
         </div>
       </form>
     </Modal>

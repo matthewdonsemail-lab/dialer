@@ -1,8 +1,8 @@
 /**
  * Operator sign-in against Twenty (Twenty is the identity provider).
  *
- * Standard SPA code flow with S256 PKCE: the verifier lives in
- * sessionStorage, the browser is redirected to Twenty's authorize endpoint,
+ * Standard SPA code flow with S256 PKCE: the verifier is stored per `state`
+ * (see pendingStores), the browser is redirected to Twenty's authorize endpoint,
  * Twenty returns to /callback, and the code is redeemed through the Hono
  * `/api/oauth/token` proxy — the client secret never reaches the browser.
  * `POST /api/oauth/session` then exchanges the live Twenty token for a
@@ -34,11 +34,88 @@ export interface OperatorSession {
 }
 
 const SESSION_KEY = "dialer.operator.session";
-const PENDING_KEY = "dialer.oauth.pending";
+const PENDING_PREFIX = "dialer.oauth.pending.";
+/** How long a started sign-in may take, including signing in to Twenty. */
+const PENDING_TTL_MS = 15 * 60 * 1000;
 
 interface PendingFlow {
   verifier: string;
   state: string;
+  createdAtMs: number;
+}
+
+/**
+ * In-progress PKCE flows, keyed by their unguessable `state`.
+ *
+ * localStorage rather than sessionStorage: the callback does not always land
+ * in the tab that started sign-in (a Twenty sign-in finished in another tab or
+ * window, a browser that restores the callback into a new tab). Keying by
+ * state keeps concurrent flows apart, and the TTL sweep bounds what is left
+ * behind. sessionStorage is the fallback when localStorage is unavailable.
+ */
+function pendingStores(): Storage[] {
+  const stores: Storage[] = [];
+  for (const get of [() => window.localStorage, () => window.sessionStorage]) {
+    try {
+      const store = get();
+      if (store) stores.push(store);
+    } catch {
+      // Storage disabled by browser policy: try the next one.
+    }
+  }
+  return stores;
+}
+
+function savePendingFlow(flow: PendingFlow): void {
+  sweepExpiredFlows();
+  for (const store of pendingStores()) {
+    try {
+      store.setItem(PENDING_PREFIX + flow.state, JSON.stringify(flow));
+      return;
+    } catch {
+      // Quota or policy failure: try the next store.
+    }
+  }
+  throw new Error("This browser is blocking site storage, so sign-in cannot continue. Allow storage for this site and try again.");
+}
+
+function readPendingFlow(state: string): PendingFlow | null {
+  for (const store of pendingStores()) {
+    try {
+      const raw = store.getItem(PENDING_PREFIX + state);
+      if (!raw) continue;
+      const flow = JSON.parse(raw) as PendingFlow;
+      if (flow.state === state && Date.now() - flow.createdAtMs < PENDING_TTL_MS) return flow;
+    } catch {
+      // Unreadable entry: treat as missing.
+    }
+  }
+  return null;
+}
+
+function removePendingFlow(state: string): void {
+  for (const store of pendingStores()) {
+    try {
+      store.removeItem(PENDING_PREFIX + state);
+    } catch {
+      // Nothing to clean up.
+    }
+  }
+}
+
+function sweepExpiredFlows(): void {
+  for (const store of pendingStores()) {
+    try {
+      for (let i = store.length - 1; i >= 0; i--) {
+        const key = store.key(i);
+        if (!key?.startsWith(PENDING_PREFIX)) continue;
+        const flow = JSON.parse(store.getItem(key) ?? "null") as PendingFlow | null;
+        if (!flow || Date.now() - flow.createdAtMs >= PENDING_TTL_MS) store.removeItem(key);
+      }
+    } catch {
+      // Best effort only.
+    }
+  }
 }
 
 function api(path: string, init?: RequestInit) {
@@ -98,8 +175,7 @@ export async function beginSignIn(): Promise<void> {
   }
   const verifier = generateCodeVerifier();
   const state = generateState();
-  const pending: PendingFlow = { verifier, state };
-  window.sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  savePendingFlow({ verifier, state, createdAtMs: Date.now() });
   window.location.assign(
     buildAuthorizeUrl({
       authorizationEndpoint: config.authorizationEndpoint,
@@ -129,10 +205,9 @@ export async function finishSignIn(search: string): Promise<void> {
   const cached = finishSignInCache.get(pendingKey);
   if (cached && cached.state === returnedState) return cached.promise;
 
-  const raw = window.sessionStorage.getItem(PENDING_KEY);
-  const pending = (raw ? JSON.parse(raw) : null) as PendingFlow | null;
-  if (!pending || pending.state !== returnedState) {
-    throw new Error("OAuth state mismatch. Start sign-in again.");
+  const pending = returnedState ? readPendingFlow(returnedState) : null;
+  if (!pending) {
+    throw new Error("This sign-in link has expired or was already used. Start sign-in again.");
   }
 
   const promise = (async () => {
@@ -145,7 +220,7 @@ export async function finishSignIn(search: string): Promise<void> {
       if (!tokenRes.ok) throw new Error("Code redemption failed. Start sign-in again.");
       const { tokens } = (await tokenRes.json()) as { tokens: TokenSet };
       writeSession({ tokens, obtainedAtMs: Date.now() });
-      window.sessionStorage.removeItem(PENDING_KEY);
+      removePendingFlow(pending.state);
 
       const sessionRes = await api("/api/oauth/session", {
         method: "POST",

@@ -3,12 +3,11 @@ import { cn } from '@/lib/utils';
 
 interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?: string;
-  error?: string;
   icon?: 'phone' | 'search' | 'email' | null;
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, icon, className, id, ...props }, ref) => {
+  ({ label, icon, className, id, ...props }, ref) => {
     const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
 
     return (
@@ -49,15 +48,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               'bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500',
               'disabled:bg-gray-50 disabled:text-gray-500',
               icon && 'pl-10',
-              error && 'border-red-300 focus:ring-red-500 focus:border-red-500',
               className
             )}
             {...props}
           />
         </div>
-        {error && (
-          <p className="mt-1 text-xs text-red-600">{error}</p>
-        )}
       </div>
     );
   }
