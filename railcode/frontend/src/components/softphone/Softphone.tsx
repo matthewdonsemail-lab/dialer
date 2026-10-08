@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { OutcomeSelect } from "@/components/common/OutcomeSelect";
 import { api } from "@/lib/apiClient";
 import type { Database } from "@/types/database";
+import { useToast } from "@/components/ui/Toast";
 
 // Explicit opt-in only: simulated calls NEVER happen silently. Ordinary dials
 // fail loudly with the classified reason instead.
@@ -58,6 +59,7 @@ const FOCUS_RING =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ods-brand-500)] focus-visible:outline-offset-1";
 
 export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId, onCallEnd }: SoftphoneProps) {
+  const { error: toastError, warning: toastWarning } = useToast();
   const [callState, setCallState] = useState<CallState>("idle");
   const [duration, setDuration] = useState(0);
   const [notes, setNotes] = useState("");
@@ -66,15 +68,11 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const [keypadVisible, setKeypadVisible] = useState(false);
   const [dialNumber, setDialNumber] = useState("");
   const [holdActive, setHoldActive] = useState(false);
-  const [claimError, setClaimError] = useState<string | null>(null);
   const [incomingCall, setIncomingCall] = useState<{
     callerNumber: string;
     callerName: string;
     session: any;
   } | null>(null);
-  const [microphoneError, setMicrophoneError] = useState<string | null>(null);
-  const [fatalError, setFatalError] = useState<ClassifiedFailure | null>(null);
-  const [diagCopied, setDiagCopied] = useState(false);
   const [recWarning, setRecWarning] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -158,14 +156,13 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
-      setMicrophoneError(null);
       return stream;
     } catch (err) {
       console.error("Failed to get local microphone:", err);
-      setMicrophoneError("Microphone access denied. Please allow microphone permissions.");
+      toastError("Microphone access denied. Please allow microphone permissions.");
       throw err;
     }
-  }, []);
+  }, [toastError]);
 
   const stopLocalStream = useCallback(() => {
     if (localStreamRef.current) {
@@ -180,14 +177,13 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     try {
       await api.twentyPhones.claim(phoneId, { memberId: member.id, memberEmail: member.email });
       holdRef.current = { phoneId, memberId: member.id };
-      setClaimError(null);
       return true;
     } catch (err: any) {
       const message = err?.message || "Number is in use";
-      setClaimError(message);
+      toastWarning(`Number in use — ${message}. It releases when the holder wraps up.`);
       return false;
     }
-  }, [phoneId, member]);
+  }, [phoneId, member, toastWarning]);
 
   const setPhoneActive = useCallback(() => {
     const hold = holdRef.current;
@@ -385,13 +381,12 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   // There is deliberately NO silent fallback — a failed dial must say why.
   const failLoud = useCallback(async (failure: ClassifiedFailure) => {
     lastFailureRef.current = failure;
-    setFatalError(failure);
-    setDiagCopied(false);
+    toastError(`Call failed: ${failure.title}`, `${failure.detail} Fix: ${failure.hint}`);
     sipLog.error("app", `CALL FAILED: ${failure.title}`, { kind: failure.kind, detail: failure.detail });
     await finalizeCall("failed", durationRef.current, directionRef.current);
     await releaseNumber(callLogIdRef.current);
     setCallState("ended");
-  }, [finalizeCall, releaseNumber]);
+  }, [finalizeCall, releaseNumber, toastError]);
 
   // Dev-only UI walkthrough (?simulate=1). Never runs silently.
   const startSimulatedCall = useCallback(() => {
@@ -404,8 +399,6 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
   const startCall = useCallback(async () => {
     if (!phoneNumber) return;
 
-    setClaimError(null);
-    setFatalError(null);
     lastFailureRef.current = null;
     sipLog.clear();
     sipLog.info("app", `dial requested`, { to: phoneNumber, phoneId: phoneId ?? null });
@@ -429,7 +422,6 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     setRecWarning(null);
     startedAtRef.current = new Date().toISOString();
     phoneNumberForCallRef.current = phoneNumber;
-    setMicrophoneError(null);
     // Open the agencyCalls row now (IN_PROGRESS) — refs above must be set
     // first, otherwise the row is created with an empty number and the id is
     // cleared by the reset. The live call needs an id before Telnyx hands us
@@ -608,7 +600,6 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
             });
             if (failure.kind !== "UNKNOWN") {
               lastFailureRef.current = failure;
-              setFatalError(failure);
               sipLog.error("app", `CALL FAILED: ${failure.title}`, { kind: failure.kind });
             }
           }
@@ -762,8 +753,6 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     setNotes("");
     setOutcome("no_answer");
     setDirection("outbound");
-    setClaimError(null);
-    setFatalError(null);
     setRecWarning(null);
     recordStartedRef.current = false;
     lastFailureRef.current = null;
@@ -893,20 +882,6 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
             {lead.company ?? lead.email ?? "No contact info"}
           </p>
 
-          {/* Microphone error */}
-          {microphoneError && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-ods-sm p-2 text-[11px] text-red-600">
-              {microphoneError}
-            </div>
-          )}
-
-          {/* Number claim conflict */}
-          {claimError && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-ods-sm p-2 text-[11px] text-amber-700">
-              Number in use — {claimError}. It releases when the holder wraps up.
-            </div>
-          )}
-
           {/* Server recording could not start (call itself continues) */}
           {recWarning && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-ods-sm p-2 text-[11px] text-amber-700">
@@ -914,29 +889,6 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
             </div>
           )}
 
-          {/* Loud call failure: exact reason + one-click diagnostics */}
-          {fatalError && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-ods-sm p-2.5 text-[11px] text-red-700 flex flex-col gap-1.5">
-              <p className="font-semibold text-[12px]">Call failed: {fatalError.title}</p>
-              <p className="text-red-600">{fatalError.detail}</p>
-              <p className="text-[11px] text-red-600/80">Fix: {fatalError.hint}</p>
-              <button
-                onClick={async () => {
-                  const report = getReport(getSipConfig(), fatalError, telnyxCallControlIdRef.current);
-                  try {
-                    await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
-                    setDiagCopied(true);
-                    setTimeout(() => setDiagCopied(false), 2000);
-                  } catch {
-                    console.error("[sip] clipboard failed", report);
-                  }
-                }}
-                className="self-start mt-0.5 px-2 py-1 rounded-[4px] border border-red-500/40 text-[11px] font-medium hover:bg-red-500/10 transition-colors"
-              >
-                {diagCopied ? "Copied ✓" : "Copy diagnostics"}
-              </button>
-            </div>
-          )}
 
           <div className="text-center">
             <p className="text-[18px] font-semibold text-[var(--ods-text-primary)]">{phoneNumber || "—"}</p>

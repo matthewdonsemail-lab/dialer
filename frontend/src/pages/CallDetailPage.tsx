@@ -8,12 +8,13 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spokes } from "@/components/ui/Spinner";
 import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines, Star } from "lucide-react";
 import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
+import { useToast } from "@/components/ui/Toast";
 
 export function CallDetailPage() {
   const { callId } = useParams<{ callId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { error: toastError } = useToast();
 
   const { data: call, isLoading: callLoading } = useQuery<any>({
     queryKey: ["call", callId],
@@ -25,21 +26,19 @@ export function CallDetailPage() {
   const analyzeMutation = useMutation({
     mutationFn: () => api.calls.analyze(callId ?? ""),
     onSuccess: () => {
-      setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["call", callId] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
     },
-    onError: (err: any) => setActionError(err?.message || "Analysis failed"),
+    onError: (err: any) => toastError(err?.message || "Analysis failed"),
   });
 
   const reconcileMutation = useMutation({
     mutationFn: () => api.calls.reconcile(callId ?? ""),
     onSuccess: () => {
-      setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["call", callId] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
     },
-    onError: (err: any) => setActionError(err?.message || "Reconcile failed"),
+    onError: (err: any) => toastError(err?.message || "Reconcile failed"),
   });
 
   const { data: lead } = useQuery<any>({
@@ -188,9 +187,6 @@ export function CallDetailPage() {
                 {reconcileMutation.isPending ? "Reconciling…" : "Reconcile with Telnyx"}
               </button>
             </div>
-          )}
-          {actionError && (
-            <p className="mt-2 text-[12px] text-red-600">{actionError}</p>
           )}
           <p className="mt-2 text-[11px] text-[var(--ods-text-tertiary)]">
             Transcription: {call.transcriptionStatus ?? "NONE"}

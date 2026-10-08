@@ -311,6 +311,7 @@ function CampaignModal({
   statusOptions: Array<{ value: string; label: string; dotColor: string; bgTint: string; textColor: string }>;
 }) {
   const queryClient = useQueryClient();
+  const { error: toastError } = useToast();
   const isEdit = !!campaign;
 
   const [form, setForm] = useState<CampaignFormState>({
@@ -319,7 +320,6 @@ function CampaignModal({
     campaignType: campaign?.campaignType?.toLowerCase().replace("_", "-") || "outbound",
   });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: async (data: CampaignFormState) => {
@@ -333,7 +333,7 @@ function CampaignModal({
       onSaved();
     },
     onError: (err: any) => {
-      setError(err?.message || "Failed to save campaign");
+      toastError(err?.message || "Failed to save campaign");
     },
     onSettled: () => {
       setSaving(false);
@@ -343,11 +343,10 @@ function CampaignModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
-      setError("Campaign name is required");
+      toastError("Campaign name is required");
       return;
     }
     setSaving(true);
-    setError(null);
     mutation.mutate(form);
   }
 
@@ -418,9 +417,6 @@ function CampaignModal({
             </select>
           </div>
 
-          {error && (
-            <p className="text-[12px] text-red-500">{error}</p>
-          )}
 
           <div className="flex gap-2 justify-end pt-2">
             <button

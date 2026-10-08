@@ -156,6 +156,9 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
   const videoUrl = offerVideoUrl || prospectVideoUrl;
   const videoStatus = status?.prospect.videoStatus || "NONE";
   const videoError = status?.prospect.videoError || "";
+  useEffect(() => {
+    if (videoError) toastError(videoError);
+  }, [videoError, toastError]);
 
   const logSent = useMutation({
     mutationFn: (data: { templateUrl?: string; offerUrl?: string; fromNumber?: string; body?: string }) =>
@@ -277,7 +280,6 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
             <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-2">
               <span className="inline-flex items-center gap-1.5"><Video className="w-3.5 h-3.5" /> Video page</span>
             </dt>
-            {videoError && <p className="text-[12px] text-red-600 mb-1.5">{videoError}</p>}
             {videoUrl ? (
               <div className="flex flex-col gap-1.5">
                 {offerVideoUrl && (
