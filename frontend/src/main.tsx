@@ -60,7 +60,30 @@ function showDeployBanner(text: string, stuck: boolean) {
   }
   el.textContent = text;
 }
+// Navigating away aborts in-flight script/link loads, and WebKit reports each
+// abort as a load error. Those are not stale chunks; ignore them.
+let leavingPage = false;
+window.addEventListener("pagehide", () => {
+  leavingPage = true;
+});
+window.addEventListener("pageshow", () => {
+  leavingPage = false;
+});
+// "fired" means "a chunk failed during this page load"; start each load clean.
+try {
+  sessionStorage.removeItem(`${CHUNK_RELOAD_KEY}-fired`);
+} catch {
+  // storage blocked
+}
+
 function recoverFromStaleChunk() {
+  if (leavingPage) return;
+  // /callback holds a single-use OAuth code: reloading it would replay the
+  // code and fail sign-in. Ask for a fresh sign-in instead.
+  if (window.location.pathname === "/callback") {
+    showDeployBanner("A new app version was deployed during sign-in — start sign-in again.", true);
+    return;
+  }
   const attempt = chunkReloadCount() + 1;
   try {
     sessionStorage.setItem(CHUNK_RELOAD_KEY, String(attempt));

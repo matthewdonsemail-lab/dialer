@@ -39,6 +39,7 @@ import webhooksRouter from "./routes/telnyx/webhook/index.js";
 import { profilesRouter } from "./routes/profiles/index.js";
 import notifyRouter from "./routes/notify/index.js";
 import { createLogger } from "./lib/logger/index.js";
+import { clientIp } from "./lib/client-ip/index.js";
 
 const log = createLogger('server');
 const app = express();
@@ -105,9 +106,12 @@ app.use((err: any, _req: express.Request, res: express.Response, next: express.N
 
 // Abuse tiers: general API traffic, sensitive auth/upload paths, and the
 // unauthenticated network probe each get their own budget.
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300 });
-const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
-const probeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+// Keyed on the real client (see clientIp): keyed on req.ip, every user behind
+// Cloudflare/Vercel shared one bucket and sign-in failed for all of them.
+const limiterKey = { keyGenerator: clientIp, validate: { xForwardedForHeader: false } };
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, ...limiterKey });
+const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, ...limiterKey });
+const probeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, ...limiterKey });
 app.use("/api/", generalLimiter);
 
 // Hono owns /api/oauth (Twenty PKCE). Mounted before express.json() — the

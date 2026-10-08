@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { finishSignIn } from "@/lib/oauth";
+import { getAuthToken } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { AlertCircle } from "lucide-react";
 import { TropicalTideBackground } from "@/components/background-gradient/tropical-tide-background";
@@ -17,7 +18,14 @@ export function CallbackPage() {
     finishSignIn(`?${searchParams.toString()}`)
       .then(async () => {
         await refreshUser();
-        if (!cancelled) navigate("/dashboard", { replace: true });
+        if (cancelled) return;
+        // refreshUser clears a token the server rejects; say so here rather than
+        // letting the protected route bounce to /login with no explanation.
+        if (!getAuthToken()) {
+          setError("Twenty signed you in, but the dialer rejected the new session. Start sign-in again.");
+          return;
+        }
+        navigate("/dashboard", { replace: true });
       })
       .catch((err: any) => {
         console.error("[CallbackPage] finishSignIn failed:", err);
