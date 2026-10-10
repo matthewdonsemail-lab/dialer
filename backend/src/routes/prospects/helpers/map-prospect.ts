@@ -1,4 +1,5 @@
 import type { AgencyProspect } from "../types.js";
+import { additionalPhones } from "../../../lib/twenty/contactValues/index.js";
 import { selectValue } from "./select-value.js";
 
 // Status mappings. Pure data.
@@ -19,7 +20,8 @@ export function frontendStatusToTwenty(status: string | undefined, dnc: unknown)
     status === "interested" ? "INTERESTED" :
     status === "callback" ? "CALLBACK" :
     status === "converted" ? "CONVERTED" :
-    status === "not_interested" ? "NOT_INTERESTED" : "NEW"
+    status === "not_interested" ? "NOT_INTERESTED" :
+    status === "do_not_contact" ? "DO_NOT_CONTACT" : "NEW"
   );
 }
 
@@ -53,6 +55,8 @@ export function mapProspectListItem(prospect: AgencyProspect) {
     company: prospect.niche || "—",
     phone: prospect.phone,
     email: prospect.email,
+    additional_phones: additionalPhones(prospect.phoneNumber ?? prospect.primaryPhone, prospect.phone),
+    additional_emails: [] as string[],
     website: prospect.website,
     address,
     city,
@@ -117,6 +121,8 @@ export function mapProspectDetail(prospect: AgencyProspect) {
     company: prospect.niche || "—",
     phone: prospect.phone,
     email: prospect.email,
+    additional_phones: additionalPhones(prospect.phoneNumber ?? prospect.primaryPhone, prospect.phone),
+    additional_emails: [] as string[],
     website: prospect.website,
     address: addressParts[0],
     city: prospect.city || addressParts[1],

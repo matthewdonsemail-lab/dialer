@@ -33,6 +33,11 @@ const statusVariants: Record<string, 'blue' | 'green' | 'amber' | 'red' | 'gray'
   disconnected: 'gray',
   in_progress: 'blue',
   failed: 'red',
+  // WAVV dispositions (lib/call-outcome): green = positive, red/gray = negative.
+  appointment_set: 'green',
+  good_number: 'green',
+  left_callback: 'purple',
+  bad_number: 'red',
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {

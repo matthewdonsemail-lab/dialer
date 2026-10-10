@@ -4,9 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The app themes itself (Settings → Appearance); browsers must not force-darken it. -->
+    <meta name="color-scheme" content="light dark" />
     <title>Dialer</title>
+    <script>
+      // Apply the saved theme before first paint so dark mode never flashes light.
+      // Keep the key and logic in sync with src/lib/theme.tsx.
+      (function () {
+        var mode = "system";
+        try { mode = localStorage.getItem("dialer-theme") || "system"; } catch (e) {}
+        var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
-  <body class="bg-gray-50">
+  <body class="bg-[var(--ods-bg-primary)]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

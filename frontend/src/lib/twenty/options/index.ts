@@ -3,7 +3,7 @@ import type { StatusOption } from "@/components/common/StatusSelect";
 const COLOR_MAP: Record<string, { dotColor: string; bgTint: string; textColor: string }> = {
   green:   { dotColor: "bg-green-500",       bgTint: "bg-green-500/10",          textColor: "text-green-700" },
   red:     { dotColor: "bg-red-500",         bgTint: "bg-red-500/10",            textColor: "text-red-700" },
-  gray:    { dotColor: "bg-gray-500",        bgTint: "bg-gray-500/10",           textColor: "text-gray-700" },
+  gray:    { dotColor: "bg-gray-500",        bgTint: "bg-gray-500/10",           textColor: "text-[var(--ods-text-primary)]" },
   amber:   { dotColor: "bg-amber-500",       bgTint: "bg-amber-500/10",          textColor: "text-amber-700" },
   blue:    { dotColor: "bg-blue-500",        bgTint: "bg-blue-500/10",           textColor: "text-blue-700" },
   emerald: { dotColor: "bg-emerald-500",     bgTint: "bg-emerald-500/10",        textColor: "text-emerald-700" },

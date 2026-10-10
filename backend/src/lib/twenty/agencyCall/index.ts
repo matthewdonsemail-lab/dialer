@@ -16,7 +16,7 @@ const log = createLogger('twenty-call-history-setup');
  * DATE_TIME for timestamps, NUMBER for durationSeconds and AI numbers.
  */
 
-async function metadataMutation<T = any>(mutation: string): Promise<T> {
+export async function metadataMutation<T = any>(mutation: string): Promise<T> {
   const cfg = loadSyncConfig();
   const response = await fetch(`${cfg.twentyBaseUrl}/metadata`, {
     method: "POST",
@@ -37,7 +37,7 @@ async function metadataMutation<T = any>(mutation: string): Promise<T> {
   return json.data;
 }
 
-async function getObjectId(nameSingular: string): Promise<string | null> {
+export async function getObjectId(nameSingular: string): Promise<string | null> {
   const data = await metadataMutation<any>(
     `{ objects(paging: {first: 100}) { edges { node { id nameSingular } } } }`
   );
@@ -47,7 +47,7 @@ async function getObjectId(nameSingular: string): Promise<string | null> {
   return found?.id ?? null;
 }
 
-async function getFieldNames(objectMetadataId: string): Promise<Set<string>> {
+export async function getFieldNames(objectMetadataId: string): Promise<Set<string>> {
   const data = await metadataMutation<any>(
     `{ objects(paging: {first: 100}) { edges { node { id fields(paging: {first: 100}) { edges { node { name } } } } } } }`
   );
@@ -59,7 +59,7 @@ async function getFieldNames(objectMetadataId: string): Promise<Set<string>> {
   );
 }
 
-async function createField(
+export async function createField(
   objectMetadataId: string,
   type: "TEXT" | "DATE_TIME" | "NUMBER",
   name: string,

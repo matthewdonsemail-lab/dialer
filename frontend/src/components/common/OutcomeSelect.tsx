@@ -1,34 +1,22 @@
-import React, { useState, useRef, useEffect } from "react";
-import {
-  useFloating,
-  autoUpdate,
-  offset,
-  flip,
-  shift,
-  FloatingPortal,
-} from "@floating-ui/react";
 import { ChevronDown } from "lucide-react";
+import { SelectMenu } from "@/components/ui/Menu";
+import { DISPOSITIONS, dispositionFor, outcomeLabel, type DispositionType } from "@/lib/call-outcome";
 
-export interface OutcomeOption {
-  value: string;
-  label: string;
-  dotColor: string;
-  bgTint: string;
-  textColor: string;
-}
-
-export const OUTCOME_CONFIG: Record<string, OutcomeOption> = {
-  // Auto-set when the SIP media path opens. Shown first so an operator can see
-  // that the default disposition is not yet a human answer.
-  connected: { value: "connected", label: "Connected (no answer confirmed)", dotColor: "bg-sky-500", bgTint: "bg-sky-500/10", textColor: "text-sky-700" },
-  answered: { value: "answered", label: "Answered", dotColor: "bg-emerald-500", bgTint: "bg-emerald-500/10", textColor: "text-emerald-700" },
-  no_answer: { value: "no_answer", label: "No Answer", dotColor: "bg-gray-500", bgTint: "bg-gray-500/10", textColor: "text-gray-600" },
-  busy: { value: "busy", label: "Busy", dotColor: "bg-red-500", bgTint: "bg-red-500/10", textColor: "text-red-700" },
-  voicemail: { value: "voicemail", label: "Voicemail", dotColor: "bg-amber-500", bgTint: "bg-amber-500/10", textColor: "text-amber-700" },
-  dnc: { value: "dnc", label: "DNC", dotColor: "bg-rose-500", bgTint: "bg-rose-500/10", textColor: "text-rose-700" },
-  wrong_number: { value: "wrong_number", label: "Wrong Number", dotColor: "bg-gray-400", bgTint: "bg-gray-400/10", textColor: "text-gray-600" },
-  disconnected: { value: "disconnected", label: "Disconnected", dotColor: "bg-gray-400", bgTint: "bg-gray-400/10", textColor: "text-gray-600" },
+const TYPE_DOT: Record<DispositionType, string> = {
+  positive: "bg-emerald-500",
+  negative: "bg-red-500",
 };
+
+const TYPE_STYLE: Record<DispositionType | "pending", string> = {
+  positive: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
+  negative: "bg-red-500/10 text-red-700 border-red-500/30",
+  pending: "bg-sky-500/10 text-sky-700 border-sky-500/30",
+};
+
+const sections = (["positive", "negative"] as const).map((type) => ({
+  title: type === "positive" ? "Positive" : "Negative",
+  options: DISPOSITIONS.filter((d) => d.type === type).map((d) => ({ value: d.value, label: d.label, dot: TYPE_DOT[type] })),
+}));
 
 interface OutcomeSelectProps {
   value?: string;
@@ -36,73 +24,36 @@ interface OutcomeSelectProps {
   disabled?: boolean;
 }
 
+/**
+ * Call disposition picker, grouped Positive / Negative like WAVV. The system
+ * outcome "connected" (set when the line opens) shows as a prompt to choose.
+ */
 export function OutcomeSelect({ value = "no_answer", onChange, disabled }: OutcomeSelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const current = OUTCOME_CONFIG[value] || OUTCOME_CONFIG.no_answer;
-  const pendingRef = useRef<string | null>(null);
-
-  const { refs, floatingStyles } = useFloating({
-    open: isOpen,
-    onOpenChange: setIsOpen,
-    placement: "top-start",
-    whileElementsMounted: autoUpdate,
-    middleware: [offset(4), flip(), shift({ padding: 8 })],
-  });
-
-  const handleOptionClick = (optionValue: string) => {
-    pendingRef.current = optionValue;
-    setIsOpen(false);
-  };
-
-  // Fire onChange when menu closes
-  useEffect(() => {
-    if (!isOpen && pendingRef.current) {
-      onChange(pendingRef.current);
-      pendingRef.current = null;
-    }
-  }, [isOpen, onChange]);
+  const def = dispositionFor(value);
+  const style = TYPE_STYLE[def?.type ?? "pending"];
 
   return (
-    <>
-      <button
-        ref={refs.setReference}
-        onClick={() => {
-          if (!disabled) setIsOpen(!isOpen);
-        }}
-        disabled={disabled}
-        className={`h-8 inline-flex items-center gap-2 px-2.5 rounded-[4px] text-[12px] font-medium border border-[var(--ods-border)] ${current.bgTint} ${current.textColor} hover:brightness-95 transition-all select-none w-full justify-between`}
-      >
-        <span className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${current.dotColor}`} />
-          <span>{current.label}</span>
-        </span>
-        <ChevronDown className="w-3.5 h-3.5 opacity-60" />
-      </button>
-
-      {isOpen && (
-        <FloatingPortal>
-          <div
-            ref={refs.setFloating}
-            style={floatingStyles}
-            className="z-[60] w-44 py-1 bg-[var(--ods-bg-primary)] border border-[var(--ods-border)] rounded-[6px] shadow-lg flex flex-col gap-0.5 select-none"
-          >
-            {Object.values(OUTCOME_CONFIG).map((option) => (
-              <div
-                key={option.value}
-                onClick={() => handleOptionClick(option.value)}
-                className={`h-7 px-2.5 mx-1 rounded-[4px] flex items-center gap-2 text-[12px] cursor-pointer transition-colors ${
-                  option.value === value
-                    ? "bg-[var(--ods-bg-secondary)] font-medium text-[var(--ods-text-primary)]"
-                    : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-bg-secondary)] hover:text-[var(--ods-text-primary)]"
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${option.dotColor}`} />
-                <span>{option.label}</span>
-              </div>
-            ))}
-          </div>
-        </FloatingPortal>
-      )}
-    </>
+    <SelectMenu
+      value={value}
+      sections={sections}
+      onChange={onChange}
+      disabled={disabled}
+      placement="top-start"
+      width={260}
+      triggerTitle="Set the call disposition"
+      triggerClassName={`h-9 w-full inline-flex items-center justify-between gap-2 px-3 rounded-[6px] text-[13px] font-medium border transition-colors disabled:opacity-60 ${style}`}
+      trigger={
+        <>
+          <span className="flex items-center gap-2 min-w-0">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${def ? TYPE_DOT[def.type] : "bg-sky-500"}`} />
+            <span className="truncate">{outcomeLabel(value)}</span>
+            {def && (
+              <span className="text-[11px] font-normal opacity-70">{def.type === "positive" ? "Positive" : "Negative"}</span>
+            )}
+          </span>
+          <ChevronDown className="w-4 h-4 opacity-60 shrink-0" />
+        </>
+      }
+    />
   );
 }

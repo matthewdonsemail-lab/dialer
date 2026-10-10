@@ -126,12 +126,12 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <label className="block text-sm font-medium text-[var(--ods-text-primary)] mb-1">Phone</label>
             <div className="flex">
               <select
                 value={formData.phone_country}
                 onChange={(e) => setFormData((prev) => ({ ...prev, phone_country: e.target.value }))}
-                className="w-24 px-2 py-2 border border-gray-300 rounded-l-lg text-sm bg-gray-50 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                className="w-24 px-2 py-2 border border-[var(--ods-border-strong)] rounded-l-lg text-sm bg-[var(--ods-bg-secondary)] focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               >
                 {COUNTRY_CODES.map((c) => (
                   <option key={c.code} value={c.code}>
@@ -144,7 +144,7 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
                 value={formData.phone}
                 onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
                 placeholder="(862) 366-7732"
-                className="flex-1 px-3 py-2 border border-l-0 border-gray-300 rounded-r-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                className="flex-1 px-3 py-2 border border-l-0 border-[var(--ods-border-strong)] rounded-r-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               />
             </div>
           </div>
@@ -196,11 +196,11 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
             placeholder="e.g. website, referral"
           />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <label className="block text-sm font-medium text-[var(--ods-text-primary)] mb-1">Status</label>
             <select
               value={formData.status}
               onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white"
+              className="w-full px-3 py-2 border border-[var(--ods-border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-[var(--ods-bg-primary)]"
             >
               <option value="new">New</option>
               <option value="contacted">Contacted</option>

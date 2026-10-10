@@ -12,7 +12,6 @@ import { MIN_COLUMN_WIDTH } from "@/hooks/use-column-widths";
 export function SortableHeaderCell({
   colKey,
   label,
-  widthVar,
   edge,
   resizeHandle,
   registerHeader,
@@ -21,7 +20,6 @@ export function SortableHeaderCell({
 }: {
   colKey: string;
   label: string;
-  widthVar: string;
   edge?: "left" | "right" | null;
   resizeHandle?: React.ReactNode;
   registerHeader: (key: string) => (el: HTMLElement | null) => void;
@@ -46,7 +44,6 @@ export function SortableHeaderCell({
         registerHeader(colKey)(el);
       }}
       style={{
-        width: `var(${widthVar})`,
         transform: CSS.Translate.toString(transform),
         transition,
         ...(edge === "left"
@@ -55,7 +52,7 @@ export function SortableHeaderCell({
             ? { boxShadow: "inset -2px 0 0 var(--ods-brand-600)" }
             : undefined),
       }}
-      className={`group/th relative px-3 text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] ${
+      className={`group/th relative px-3 whitespace-nowrap text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] ${
         isDragging ? "opacity-40" : ""
       }`}
     >
@@ -108,7 +105,8 @@ export function ColumnResizeHandle({
       const table = tableRef.current;
       if (!d || !table) return;
       const next = Math.max(MIN_COLUMN_WIDTH, d.startW + (ev.clientX - d.startX));
-      table.style.setProperty(`--col-${colKey}`, `${next}px`);
+      // Unitless: DataTable turns column weights into shares of the table width.
+      table.style.setProperty(`--col-${colKey}`, String(next));
     };
     const onUp = (ev: PointerEvent) => {
       const d = drag.current;

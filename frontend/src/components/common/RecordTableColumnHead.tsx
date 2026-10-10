@@ -58,14 +58,14 @@ export const RecordTableColumnHead: React.FC<RecordTableColumnHeadProps> = ({
         <div className="absolute top-full left-0 mt-1 w-44 z-[60] bg-[var(--ods-bg-primary)] border border-[var(--ods-border)] rounded-[6px] shadow-sm py-1 text-[12px] font-normal text-[var(--ods-text-secondary)]">
           <button
             onClick={() => { onSort?.('asc'); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-black/[0.04] hover:text-[var(--ods-text-primary)] text-left"
+            className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)] text-left"
           >
             <ArrowUp className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
             Sort ascending
           </button>
           <button
             onClick={() => { onSort?.('desc'); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-black/[0.04] hover:text-[var(--ods-text-primary)] text-left"
+            className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)] text-left"
           >
             <ArrowDown className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
             Sort descending
@@ -77,7 +77,7 @@ export const RecordTableColumnHead: React.FC<RecordTableColumnHeadProps> = ({
             <button
               disabled={!canMoveLeft}
               onClick={() => { onMoveLeft(); setOpen(false); }}
-              className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-black/[0.04] hover:text-[var(--ods-text-primary)] text-left disabled:opacity-40 disabled:pointer-events-none"
+              className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)] text-left disabled:opacity-40 disabled:pointer-events-none"
             >
               <ArrowLeft className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
               Move left
@@ -88,7 +88,7 @@ export const RecordTableColumnHead: React.FC<RecordTableColumnHeadProps> = ({
             <button
               disabled={!canMoveRight}
               onClick={() => { onMoveRight(); setOpen(false); }}
-              className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-black/[0.04] hover:text-[var(--ods-text-primary)] text-left disabled:opacity-40 disabled:pointer-events-none"
+              className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)] text-left disabled:opacity-40 disabled:pointer-events-none"
             >
               <ArrowRight className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
               Move right
@@ -100,7 +100,7 @@ export const RecordTableColumnHead: React.FC<RecordTableColumnHeadProps> = ({
               <div className="my-1 h-[1px] bg-[var(--ods-border)]" />
               <button
                 onClick={() => { onHide(); setOpen(false); }}
-                className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-black/[0.04] hover:text-[var(--ods-text-primary)] text-left"
+                className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)] text-left"
               >
                 <EyeOff className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
                 Hide in view

@@ -1,17 +1,6 @@
-import React, { useState } from "react";
-import {
-  useFloating,
-  autoUpdate,
-  offset,
-  flip,
-  shift,
-  FloatingPortal,
-  useClick,
-  useDismiss,
-  useRole,
-  useInteractions,
-} from "@floating-ui/react";
-import { Filter } from "lucide-react";
+import { ArrowDownAZ, ArrowUpZA, ListFilter, X } from "lucide-react";
+import type { SortDirection } from "@/lib/list-sort";
+import { MenuRow, SelectMenu } from "@/components/ui/Menu";
 
 export interface HeaderFilterOption {
   value: string;
@@ -20,116 +9,94 @@ export interface HeaderFilterOption {
 }
 
 interface HeaderFilterProps {
-  /** Column label shown in the popover title */
+  /** Column label shown in the menu */
   label: string;
-  /** Current value; "all" means no filter */
-  value: string;
-  options: HeaderFilterOption[];
-  onChange: (newValue: string) => void;
+  /** Current value; "all" means no filter. Omit for sort-only columns. */
+  value?: string;
+  /** Filter values. Omit or pass [] for sort-only columns. */
+  options?: HeaderFilterOption[];
+  onChange?: (newValue: string) => void;
+  /** Sort controls. `direction` is null when this column is not the sort key. */
+  sort?: { direction: SortDirection | null; onSort: (direction: SortDirection | null) => void };
 }
 
+const ALL = "all";
+
 /**
- * Column-header filter button + floating-ui popover.
- * Same @floating-ui/react pattern as StatusSelect/CampaignSelect, with
- * click-outside dismiss. Shows "All" plus one row per option with counts.
+ * Column header menu: sort A→Z / Z→A, then the column's values as filters
+ * with counts. The icon stays visible (in brand colour) while the column is
+ * sorted or filtered, so the header shows what is shaping the table.
  */
-export function HeaderFilter({ label, value, options, onChange }: HeaderFilterProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const { refs, floatingStyles, context } = useFloating({
-    open: isOpen,
-    onOpenChange: setIsOpen,
-    placement: "bottom-start",
-    whileElementsMounted: autoUpdate,
-    middleware: [offset(4), flip(), shift({ padding: 8 })],
-  });
-
-  const click = useClick(context);
-  const dismiss = useDismiss(context);
-  const role = useRole(context);
-  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
-
-  const active = value !== "all";
+export function HeaderFilter({ label, value = ALL, options = [], onChange, sort }: HeaderFilterProps) {
+  const filtered = value !== ALL;
+  const sorted = (sort?.direction ?? null) !== null;
+  const active = filtered || sorted;
   const total = options.reduce((sum, o) => sum + (o.count ?? 0), 0);
 
   return (
-    <>
-      <button
-        ref={refs.setReference}
-        {...getReferenceProps()}
-        title={`Filter ${label}`}
-        className={`ml-1 p-0.5 rounded-[3px] transition-colors ${
-          active
-            ? "text-[var(--ods-brand-600)]"
-            : "text-[var(--ods-text-tertiary)] opacity-0 group-hover/th:opacity-100 hover:text-[var(--ods-text-primary)]"
-        } ${isOpen ? "!opacity-100" : ""}`}
-      >
-        <Filter className="w-3 h-3" fill={active ? "currentColor" : "none"} />
-      </button>
-
-      {isOpen && (
-        <FloatingPortal>
-          <div
-            ref={refs.setFloating}
-            style={floatingStyles}
-            {...getFloatingProps()}
-            className="z-[60] w-52 py-1 bg-[var(--ods-bg-primary)] border border-[var(--ods-border)] rounded-[6px] shadow-lg flex flex-col gap-0.5 select-none"
-          >
-            <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ods-text-tertiary)]">
-              {label}
+    <SelectMenu
+      value={options.length > 0 ? value : null}
+      searchable={options.length > 8}
+      width={240}
+      onChange={(v) => onChange?.(v)}
+      triggerTitle={`Sort or filter ${label}`}
+      triggerClassName={`ml-1 p-0.5 rounded-[4px] transition-colors ${
+        active
+          ? "text-[var(--ods-brand-600)] bg-[var(--ods-brand-50)] dark:bg-[var(--ods-brand-900)]/40"
+          : "text-[var(--ods-text-tertiary)] opacity-0 group-hover/th:opacity-100 hover:text-[var(--ods-text-primary)] aria-expanded:opacity-100"
+      }`}
+      trigger={
+        sorted && !filtered ? (
+          sort!.direction === "asc" ? <ArrowDownAZ className="w-3.5 h-3.5" /> : <ArrowUpZA className="w-3.5 h-3.5" />
+        ) : (
+          <ListFilter className="w-3.5 h-3.5" />
+        )
+      }
+      header={(close) =>
+        sort ? (
+          <div className={options.length > 0 ? "pb-1 mb-1 border-b border-[var(--ods-border)]" : ""}>
+            <div className="px-3 py-1.5 bg-[var(--ods-bg-secondary)] text-[11px] font-semibold uppercase tracking-wider text-[var(--ods-text-tertiary)]">
+              Sort {label}
             </div>
-            <FilterRow
-              label="All"
-              count={total}
-              selected={!active}
-              onClick={() => {
-                onChange("all");
-                setIsOpen(false);
+            <MenuRow
+              option={{ value: "asc", label: "A → Z (low to high)" }}
+              selected={sort.direction === "asc"}
+              onSelect={() => {
+                close();
+                sort.onSort("asc");
               }}
             />
-            {options.map((option) => (
-              <FilterRow
-                key={option.value}
-                label={option.label}
-                count={option.count}
-                selected={option.value === value}
+            <MenuRow
+              option={{ value: "desc", label: "Z → A (high to low)" }}
+              selected={sort.direction === "desc"}
+              onSelect={() => {
+                close();
+                sort.onSort("desc");
+              }}
+            />
+            {sorted && (
+              <button
                 onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
+                  close();
+                  sort.onSort(null);
                 }}
-              />
-            ))}
+                className="mx-1 w-[calc(100%-8px)] h-8 px-2.5 flex items-center gap-2 rounded-[6px] text-[12px] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)]"
+              >
+                <X className="w-3.5 h-3.5" />
+                Clear sort
+              </button>
+            )}
           </div>
-        </FloatingPortal>
-      )}
-    </>
-  );
-}
-
-function FilterRow({
-  label,
-  count,
-  selected,
-  onClick,
-}: {
-  label: string;
-  count?: number;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div
-      onClick={onClick}
-      className={`min-h-7 px-2.5 mx-1 py-1 rounded-[4px] flex items-center justify-between gap-2 text-[12px] cursor-pointer transition-colors ${
-        selected
-          ? "bg-[var(--ods-bg-secondary)] font-medium text-[var(--ods-text-primary)]"
-          : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-bg-secondary)] hover:text-[var(--ods-text-primary)]"
-      }`}
-    >
-      <span className="truncate">{label}</span>
-      {count !== undefined && (
-        <span className="text-[11px] text-[var(--ods-text-tertiary)] tabular-nums">{count}</span>
-      )}
-    </div>
+        ) : null
+      }
+      sections={
+        options.length > 0
+          ? [
+              { title: `Filter ${label}`, options: [{ value: ALL, label: "All", hint: total }] },
+              { options: options.map((o) => ({ value: o.value, label: o.label, hint: o.count })) },
+            ]
+          : []
+      }
+    />
   );
 }

@@ -398,8 +398,8 @@ export function ScriptsPage() {
                         value: cat,
                         label: cat,
                         dotColor: "bg-gray-400",
-                        bgTint: "bg-gray-50",
-                        textColor: "text-gray-700",
+                        bgTint: "bg-[var(--ods-bg-secondary)]",
+                        textColor: "text-[var(--ods-text-primary)]",
                       }))}
                       onChange={(val) =>
                         setEditForm({

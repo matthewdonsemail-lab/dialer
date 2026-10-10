@@ -4,7 +4,7 @@ import { finishSignIn } from "@/lib/oauth";
 import { getAuthToken } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { TropicalTideBackground } from "@/components/background-gradient/tropical-tide-background";
-import { Spokes } from "@/components/ui/Spinner";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
 export function CallbackPage() {
@@ -26,7 +26,7 @@ export function CallbackPage() {
           navigate("/login", { replace: true });
           return;
         }
-        navigate("/dashboard", { replace: true });
+        navigate("/reports", { replace: true });
       })
       .catch((err: any) => {
         console.error("[CallbackPage] finishSignIn failed:", err);
@@ -45,7 +45,11 @@ export function CallbackPage() {
     <TropicalTideBackground className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md py-16">
         <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-8 space-y-5 text-center">
-          <Spokes className="h-8 w-8 text-brand-600 mx-auto" />
+          <div className="space-y-3" role="status" aria-label="Finishing sign-in">
+            <Skeleton className="h-10 w-10 rounded-full mx-auto" />
+            <Skeleton className="h-3.5 w-2/3 mx-auto" />
+            <Skeleton className="h-3 w-1/2 mx-auto" />
+          </div>
           <p className="text-sm text-gray-600">Finishing Twenty sign-in…</p>
         </div>
       </div>

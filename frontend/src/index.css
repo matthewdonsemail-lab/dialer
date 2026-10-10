@@ -91,6 +91,17 @@
     /* Shadows */
     --ods-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
     --ods-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+
+    /* Hover / selected fills for nav rows and menus */
+    --ods-hover: rgba(0, 0, 0, 0.04);
+    --ods-active: rgba(0, 0, 0, 0.06);
+
+    /*
+     * "only" opts out of browser-forced dark modes (Opera GX "Force dark
+     * pages", Chrome Auto Dark Mode). Those repaint any page that says it is
+     * light-only, so the Light theme still showed dark in a normal browser.
+     */
+    color-scheme: only light;
   }
 
   .dark {
@@ -102,7 +113,37 @@
     --ods-text-tertiary: #6b7280;
     --ods-border: #374151;
     --ods-border-strong: #4b5563;
+    --ods-hover: rgba(255, 255, 255, 0.05);
+    --ods-active: rgba(255, 255, 255, 0.09);
+    --ods-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --ods-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+    /* Native controls, scrollbars and date pickers follow the theme. */
+    color-scheme: only dark;
   }
+
+  /*
+   * Status and badge colour maps use dark text (text-blue-700 ...) on a light
+   * tint. On a dark surface that text is unreadable, so lift those shades in
+   * one place instead of adding dark: variants to every map.
+   */
+  .dark .text-gray-600, .dark .text-gray-700, .dark .text-gray-800 { color: theme('colors.gray.300'); }
+  .dark .text-slate-600, .dark .text-slate-700, .dark .text-slate-800 { color: theme('colors.slate.300'); }
+  .dark .text-red-600, .dark .text-red-700, .dark .text-red-800 { color: theme('colors.red.300'); }
+  .dark .text-rose-600, .dark .text-rose-700, .dark .text-rose-800 { color: theme('colors.rose.300'); }
+  .dark .text-orange-600, .dark .text-orange-700, .dark .text-orange-800 { color: theme('colors.orange.300'); }
+  .dark .text-amber-600, .dark .text-amber-700, .dark .text-amber-800 { color: theme('colors.amber.300'); }
+  .dark .text-yellow-600, .dark .text-yellow-700, .dark .text-yellow-800 { color: theme('colors.yellow.300'); }
+  .dark .text-green-600, .dark .text-green-700, .dark .text-green-800 { color: theme('colors.green.300'); }
+  .dark .text-emerald-600, .dark .text-emerald-700, .dark .text-emerald-800 { color: theme('colors.emerald.300'); }
+  .dark .text-teal-600, .dark .text-teal-700, .dark .text-teal-800 { color: theme('colors.teal.300'); }
+  .dark .text-cyan-600, .dark .text-cyan-700, .dark .text-cyan-800 { color: theme('colors.cyan.300'); }
+  .dark .text-sky-600, .dark .text-sky-700, .dark .text-sky-800 { color: theme('colors.sky.300'); }
+  .dark .text-blue-600, .dark .text-blue-700, .dark .text-blue-800 { color: theme('colors.blue.300'); }
+  .dark .text-indigo-600, .dark .text-indigo-700, .dark .text-indigo-800 { color: theme('colors.indigo.300'); }
+  .dark .text-violet-600, .dark .text-violet-700, .dark .text-violet-800 { color: theme('colors.violet.300'); }
+  .dark .text-purple-600, .dark .text-purple-700, .dark .text-purple-800 { color: theme('colors.purple.300'); }
+  .dark .text-pink-600, .dark .text-pink-700, .dark .text-pink-800 { color: theme('colors.pink.300'); }
 }
 
 @layer components {

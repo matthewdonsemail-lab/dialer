@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
+import { useOptimisticDelete, useOptimisticUpdate } from "@/hooks/use-optimistic-mutations";
 import type { Database } from "@/types/database";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
@@ -37,26 +38,20 @@ export function useCreateLead() {
   });
 }
 
+/** Instant edits: the row changes in the table and detail page before the save finishes. */
 export function useUpdateLead() {
-  const queryClient = useQueryClient();
-  return useMutation<Lead, Error, Partial<Lead> & { id: string }>({
-    mutationFn: async ({ id, ...updates }) => {
-      return api.leads.update(id, updates);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-    },
-  });
+  const mutation = useOptimisticUpdate<Lead>(
+    { listKey: ["leads"], detailKey: (id) => ["leads", id] },
+    (id, patch) => api.leads.update(id, patch),
+  );
+  return {
+    ...mutation,
+    mutate: ({ id, ...patch }: Partial<Lead> & { id: string }) => mutation.mutate({ id, patch }),
+    mutateAsync: ({ id, ...patch }: Partial<Lead> & { id: string }) => mutation.mutateAsync({ id, patch }),
+  };
 }
 
+/** Instant removal; pass one id or several. */
 export function useDeleteLead() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: async (id) => {
-      return api.leads.delete(id);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-    },
-  });
+  return useOptimisticDelete<Lead>({ listKey: ["leads"] }, (id) => api.leads.delete(id));
 }

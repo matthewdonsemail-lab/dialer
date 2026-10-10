@@ -3,7 +3,7 @@ import { BookOpen, ChevronDown, ChevronRight, ChevronLeft, HelpCircle } from "lu
 import { useScripts, Script } from "@/hooks/use-scripts";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Badge } from "@/components/ui/Badge";
-import { Spokes } from "@/components/ui/Spinner";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 interface CallScriptWidgetProps {
   campaignId?: string | null;
@@ -24,8 +24,10 @@ export function CallScriptWidget({ campaignId }: CallScriptWidgetProps) {
   if (isLoading) {
     return (
       <WidgetCard title="Call Script" icon={BookOpen} className="h-[460px]">
-        <div className="flex items-center justify-center h-full">
-          <Spokes className="w-5 h-5 text-[var(--ods-brand-600)]" />
+        <div className="space-y-3" role="status" aria-label="Loading">
+          {["w-1/3", "w-full", "w-5/6", "w-4/6", "w-1/4", "w-full", "w-3/4", "w-5/6", "w-2/3"].map((w, i) => (
+            <Skeleton key={i} className={`h-3 ${w}`} />
+          ))}
         </div>
       </WidgetCard>
     );

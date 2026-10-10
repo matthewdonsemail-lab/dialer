@@ -16,7 +16,7 @@ const variantClasses: Record<BadgeVariant, string> = {
   green: "bg-emerald-500/10 text-emerald-700 border border-emerald-500/20",
   amber: "bg-amber-500/10 text-amber-700 border border-amber-500/20",
   red: "bg-red-500/10 text-red-700 border border-red-500/20",
-  gray: "bg-gray-500/10 text-gray-600 border border-gray-500/20",
+  gray: "bg-gray-500/10 text-[var(--ods-text-secondary)] border border-gray-500/20",
   purple: "bg-purple-500/10 text-purple-700 border border-purple-500/20",
   emerald: "bg-emerald-500/10 text-emerald-700 border border-emerald-500/20",
   indigo: "bg-indigo-500/10 text-indigo-700 border border-indigo-500/20",

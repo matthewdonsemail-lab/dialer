@@ -162,13 +162,19 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     if (company !== undefined) payload.company = company;
     // Empty phone/email means "no value": omit the key so Twenty keeps its
     // validated state instead of rejecting an empty composite.
+    // Only the primary is sent: Twenty updates composite sub-fields
+    // individually, so leaving out the additional list keeps the record's
+    // extra numbers/addresses instead of wiping them on every edit.
     if (phone !== undefined) {
       const twentyPhone = toTwentyPhone(phone);
-      if (twentyPhone !== undefined) payload.phone = twentyPhone;
+      if (twentyPhone !== undefined) {
+        const { additionalPhones: _keepExisting, ...primaryOnly } = twentyPhone;
+        payload.phone = primaryOnly;
+      }
     }
     if (email !== undefined) {
       const twentyEmail = toTwentyEmail(email);
-      if (twentyEmail !== undefined) payload.email = twentyEmail;
+      if (twentyEmail !== undefined) payload.email = { primaryEmail: twentyEmail.primaryEmail };
     }
     if (notes !== undefined) payload.note = notes;
     if (source !== undefined) payload.source = source;

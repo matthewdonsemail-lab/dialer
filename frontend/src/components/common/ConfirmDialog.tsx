@@ -56,7 +56,7 @@ export function ConfirmDialog({
           />
         </div>
         <div>
-          <p className="text-sm text-gray-500 mt-1">{message}</p>
+          <p className="text-sm text-[var(--ods-text-secondary)] mt-1">{message}</p>
         </div>
       </div>
     </Modal>

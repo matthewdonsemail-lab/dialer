@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { MultiValue } from "@/components/common/MultiValue";
+import { recordStatusForOutcome } from "@/lib/call-outcome";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useLead } from "@/hooks/use-leads";
@@ -18,7 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "lucide-react";
-import { Spokes } from "@/components/ui/Spinner";
+import { DetailPageSkeleton } from "@/components/ui/Skeleton";
 import { CountryBadge } from "@/components/common/CountryBadge";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -77,19 +79,8 @@ export function LeadDetailPage() {
     queryClient.invalidateQueries({ queryKey: ["calls"] });
     queryClient.invalidateQueries({ queryKey: ["twenty-phones"] });
 
-    // Update lead status based on call outcome
-    const statusMap: Record<string, string> = {
-      // Media opened but no human confirmed: not yet a contact.
-      connected: "callback",
-      answered: "contacted",
-      busy: "callback",
-      voicemail: "callback",
-      dnc: "do_not_contact",
-      no_answer: "callback",
-      wrong_number: "not_interested",
-      disconnected: "callback",
-    };
-    const newStatus = statusMap[data.outcome];
+    // The disposition decides what the record becomes (see lib/call-outcome).
+    const newStatus = recordStatusForOutcome(data.outcome);
     if (newStatus && lead) {
       updateLeadMutation.mutateAsync({ id: lead.id, status: newStatus as any });
     }
@@ -100,7 +91,7 @@ export function LeadDetailPage() {
     try {
       await deleteLeadMutation.mutateAsync(lead.id);
       success("Lead deleted", `${lead.first_name} ${lead.last_name} has been removed`);
-      navigate("/leads");
+      navigate("/contacts");
     } catch {
       toastError("Error", "Failed to delete the lead");
     }
@@ -118,9 +109,7 @@ export function LeadDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Spokes className="h-8 w-8 text-[var(--ods-brand-600)]" />
-      </div>
+      <DetailPageSkeleton />
     );
   }
 
@@ -129,7 +118,7 @@ export function LeadDetailPage() {
       <div className="text-center py-12">
         <p className="text-[13px] text-[var(--ods-text-secondary)]">Lead not found</p>
         <button
-          onClick={() => navigate("/leads")}
+          onClick={() => navigate("/contacts")}
           className="mt-4 text-[13px] text-[var(--ods-brand-600)] hover:text-[var(--ods-brand-700)]"
         >
           Back to Leads
@@ -145,7 +134,7 @@ export function LeadDetailPage() {
       title={
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/leads")}
+            onClick={() => navigate("/contacts")}
             aria-label="Back to leads"
             className="p-1 -ml-1 text-[var(--ods-text-tertiary)] hover:text-[var(--ods-text-primary)] rounded-ods-sm hover:bg-[var(--ods-bg-secondary)] transition"
           >
@@ -230,20 +219,20 @@ export function LeadDetailPage() {
               )}
 
               <dl className="flex flex-col gap-[var(--ods-sp-3)]">
-                {[
+                {([
                   ["Company", lead.company ?? "—"],
-                  ["Phone", lead.phone ?? "—"],
-                  ["Email", lead.email ?? "—"],
+                  ["Phone", <MultiValue kind="phone" primary={lead.phone} extras={(lead as any).additional_phones} />],
+                  ["Email", <MultiValue kind="email" primary={lead.email} extras={(lead as any).additional_emails} />],
                   ["Calls", String(lead.call_count ?? 0)],
                   ["Last Called", lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : "Never"],
                   ["Created", new Date(lead.created_at).toLocaleDateString()],
                   ["Updated", new Date(lead.updated_at).toLocaleDateString()],
-                ].map(([label, value]) => (
+                ] as [string, React.ReactNode][]).map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">
                       {label}
                     </dt>
-                    <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5">{value as string}</dd>
+                    <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5">{value}</dd>
                   </div>
                 ))}
               </dl>

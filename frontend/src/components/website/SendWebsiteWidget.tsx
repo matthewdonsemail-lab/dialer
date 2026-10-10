@@ -6,7 +6,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Spokes } from "@/components/ui/Spinner";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 
 interface ProspectLite {
@@ -246,8 +246,11 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
       }
     >
       {isLoading || !status ? (
-        <div className="flex items-center justify-center h-40">
-          <Spokes className="w-5 h-5 text-[var(--ods-brand-600)]" />
+        <div className="flex flex-col gap-4 h-40" role="status" aria-label="Loading">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-8 w-full rounded-[6px]" />
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-8 w-full rounded-[6px]" />
         </div>
       ) : (
         <div className="flex flex-col gap-4">
