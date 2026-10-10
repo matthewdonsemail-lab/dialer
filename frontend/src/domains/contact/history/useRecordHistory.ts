@@ -10,8 +10,10 @@ export function useRecordHistory(contact: Contact) {
   const plural = contact.type === "lead" ? "agencyLeads" : "agencyProspects";
   const activity = useQuery<AdminActivityResponse>({
     queryKey: ["record-activity", contact.type, contact.id],
-    queryFn: () => api.admin.recordActivity(`${contact.type}:${contact.id}`),
-    staleTime: 30_000,
+    // The contact's own changes plus every call to it and text with it.
+    queryFn: () => api.admin.contactActivity(contact.type, contact.id),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
   });
   const { data: meta } = useQuery<{ fields: FieldOptions }>({
     queryKey: ["twenty-meta", plural],
@@ -19,7 +21,7 @@ export function useRecordHistory(contact: Contact) {
     staleTime: Infinity,
   });
   const rows = useMemo(
-    () => historyRows(activity.data, meta?.fields ?? {}, contact.type === "lead" ? "Lead" : "Prospect"),
+    () => historyRows(activity.data, meta?.fields ?? {}, contact.type === "lead" ? "Lead" : "Prospect", contact.type),
     [activity.data, meta, contact.type],
   );
   return { rows, isLoading: activity.isLoading, error: activity.error as Error | null };

@@ -7,6 +7,7 @@ export const TARGET_OBJECTS: Record<string, AdminObject> = {
   targetAgencyLeadId: "lead",
   targetAgencyPhoneId: "phone",
   targetCallCampaignId: "callCampaign",
+  targetAgencyMessageId: "message",
   targetAgencyCampaignId: "campaign",
   targetAgencyScriptId: "script",
 };

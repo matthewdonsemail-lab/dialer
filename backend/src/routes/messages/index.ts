@@ -7,7 +7,7 @@ import { checkSmsRoute, onPageSent, toE164 } from "@dialer/shared";
 import { selectValue } from "../prospects/helpers/index.js";
 import type { AgencyMessage } from "./types.js";
 import { FAILED_STATUSES, oldestFirst, PENDING_STATUSES, preview, telnyxSendResult, toMessageView } from "./helpers/index.js";
-import { touchConversation } from "./thread.js";
+import { loadContact, messagesFor, touchConversation, type ContactType } from "./thread.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -15,30 +15,6 @@ const log = createLogger("messages");
 
 const TELNYX = "https://api.telnyx.com/v2";
 const telnyxHeaders = () => ({ Authorization: `Bearer ${process.env.TELNYX_API_KEY ?? ""}`, "Content-Type": "application/json" });
-
-type ContactType = "prospect" | "lead";
-
-/** The contact's record and every number it can be texted on (E.164). */
-async function loadContact(type: ContactType, id: string) {
-  const record: any = await getTwenty(type === "lead" ? "agencyLeads" : "agencyProspects", id);
-  const numbers = new Set<string>();
-  for (const raw of [record?.phone, record?.phoneNumber, record?.primaryPhone]) {
-    const e164 = toE164(raw);
-    if (e164) numbers.add(e164);
-  }
-  return { record, numbers: [...numbers] };
-}
-
-/** Messages to or from any of these numbers, newest first (at most 200). */
-async function messagesFor(numbers: string[]): Promise<AgencyMessage[]> {
-  if (!numbers.length) return [];
-  const clauses = numbers.flatMap((n) => [`fromNumber[eq]:"${n}"`, `toNumber[eq]:"${n}"`]);
-  return listTwenty<AgencyMessage>("agencyMessages", {
-    limit: 200,
-    filter: clauses.length > 1 ? `or(${clauses.join(",")})` : clauses[0],
-    query: { order_by: "createdAt[DescNullsLast]" },
-  });
-}
 
 /**
  * Re-ask Telnyx about a few recent outbound texts still in flight, so the

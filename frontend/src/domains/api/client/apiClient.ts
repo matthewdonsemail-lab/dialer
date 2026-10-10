@@ -254,6 +254,9 @@ export const api = {
     /** Full history of specific records: "call:<id>,prospect:<id>". */
     recordActivity: (targets: string) =>
       request<import("@/domains/admin/data").AdminActivityResponse>(`/api/admin/activity?targets=${encodeURIComponent(targets)}`),
+    /** Everything on a contact: its record, its calls and its texts. */
+    contactActivity: (type: "prospect" | "lead", id: string) =>
+      request<import("@/domains/admin/data").AdminActivityResponse>(`/api/admin/activity?contact=${encodeURIComponent(`${type}:${id}`)}`),
   },
 
   twentyPhones: {

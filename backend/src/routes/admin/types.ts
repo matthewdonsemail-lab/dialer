@@ -1,5 +1,5 @@
 /** Dialer objects whose Twenty timeline activity the Admin page shows. */
-export type AdminObject = "call" | "prospect" | "lead" | "phone" | "callCampaign" | "campaign" | "script";
+export type AdminObject = "call" | "prospect" | "lead" | "phone" | "callCampaign" | "campaign" | "script" | "message";
 
 export type AdminAction = "created" | "updated" | "deleted" | "restored";
 

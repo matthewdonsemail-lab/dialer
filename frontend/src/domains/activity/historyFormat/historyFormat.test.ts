@@ -60,3 +60,25 @@ test("cut-off JSON and the notes log never show raw", () => {
   assert.deepEqual(displayValue("notes", "--- 2026-10-10T09:03:50.555Z | Admin User\nQA note"), { kind: "text", text: "QA note" });
   assert.equal(text(displayValue("notes", "Old\n\n--- 2026-10-10T09:03:50.555Z | Ann\nCall back")), "2 notes, latest: Call back");
 });
+
+test("a contact's history names its texts and says why one failed", () => {
+  const event = (id: string, object: "message" | "prospect", action: "created" | "updated", changes: { field: string; before: unknown; after: unknown }[]) => ({
+    id, happensAt: `2026-10-10T14:${id}:00Z`, action, object, recordId: "r", recordName: null, actor: { name: null, memberId: null, source: "API" }, changes,
+  });
+  const rows = historyRows(
+    {
+      members: {},
+      activities: [
+        event("49", "message", "created", []),
+        event("50", "message", "updated", [{ field: "status", before: "queued", after: "delivery_failed" }]),
+        event("57", "message", "updated", [{ field: "errorCode", before: null, after: "40010" }, { field: "errorMessage", before: null, after: "Not 10DLC registered" }]),
+      ],
+    },
+    {},
+    "Prospect",
+    "prospect",
+  );
+  const labels = rows.map((r) => r.label);
+  assert.deepEqual(labels, ["Text failure reason", "Text status", "Text sent"]);
+  assert.equal(rows[1].after.kind === "text" && rows[1].after.text, "Not delivered");
+});

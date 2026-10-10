@@ -770,7 +770,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         // A pipeline refusal (e.g. the contact is Converted) is expected: say why.
         await update.catch((err) => toastError("Contact status not updated", `The call was saved. ${describeError(err).detail}`));
       }
-      ["calls", "twentyPhones", "contacts-page", "prospect", "lead", "leads", "contacts-facets"].forEach((key) =>
+      ["calls", "twentyPhones", "contacts-page", "prospect", "lead", "leads", "contacts-facets", "record-activity"].forEach((key) =>
         queryClient.invalidateQueries({ queryKey: [key] }),
       );
     })();

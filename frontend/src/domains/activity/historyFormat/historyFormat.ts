@@ -1,6 +1,6 @@
 import { parseNotes } from "@/domains/contact/notes";
 import { twentyDotClass, type TwentyOption } from "@/domains/twenty/options";
-import type { AdminActivity, AdminActivityResponse } from "@/domains/admin/data";
+import type { AdminActivity, AdminActivityResponse, AdminObject } from "@/domains/admin/data";
 
 /*
  * Record history, readable. Twenty's timeline diff holds raw field names and
@@ -241,9 +241,43 @@ function addedNote(before: unknown, after: unknown): string | null {
 }
 
 /** One row per field change, newest first, quiet fields dropped. */
-export function historyRows(data: Pick<AdminActivityResponse, "activities" | "members"> | undefined, options: FieldOptions = {}, noun = "Record"): HistoryRow[] {
+/** How a related record is named in another record's history. */
+const RELATED: Partial<Record<AdminObject, { noun: string; created: string }>> = {
+  call: { noun: "Call", created: "Call started" },
+  message: { noun: "Text", created: "Text sent" },
+  prospect: { noun: "Prospect", created: "Prospect created" },
+  lead: { noun: "Lead", created: "Lead created" },
+};
+
+/** Machine fields on a related call or text: the sentence would be noise. */
+const RELATED_QUIET = new Set([
+  "debugLog", "transcript", "telnyxCallId", "telnyxRecordingId", "recordingUrl", "telnyxMessageId",
+  "aiKeyPoints", "aiScores", "aiConfidence", "aiModel", "aiAnalyzedAt", "summary", "name", "body",
+  "fromNumber", "toNumber", "createdByMemberId", "agencyPhoneId", "agencyProspectId", "agencyLeadId",
+  // Timing is on the call card; the error code is folded into the reason row.
+  "startedAt", "endedAt", "durationSeconds", "direction", "errorCode",
+]);
+
+/** Telnyx's status words for a text, as people say them. */
+const TEXT_STATUS: Record<string, string> = {
+  queued: "Queued", sending: "Sending", sent: "Sent", delivered: "Delivered", received: "Received",
+  delivery_unconfirmed: "Delivery unconfirmed", sending_failed: "Failed to send", delivery_failed: "Not delivered",
+};
+
+/**
+ * `main`: the record whose history this is. Events on related records (its
+ * calls, its texts) are named after them: "Call disposition", "Text sent",
+ * "Text status changed from Queued to Not delivered".
+ */
+export function historyRows(
+  data: Pick<AdminActivityResponse, "activities" | "members"> | undefined,
+  options: FieldOptions = {},
+  noun = "Record",
+  main?: AdminObject,
+): HistoryRow[] {
   const rows: HistoryRow[] = [];
   for (const e of data?.activities ?? []) {
+    const related = main && e.object !== main ? RELATED[e.object] ?? { noun: e.object, created: `${e.object} created` } : null;
     // Twenty files timeline events under "System"; the real author is the
     // updatedBy / createdBy actor the same write recorded in the diff.
     const actorChange = e.changes.find((c) => c.field === "updatedBy") ?? e.changes.find((c) => c.field === "createdBy");
@@ -255,11 +289,26 @@ export function historyRows(data: Pick<AdminActivityResponse, "activities" | "me
     if (source && source.toLowerCase().includes(who.toLowerCase())) source = null;
     const base = { at: e.happensAt, who: who.toLowerCase() === "dialer" ? "Dialer" : who, source };
     if (e.action !== "updated") {
-      rows.push({ ...base, id: e.id, kind: e.action, field: null, label: `${noun} ${e.action}`, before: { kind: "blank" }, after: { kind: "blank" } });
+      const label = related ? (e.action === "created" ? related.created : `${related.noun} ${e.action}`) : `${noun} ${e.action}`;
+      rows.push({ ...base, id: e.id, kind: e.action, field: null, label, before: { kind: "blank" }, after: { kind: "blank" } });
       continue;
     }
     for (const c of e.changes) {
       if (QUIET.has(c.field)) continue;
+      if (related && RELATED_QUIET.has(c.field)) continue;
+      if (related) {
+        const id = `${e.id}:${c.field}`;
+        const isTextStatus = e.object === "message" && c.field === "status";
+        const show = (v: unknown): Display =>
+          isTextStatus && typeof v === "string" && TEXT_STATUS[v.toLowerCase()] ? { kind: "text", text: TEXT_STATUS[v.toLowerCase()] } as Display : displayValue(c.field, v, {});
+        const before = show(c.before);
+        const after = show(c.after);
+        if (after.kind === "blank" && before.kind === "blank") continue;
+        const kind: RowKind = before.kind === "blank" ? "set" : after.kind === "blank" ? "cleared" : "changed";
+        const label = e.object === "message" && c.field === "errorMessage" ? "Text failure reason" : `${related.noun} ${fieldName(c.field).toLowerCase()}`;
+        rows.push({ ...base, id, kind, field: c.field, label, before, after });
+        continue;
+      }
       const id = `${e.id}:${c.field}`;
       if (c.field === "notes" || c.field === "note") {
         const note = addedNote(c.before, c.after);
