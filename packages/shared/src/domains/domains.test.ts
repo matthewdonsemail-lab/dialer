@@ -51,7 +51,7 @@ test("sending the page moves outreach forward, never out of an opt-out", () => {
 });
 
 test("SMS only goes within one numbering region", () => {
-  assert.equal(regionOfNumber("+353 91 753 352"), "IE");
+  assert.equal(regionOfNumber("+353 1 555 0148"), "IE");
   assert.equal(regionOfNumber("+12724470148"), "NANP");
   assert.equal(regionOfNumber("0871234567"), null);
   const usToIe = checkSmsRoute({ number: "+12724470148" }, { number: "+35315550148" });
@@ -69,10 +69,10 @@ test("a finished call never reopens", () => {
 });
 
 test("phones become dialable E.164 and refusals read correctly", () => {
-  assert.equal(toE164({ primaryPhoneNumber: "91753352", primaryPhoneCallingCode: "353" }), "+35315550148");
-  assert.equal(toE164({ primaryPhoneNumber: "091 753 352", primaryPhoneCallingCode: "+353" }), "+35315550148");
+  assert.equal(toE164({ primaryPhoneNumber: "15550148", primaryPhoneCallingCode: "353" }), "+35315550148");
+  assert.equal(toE164({ primaryPhoneNumber: "01 555 0148", primaryPhoneCallingCode: "+353" }), "+35315550148");
   assert.equal(toE164({ primaryPhoneNumber: "+15705550142" }), "+15705550142");
-  assert.equal(toE164("+353 91 753 352"), "+35315550148");
+  assert.equal(toE164("+353 1 555 0148"), "+35315550148");
   assert.equal(toE164({ primaryPhoneNumber: "" }), null);
   const r = checkSmsRoute({ number: "+12724470148" }, { number: "+35315550148" });
   assert.match(r.ok ? "" : r.reason, /^A US \/ Canada number .* Send from an Irish number\.$/);
