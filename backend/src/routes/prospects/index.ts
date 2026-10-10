@@ -5,6 +5,9 @@ import { twentyGraphqlClient } from "../../lib/twenty/graphql/index.js";
 import { contactTypes, idList } from "./helpers/query.js";
 import { leadGqlQuery, pageWindow, prospectGqlQuery } from "./helpers/query-gql.js";
 import { mapLeadToFrontend } from "../leads/helpers/index.js";
+import { guardContactStatus } from "../../lib/pipelines/index.js";
+import { checkSmsRoute, onPageSent, toE164 } from "@dialer/shared";
+import { frameAllowed, framingHeaders, prospectPageUrl } from "../../lib/website/index.js";
 import { createLogger } from "../../lib/logger/index.js";
 import { resolveActor } from "../../lib/twenty/actor/index.js";
 import type { AgencyProspect, AgencyCampaign, IndustryRouting } from "./types.js";
@@ -384,9 +387,15 @@ router.patch("/:id", async (req: AuthRequest, res) => {
       payload.campaignIdId = campaign_id || null;
     }
 
-    // Map status
-    if (status !== undefined) {
-      payload.coldCallStatus = frontendStatusToTwenty(status, dnc);
+    // Status changes follow the contact pipeline (packages/shared
+    // contact-status): a move it does not allow is refused with the reason.
+    if (status !== undefined || dnc) {
+      const guard = await guardContactStatus("agencyProspects", req.params.id as string, status, { dnc, reopen: req.body?.reopen === true });
+      if (!guard.ok) {
+        res.status(guard.status).json({ error: guard.reason, code: "INVALID_TRANSITION" });
+        return;
+      }
+      payload.coldCallStatus = guard.to;
     }
 
     if (Object.keys(payload).length === 0) {
@@ -472,10 +481,7 @@ router.get("/:id/website-status", async (req, res) => {
       offerMode === "CUSTOM" && overrideUrl ? overrideUrl : prospectVideoUrl;
 
     // Canonical phone: PHONES composite first, legacy TEXT fallback.
-    const phoneE164 =
-      (prospect.phoneNumber as any)?.primaryPhoneNumber ||
-      (prospect.primaryPhone as any)?.primaryPhoneNumber ||
-      prospect.phone;
+    const phoneE164 = toE164(prospect.phoneNumber as any) || toE164(prospect.primaryPhone as any) || toE164(prospect.phone) || prospect.phone;
 
     // Absolute "website we built" URL: phi /offer/:industry/:slug lineup
     // (same slug as the funnel). Null when unconfigured — never invented.
@@ -488,7 +494,23 @@ router.get("/:id/website-status", async (req, res) => {
     const templateUrl = industryKey && templateBase ? `${templateBase}/offer/${industryKey}/${templateKey}` : null;
     const funnelSrc = funnelBase ? `${funnelBase}/offer/prospect/${prospectId}` : null;
 
+    // The one page we send: on the offer site, previewable only when the
+    // offer site's frame-ancestors lists the dialer's origin.
+    const pageUrl = prospectPageUrl(prospectId);
+    const origin = typeof req.query.origin === "string" ? req.query.origin : "";
+    const framing = origin ? await framingHeaders(pageUrl) : null;
+    const previewAllowed = framing ? frameAllowed(framing, origin) : false;
+
     res.json({
+      page: {
+        url: pageUrl,
+        previewAllowed,
+        previewBlockedReason: previewAllowed
+          ? null
+          : framing
+            ? `${new URL(pageUrl).host} does not allow ${origin ? new URL(origin).host : "this app"} to embed it (Content-Security-Policy frame-ancestors).`
+            : "The offer site could not be reached to check embedding.",
+      },
       prospect: {
         id: prospectId,
         slug,
@@ -539,25 +561,37 @@ router.get("/:id/website-status", async (req, res) => {
 
 /**
  * POST /api/prospects/:id/website-sent
- * Day-1 sent log (no Telnyx key needed): stamps outboundLabel -> SMS_IN_PROGRESS
- * when the current label is a pre-send state, and echoes the payload for the UI.
+ * Logs that the prospect's page was sent. The outreach pipeline decides the
+ * new outboundLabel (packages/shared onPageSent); refuses opted-out prospects
+ * (409) and cross-country sends (422, checkSmsRoute).
  */
 router.post("/:id/website-sent", async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string;
     const { templateUrl, offerUrl, fromNumber, body } = req.body ?? {};
     const sentAt = new Date().toISOString();
+    const current = await getTwenty<AgencyProspect>('agencyProspects', id);
+
+    // Same rules as the SPA (packages/shared outreach): an opted-out prospect
+    // gets nothing, and a number only texts its own country.
+    const event = onPageSent(selectValue(current.outboundLabel));
+    if (!event.ok) {
+      res.status(409).json({ error: event.reason, code: "INVALID_TRANSITION" });
+      return;
+    }
+    const toNumber = toE164(current.phoneNumber as any) || toE164(current.primaryPhone as any) || toE164(current.phone) || "";
+    if (fromNumber) {
+      const route = checkSmsRoute({ number: fromNumber }, { number: toNumber, country: current.country });
+      if (!route.ok) {
+        res.status(422).json({ error: route.reason, code: "SMS_ROUTE_BLOCKED" });
+        return;
+      }
+    }
 
     let advancedLabel: string | null = null;
-    try {
-      const current = await getTwenty<AgencyProspect>('agencyProspects', id);
-      const currentLabel = selectValue(current.outboundLabel);
-      if (!currentLabel || ["NEEDS_ENRICHMENT", "NEEDS_VIDEO", "READY_FOR_SMS"].includes(currentLabel)) {
-        await updateTwenty('agencyProspects', id, { outboundLabel: "SMS_IN_PROGRESS" }, await resolveActor(req));
-        advancedLabel = "SMS_IN_PROGRESS";
-      }
-    } catch (err: any) {
-      log.info(`website-sent label advance skipped for ${id}: ${err.message}`);
+    if (event.changed) {
+      await updateTwenty('agencyProspects', id, { outboundLabel: event.to }, await resolveActor(req));
+      advancedLabel = event.to;
     }
 
     log.info(`Website sent logged for prospect ${id} from ${fromNumber || "unknown"}`);

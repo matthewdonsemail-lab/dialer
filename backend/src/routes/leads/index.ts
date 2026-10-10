@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { guardContactStatus } from "../../lib/pipelines/index.js";
 import { createLogger } from "../../lib/logger/index.js";
 import { resolveActor } from "../../lib/twenty/actor/index.js";
 import { broadcastNewLead, markLeadNotified } from "../../lib/leads/notify/index.js";
@@ -184,9 +185,15 @@ router.patch("/:id", async (req: AuthRequest, res) => {
       payload.campaignIdId = campaign_id || null;
     }
     
-    // Map status
-    if (status !== undefined) {
-      payload.coldCallStatus = frontendStatusToTwenty(status, dnc);
+    // Status changes follow the contact pipeline (packages/shared
+    // contact-status): a move it does not allow is refused with the reason.
+    if (status !== undefined || dnc) {
+      const guard = await guardContactStatus("agencyLeads", req.params.id as string, status, { dnc, reopen: req.body?.reopen === true });
+      if (!guard.ok) {
+        res.status(guard.status).json({ error: guard.reason, code: "INVALID_TRANSITION" });
+        return;
+      }
+      payload.coldCallStatus = guard.to;
     }
 
     if (Object.keys(payload).length === 0) {

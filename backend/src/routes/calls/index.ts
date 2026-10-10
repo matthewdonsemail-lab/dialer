@@ -7,6 +7,7 @@ import { analyzeCallTranscript, isAiConfigured } from "../../lib/ai/analysis/ind
 import { createLogger } from "../../lib/logger/index.js";
 import type { AgencyCall } from "./types.js";
 import { mapCall, splitStatus } from "./helpers/index.js";
+import { callResultMachine } from "@dialer/shared";
 
 const router = Router();
 router.use(authMiddleware);
@@ -278,6 +279,13 @@ router.patch("/:id", async (req, res) => {
       const split = splitStatus(patch.status);
       patch.status = split.status;
       if (split.disposition && patch.disposition === undefined) patch.disposition = split.disposition;
+      // A finished call never goes back to In progress (a late keepalive or
+      // retry must not reopen it): drop that one field, keep the rest.
+      const current = await getTwenty<AgencyCall>('agencyCalls', req.params.id as string);
+      if (!callResultMachine.transition(current.status ?? "IN_PROGRESS", patch.status).ok) {
+        log.info(`call ${req.params.id}: ignored status ${current.status} -> ${patch.status}`);
+        delete patch.status;
+      }
     }
     if (patch.disposition === "") patch.disposition = null;
     if (Object.keys(patch).length === 0) {
