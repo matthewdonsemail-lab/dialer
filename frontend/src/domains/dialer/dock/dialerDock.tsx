@@ -150,6 +150,15 @@ export function DialerDock() {
     if (!isLive(state)) setSide((s) => (s?.kind === "script" ? null : s));
   }, [state]);
 
+  // An open contact panel follows the call: dialling the next person shows
+  // them, not the one before (the panel remounts and shows its skeleton).
+  const targetType = dialer.target?.contactType ?? null;
+  const targetId = dialer.target?.contactId ?? null;
+  useEffect(() => {
+    if (!targetType || !targetId) return;
+    setSide((s) => (s?.kind === "contact" && s.contactId !== targetId ? { kind: "contact", contactType: targetType, contactId: targetId } : s));
+  }, [targetType, targetId]);
+
   if (!isOpen) {
     if (!isLive(state)) return null;
     // Minimised mid-call: a timer pill that reopens the dock.

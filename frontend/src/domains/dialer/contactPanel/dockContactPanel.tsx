@@ -14,6 +14,7 @@ import { DispositionBadge } from "@/domains/calls/disposition";
 import { CountryFlag } from "@/domains/country/badge";
 import { countryCode } from "@/domains/country/lookup";
 import { timeAgo } from "@/domains/admin/data";
+import { Skeleton } from "@/domains/ui/skeleton";
 
 /** "not_interested" -> "Not interested". */
 function words(value: string): string {
@@ -62,6 +63,34 @@ function People({ contact }: { contact: Contact }) {
   );
 }
 
+/** The panel's own shape while the contact loads: header, chips, facts, blocks. */
+function PanelSkeleton() {
+  return (
+    <div role="status" aria-label="Loading the contact">
+      <div className="px-4 pt-3 flex gap-1.5">
+        <Skeleton className="h-6 w-20" />
+        <Skeleton className="h-6 w-24" />
+        <Skeleton className="h-6 w-12" />
+      </div>
+      <div className="px-4 py-2">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex items-center gap-2.5 py-2.5 border-b border-[var(--ods-border)] last:border-b-0">
+            <Skeleton className="h-3.5 w-3.5" />
+            <Skeleton className="h-3.5" style={{ width: `${55 + ((i * 17) % 35)}%` }} />
+          </div>
+        ))}
+      </div>
+      {[0, 1].map((b) => (
+        <div key={b} className="px-4 py-3 border-t border-[var(--ods-border)] space-y-2">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The business being called, beside the dock like the call script: who they
  * are, how to reach them, the people there, how earlier calls went and the
@@ -87,7 +116,13 @@ export function DockContactPanel({ contactType, contactId, onClose }: { contactT
           {contact ? initials(contact.name) : ""}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[15px] font-semibold truncate">{contact?.name ?? (isLoading ? "Loading..." : "Contact not found")}</div>
+          {contact ? (
+            <div className="text-[15px] font-semibold truncate">{contact.name}</div>
+          ) : isLoading ? (
+            <Skeleton className="h-4 w-40 my-0.5" />
+          ) : (
+            <div className="text-[15px] font-semibold truncate">Contact not found</div>
+          )}
           <div className="text-[12px] text-[var(--ods-text-tertiary)] truncate">{[contact?.niche ?? contact?.company, contact?.city].filter(Boolean).join(" · ")}</div>
         </div>
         <button onClick={onClose} title="Close" aria-label="Close the contact panel" className={buttonClass({ variant: "ghost", size: "sm", iconOnly: true })}>
@@ -95,6 +130,7 @@ export function DockContactPanel({ contactType, contactId, onClose }: { contactT
         </button>
       </div>
 
+      {!contact && isLoading && <PanelSkeleton />}
       {contact && (
         <>
           <div className="px-4 pt-3 flex flex-wrap items-center gap-1.5">
