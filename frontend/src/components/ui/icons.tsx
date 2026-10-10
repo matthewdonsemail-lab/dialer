@@ -20,6 +20,7 @@ import {
   faCalendarDays,
   faChartColumn,
   faCheck,
+  faDeleteLeft,
   faChevronDown,
   faChevronLeft,
   faChevronRight,
@@ -78,6 +79,7 @@ import {
   faTableColumns,
   faThumbsDown,
   faThumbsUp,
+  faThumbtack,
   faTrashCan,
   faTriangleExclamation,
   faUser,
@@ -169,6 +171,8 @@ export const PanelLeftOpen = solid(faAnglesRight, "PanelLeftOpen");
 export const Pause = solid(faPause, "Pause");
 export const Pencil = solid(faPencil, "Pencil");
 export const Phone = solid(faPhone, "Phone");
+export const Pin = solid(faThumbtack, "Pin");
+export const Backspace = solid(faDeleteLeft, "Backspace");
 export const PhoneCall = solid(faPhoneVolume, "PhoneCall");
 export const PhoneIncoming = solid(faSquarePhoneFlip, "PhoneIncoming");
 export const PhoneOff = solid(faPhoneSlash, "PhoneOff");

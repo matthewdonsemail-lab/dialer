@@ -112,7 +112,32 @@ const TEXT_FIELDS = [
   "aiKeyPoints",
   "aiScores",
   "aiModel",
+  // Free-text call notes, autosaved from the dialer dock.
+  "notes",
 ];
+
+/**
+ * The operator's outcome for a call. Kept apart from `status`, which stays the
+ * system result (IN_PROGRESS / COMPLETED / FAILED / NO_ANSWER / BUSY), so a
+ * disposition never has to fit the status SELECT. Values match the `status`
+ * of each entry in frontend/src/lib/call-outcome.ts DISPOSITIONS.
+ */
+export const DISPOSITION_OPTIONS: Array<{ label: string; value: string; color: string }> = [
+  { label: "Interested", value: "INTERESTED", color: "green" },
+  { label: "Appointment Set", value: "APPOINTMENT_SET", color: "green" },
+  { label: "Callback", value: "CALLBACK", color: "turquoise" },
+  { label: "Good Number", value: "GOOD_NUMBER", color: "turquoise" },
+  { label: "Left Callback", value: "LEFT_CALLBACK", color: "sky" },
+  { label: "Left Voicemail", value: "VOICEMAIL", color: "sky" },
+  { label: "Not Interested", value: "NOT_INTERESTED", color: "red" },
+  { label: "Bad Number", value: "BAD_NUMBER", color: "red" },
+  { label: "No Answer", value: "NO_ANSWER", color: "gray" },
+  { label: "Wrong Number", value: "WRONG_NUMBER", color: "orange" },
+  { label: "Do Not Contact", value: "DNC", color: "red" },
+];
+
+/** The system results `status` can hold (the live SELECT's options). */
+export const SYSTEM_CALL_STATUSES = new Set(["IN_PROGRESS", "COMPLETED", "FAILED", "NO_ANSWER", "BUSY"]);
 
 /**
  * Relations are NOT created as TEXT. A Twenty relation is declared under its
@@ -184,6 +209,35 @@ export async function setupCallHistorySchema(): Promise<{
   for (const name of TEXT_FIELDS) await ensure("TEXT", name);
   for (const name of DATE_TIME_FIELDS) await ensure("DATE_TIME", name);
   for (const name of NUMBER_FIELDS) await ensure("NUMBER", name);
+
+  if (existing.has("disposition")) {
+    fields.push({ name: "disposition", isNew: false });
+  } else {
+    try {
+      const options = DISPOSITION_OPTIONS.map(
+        (o, i) => `{ label: ${JSON.stringify(o.label)}, value: "${o.value}", color: "${o.color}", position: ${i} }`,
+      ).join(", ");
+      await metadataMutation(`mutation {
+        createOneField(input: { field: {
+          objectMetadataId: "${objectId}"
+          type: SELECT
+          name: "disposition"
+          label: "Disposition"
+          description: "The operator's call outcome (status keeps the system result)"
+          isNullable: true
+          options: [${options}]
+        } }) { id name }
+      }`);
+      fields.push({ name: "disposition", isNew: true });
+      log.info("Created field disposition (SELECT) on agencyCalls");
+    } catch (err: any) {
+      if (/already exists|already used by another field/i.test(String(err?.message || ""))) {
+        fields.push({ name: "disposition", isNew: false });
+      } else {
+        throw err;
+      }
+    }
+  }
 
   // Relations last: they need the target object to exist, and a relation
   // field that already exists (every workspace built before this ran has

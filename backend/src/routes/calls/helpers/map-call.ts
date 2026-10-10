@@ -6,7 +6,12 @@ export function mapCall(call: AgencyCall) {
     id: call.id,
     name: call.name || null,
     direction: call.direction || null,
-    status: call.status || null,
+    // `status` stays what every report and badge reads: the operator's
+    // disposition when there is one, else the system result.
+    status: call.disposition || call.status || null,
+    systemStatus: call.status || null,
+    disposition: call.disposition || null,
+    notes: call.notes || null,
     fromNumber: call.fromNumber || null,
     toNumber: call.toNumber || null,
     startedAt: call.startedAt || null,

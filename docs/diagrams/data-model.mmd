@@ -89,7 +89,9 @@ erDiagram
     agencyCalls {
         text name "generated"
         select direction "INBOUND OUTBOUND MISSED"
-        select status "IN_PROGRESS COMPLETED FAILED NO_ANSWER BUSY"
+        select status "IN_PROGRESS COMPLETED FAILED NO_ANSWER BUSY, the system result"
+        select disposition "the operator outcome, from lib/call-outcome"
+        text notes "dialer dock notes, autosaved"
         text fromNumber
         text toNumber
         datetime startedAt

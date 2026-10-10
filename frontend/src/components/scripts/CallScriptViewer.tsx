@@ -5,9 +5,29 @@ import { useScripts, Script } from "@/hooks/use-scripts";
 interface CallScriptViewerProps {
   onClose: () => void;
   campaignId?: string | null;
+  /** Render as a panel in place (the dialer dock's Script pane) instead of a modal. */
+  docked?: boolean;
 }
 
-export function CallScriptViewer({ onClose, campaignId }: CallScriptViewerProps) {
+/** Modal backdrop, or nothing when docked beside the dialer. */
+function Shell({ docked, children }: { docked?: boolean; children: React.ReactNode }) {
+  if (docked) {
+    return (
+      <div className="bg-[var(--ods-bg-primary)] rounded-[12px] shadow-[0_16px_40px_rgba(0,0,0,0.18)] w-full max-h-[calc(100vh-64px)] overflow-y-auto border border-[var(--ods-border)]">
+        {children}
+      </div>
+    );
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-[var(--ods-bg-primary)] rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-[var(--ods-border)]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function CallScriptViewer({ onClose, campaignId, docked }: CallScriptViewerProps) {
   const [activeObjection, setActiveObjection] = useState<string | null>(null);
   
   // Fetch scripts and find the one for this campaign
@@ -17,8 +37,7 @@ export function CallScriptViewer({ onClose, campaignId }: CallScriptViewerProps)
 
   if (!script) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="bg-[var(--ods-bg-primary)] rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-[var(--ods-border)]">
+      <Shell docked={docked}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--ods-border)]">
             <div className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-[var(--ods-brand-600)]" />
@@ -29,10 +48,9 @@ export function CallScriptViewer({ onClose, campaignId }: CallScriptViewerProps)
             </button>
           </div>
           <div className="p-5 text-center">
-            <p className="text-[13px] text-[var(--ods-text-secondary)]">No script found for this campaign</p>
+            <p className="text-[13px] text-[var(--ods-text-secondary)]">{isLoading ? "Loading script…" : "No script found for this campaign"}</p>
           </div>
-        </div>
-      </div>
+      </Shell>
     );
   }
 
@@ -41,8 +59,7 @@ export function CallScriptViewer({ onClose, campaignId }: CallScriptViewerProps)
   const category = script.scriptData?.category || "General";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-[var(--ods-bg-primary)] rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-[var(--ods-border)]">
+    <Shell docked={docked}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--ods-border)]">
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-[var(--ods-brand-600)]" />
@@ -96,7 +113,6 @@ export function CallScriptViewer({ onClose, campaignId }: CallScriptViewerProps)
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Shell>
   );
 }

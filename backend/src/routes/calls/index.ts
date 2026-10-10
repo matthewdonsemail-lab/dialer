@@ -6,7 +6,7 @@ import { telnyxClient, telnyxErrorMessage } from "../../lib/telnyx/index.js";
 import { analyzeCallTranscript, isAiConfigured } from "../../lib/ai/analysis/index.js";
 import { createLogger } from "../../lib/logger/index.js";
 import type { AgencyCall } from "./types.js";
-import { mapCall } from "./helpers/index.js";
+import { mapCall, splitStatus } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -191,7 +191,7 @@ router.post("/:id/reconcile", async (req, res) => {
 router.post("/", async (req: AuthRequest, res) => {
   try {
     const {
-      direction, status, fromNumber, toNumber, startedAt, endedAt,
+      direction, status, disposition, notes, fromNumber, toNumber, startedAt, endedAt,
       durationSeconds, telnyxCallId, telnyxRecordingId, recordingUrl,
       transcript, transcriptionStatus, summary,
       aiSummary, aiSentiment, aiScore, aiKeyPoints, aiScores, aiConfidence, aiModel, aiAnalyzedAt,
@@ -203,10 +203,11 @@ router.post("/", async (req: AuthRequest, res) => {
       return;
     }
 
+    const split = splitStatus(status || "COMPLETED");
     const payload: Record<string, unknown> = {
       name: `${direction || "OUTBOUND"} ${toNumber} ${new Date().toISOString().slice(0, 16).replace("T", " ")}`,
       direction: direction || "OUTBOUND",
-      status: status || "COMPLETED",
+      status: split.status,
       fromNumber: fromNumber || "",
       toNumber,
       durationSeconds: durationSeconds ?? 0,
@@ -214,6 +215,8 @@ router.post("/", async (req: AuthRequest, res) => {
     // Own-field member attribution (queryable UUID next to the system Actor).
     // Omitted for legacy/fallback sessions without a resolved member.
     if (req.workspaceMemberId) payload.createdByMemberId = req.workspaceMemberId;
+    if (disposition || split.disposition) payload.disposition = disposition || split.disposition;
+    if (notes) payload.notes = notes;
     if (startedAt) payload.startedAt = startedAt;
     if (endedAt) payload.endedAt = endedAt;
     if (telnyxCallId) payload.telnyxCallId = telnyxCallId;
@@ -262,7 +265,7 @@ router.post("/", async (req: AuthRequest, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const allowed = [
-      "status", "endedAt", "durationSeconds", "telnyxCallId", "telnyxRecordingId", "recordingUrl",
+      "status", "disposition", "notes", "endedAt", "durationSeconds", "telnyxCallId", "telnyxRecordingId", "recordingUrl",
       "transcript", "transcriptionStatus", "summary", "debugLog",
       "meetingUrl", "meetingProvider", "meetingAt", "meetingStatus", "meetingBookingId",
       "aiSummary", "aiSentiment", "aiScore", "aiKeyPoints", "aiScores", "aiConfidence", "aiModel", "aiAnalyzedAt",
@@ -271,6 +274,12 @@ router.patch("/:id", async (req, res) => {
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) patch[key] = req.body[key];
     }
+    if (patch.status !== undefined) {
+      const split = splitStatus(patch.status);
+      patch.status = split.status;
+      if (split.disposition && patch.disposition === undefined) patch.disposition = split.disposition;
+    }
+    if (patch.disposition === "") patch.disposition = null;
     if (Object.keys(patch).length === 0) {
       res.status(400).json({ error: "Nothing to update" });
       return;

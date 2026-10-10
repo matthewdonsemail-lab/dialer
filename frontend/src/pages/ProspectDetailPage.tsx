@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import { MultiValue } from "@/components/common/MultiValue";
-import { recordStatusForOutcome } from "@/lib/call-outcome";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUpdateProspect } from "@/hooks/use-prospects";
 import { api } from "@/lib/api-client";
-import { Softphone } from "@/components/softphone/Softphone";
+import { ContactCallCard } from "@/components/dialer/ContactCallCard";
 import { CallScriptWidget } from "@/components/scripts/CallScriptWidget";
 import { SendWebsiteWidget } from "@/components/website/SendWebsiteWidget";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -135,19 +134,6 @@ export function ProspectDetailPage() {
     },
   });
 
-  async function handleCallEnd(data: { outcome: string; duration: number; notes: string; direction: "outbound" | "inbound"; recordingUrl?: string | null; callId?: string | null }) {
-    // Call row is already logged to agencyCalls by the Softphone (with recording);
-    // here we advance prospect status and refresh phone claim state.
-    queryClient.invalidateQueries({ queryKey: ["calls"] });
-    queryClient.invalidateQueries({ queryKey: ["twentyPhones"] });
-
-    // The disposition decides what the record becomes (see lib/call-outcome).
-    const newStatus = recordStatusForOutcome(data.outcome);
-    if (newStatus && prospect) {
-      await setStatus(newStatus);
-    }
-  }
-
   async function handleStatusChange(newStatus: string) {
     await setStatus(newStatus);
   }
@@ -205,13 +191,14 @@ export function ProspectDetailPage() {
       <div className="flex flex-col gap-[var(--ods-sp-6)]">
         {/* Main Dialing Row: Softphone + Call Script + Prospect Details */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-[var(--ods-sp-6)] items-start">
-          <Softphone
-            lead={prospect as any}
-            callerId={agencyFromNumber || undefined}
-            phoneId={activePhoneRow?.id ?? null}
-            member={member}
-            prospectId={prospectId ?? null}
-            onCallEnd={handleCallEnd}
+          <ContactCallCard
+            target={{
+              contactType: "prospect",
+              contactId: prospectId ?? null,
+              phone: prospect.phone ?? "",
+              name: `${prospect.first_name ?? ""} ${prospect.last_name ?? ""}`.trim(),
+              campaignId: prospect.campaign_id ?? null,
+            }}
           />
           <CallScriptWidget campaignId={prospect?.campaign_id ?? null} />
           <WidgetCard title="Prospect Details" className="h-[460px]" info={{ title: "Prospect Details", what: "Everything Twenty knows about this prospect." }}>

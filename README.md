@@ -341,7 +341,7 @@ More on this, and on the read and write paths, in
 sequenceDiagram
     autonumber
     participant A as Agent
-    participant SP as Softphone.tsx
+    participant SP as Dialer (components/dialer)
     participant API as API (Express / Hono)
     participant TW as Twenty CRM
     participant TX as Telnyx
@@ -361,7 +361,7 @@ sequenceDiagram
     SP->>API: GET /api/netcheck?host&port
     Note over SP,API: best effort, a failure only warns and the dial proceeds
 
-    SP->>TX: WebSocket connect, then REGISTER
+    Note over SP,TX: one sip.js agent per signed-in session, already<br/>REGISTERed at login, so inbound calls ring while idle
     SP->>SP: getUserMedia audio
     SP->>TX: INVITE sip:target@domain, P-Asserted-Identity header
 
@@ -566,7 +566,9 @@ erDiagram
     agencyCalls {
         text name "generated"
         select direction "INBOUND OUTBOUND MISSED"
-        select status "IN_PROGRESS COMPLETED FAILED NO_ANSWER BUSY"
+        select status "IN_PROGRESS COMPLETED FAILED NO_ANSWER BUSY, the system result"
+        select disposition "the operator outcome, from lib/call-outcome"
+        text notes "dialer dock notes, autosaved"
         text fromNumber
         text toNumber
         datetime startedAt
@@ -862,7 +864,7 @@ dialer/
 ├── frontend/                 Vite SPA, the browser softphone
 │   ├── api/telnyx-webhook.ts  Telnyx webhook receiver (Vercel function)
 │   └── src/
-│       ├── components/softphone/  the dial path
+│       ├── components/dialer/  the dial path: provider, dock, SIP and call lifecycle
 │       ├── sip/              config, diagnostics, failure classification
 │       ├── hooks/            React Query hooks
 │       └── pages/            routes

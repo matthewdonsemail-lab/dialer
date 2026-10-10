@@ -13,7 +13,7 @@
 sequenceDiagram
     autonumber
     participant A as Agent
-    participant SP as Softphone.tsx
+    participant SP as Dialer (components/dialer)
     participant API as API (Express / Hono)
     participant TW as Twenty CRM
     participant TX as Telnyx
@@ -33,7 +33,7 @@ sequenceDiagram
     SP->>API: GET /api/netcheck?host&port
     Note over SP,API: best effort, a failure only warns and the dial proceeds
 
-    SP->>TX: WebSocket connect, then REGISTER
+    Note over SP,TX: one sip.js agent per signed-in session, already<br/>REGISTERed at login, so inbound calls ring while idle
     SP->>SP: getUserMedia audio
     SP->>TX: INVITE sip:target@domain, P-Asserted-Identity header
 

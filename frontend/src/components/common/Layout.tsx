@@ -8,6 +8,8 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { PowerDialerProvider } from '@/components/campaigns/PowerDialer';
 import { AudioBridgeProvider } from '@/components/audio/AudioBridge';
+import { DialerProvider } from '@/components/dialer/DialerProvider';
+import { DialerDock, DialerTopButton } from '@/components/dialer/DialerDock';
 import {
   BarChart3,
   Users,
@@ -166,6 +168,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <AudioBridgeProvider>
+    <DialerProvider>
     <PowerDialerProvider>
     <div className="flex h-screen overflow-hidden bg-[var(--ods-bg-secondary,#fafafb)] text-[var(--ods-text-primary,#18181b)] font-sans antialiased">
       {/* always-visible sidebar: every section as an icon + label row */}
@@ -286,6 +289,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
+            <DialerTopButton />
             <button className="relative p-1 text-[var(--ods-text-secondary,#575757)] hover:text-[var(--ods-text-primary,#18181b)] hover:bg-[var(--ods-hover)] rounded-[4px] transition">
               <Bell className="w-4 h-4" />
             </button>
@@ -298,7 +302,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
+    <DialerDock />
     </PowerDialerProvider>
+    </DialerProvider>
     </AudioBridgeProvider>
   );
 }

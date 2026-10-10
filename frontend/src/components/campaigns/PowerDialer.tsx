@@ -1,35 +1,11 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
-import { useProspectLookup } from "@/lib/contacts";
-import { useQuery } from "@tanstack/react-query";
-import { MoreVertical, SkipForward, Square } from "@/components/ui/icons";
-import { api, type CallCampaign } from "@/lib/api-client";
-import { useAuth } from "@/components/auth/AuthProvider";
-import { Softphone } from "@/components/softphone/Softphone";
-import { SelectMenu } from "@/components/ui/Menu";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useProspectLookup, type ContactRow } from "@/lib/contacts";
+import { type CallCampaign } from "@/lib/api-client";
 import { useToast } from "@/components/ui/Toast";
 import { useCalls } from "@/hooks/use-call-logs";
-import { useUpdateProspect } from "@/hooks/use-prospects";
 import { useUpdateCallCampaign } from "@/hooks/use-call-campaigns";
 import { campaignProgress, type CampaignCall } from "@/lib/campaign-stats";
-import { recordStatusForOutcome } from "@/lib/call-outcome";
-
-interface Contact {
-  id: string;
-  first_name?: string;
-  last_name?: string;
-  phone?: string;
-  company?: string;
-  email?: string;
-}
-
-interface PhoneRow {
-  id: string;
-  phoneNumber: string;
-  status?: string;
-  callState?: string | null;
-  claimedByMemberId?: string | null;
-}
+import { useDialer } from "@/components/dialer/DialerProvider";
 
 interface Session {
   campaign: CallCampaign;
@@ -38,10 +14,22 @@ interface Session {
   done: string[];
 }
 
+export interface QueueView {
+  campaignName: string;
+  position: number;
+  total: number;
+  current: ContactRow | null;
+  next: ContactRow | null;
+  skip: () => void;
+  end: () => void;
+}
+
 interface PowerDialerValue {
-  /** Start or resume a campaign; the dialer floats over the current page. */
+  /** Start or resume a campaign; calls run in the dialer dock over any page. */
   start: (campaign: CallCampaign) => void;
   active: boolean;
+  /** The running session, for the dock's Queue tab. */
+  queue: QueueView | null;
 }
 
 const PowerDialerContext = createContext<PowerDialerValue | null>(null);
@@ -52,16 +40,17 @@ export function usePowerDialer(): PowerDialerValue {
   return ctx;
 }
 
-const nameOf = (c?: Contact | null) => (c ? `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || c.phone || "Unknown" : "Unknown");
+export const contactDisplayName = (c?: Pick<ContactRow, "first_name" | "last_name" | "phone"> | null) =>
+  c ? `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || c.phone || "Unknown" : "Unknown";
 
 /**
- * Single-line power dialer, WAVV style. Starting a campaign shows a floating
- * dialer card on top of whatever page is open — the screen never changes.
- * It dials the current contact, and after Save & Next rotates to the next
- * contact not yet called, showing who is up next, until the list is done.
+ * Single-line power dialer. Starting a campaign dials its first contact in
+ * the dialer dock; "Save & next" on the call summary moves to the next
+ * contact not yet called, until the list is done. The page never changes.
  */
 export function PowerDialerProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [queue, setQueue] = useState<QueueView | null>(null);
   const { data: calls } = useCalls();
   const { error: toastError } = useToast();
 
@@ -78,145 +67,107 @@ export function PowerDialerProvider({ children }: { children: ReactNode }) {
     [calls, toastError],
   );
 
-  const value = useMemo(() => ({ start, active: !!session }), [start, session]);
+  useEffect(() => {
+    if (!session) setQueue(null);
+  }, [session]);
+
+  const value = useMemo(() => ({ start, active: !!session, queue }), [start, session, queue]);
 
   return (
     <PowerDialerContext.Provider value={value}>
       {children}
-      {session && <DialerCard session={session} onChange={setSession} />}
+      {session && <PowerDialerDriver session={session} onChange={setSession} onQueue={setQueue} />}
     </PowerDialerContext.Provider>
   );
 }
 
-function DialerCard({ session, onChange }: { session: Session; onChange: (s: Session | null) => void }) {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { success } = useToast();
+/** Feeds the session's contacts to the dialer one at a time. Renders nothing. */
+function PowerDialerDriver({
+  session,
+  onChange,
+  onQueue,
+}: {
+  session: Session;
+  onChange: (s: Session | null) => void;
+  onQueue: (q: QueueView | null) => void;
+}) {
+  const dialer = useDialer();
+  const { success, warning } = useToast();
   const { data: calls } = useCalls();
-  const updateProspect = useUpdateProspect();
   const updateCampaign = useUpdateCallCampaign();
-  const { data: phones } = useQuery<PhoneRow[]>({ queryKey: ["twentyPhones"], queryFn: () => api.twentyPhones.list(), staleTime: 10_000 });
-  const { data: primary } = useQuery({ queryKey: ["primaryPhone"], queryFn: () => api.twentyPhones.primary(), staleTime: 60_000 });
-
   const { campaign, currentId, done } = session;
-  const member = user?.memberId ? { id: user.memberId, email: user.email } : null;
-
-  // Single line: the agency's primary number, unless a teammate holds it.
-  const line = useMemo(() => {
-    const active = (phones ?? []).filter((p) => !p.status || p.status.toLowerCase() === "active");
-    const free = (p: PhoneRow) => (p.callState || "IDLE") === "IDLE" || !p.claimedByMemberId || p.claimedByMemberId === member?.id;
-    const primaryId = (primary as any)?.phone?.id;
-    const preferred = active.find((p) => p.id === primaryId);
-    return preferred && free(preferred) ? preferred : active.find(free) ?? preferred ?? null;
-  }, [phones, primary, member?.id]);
 
   // Remaining order: campaign order, skipping anyone called (cache) or finished this session.
   const progress = campaignProgress(campaign, (calls ?? []) as unknown as CampaignCall[]);
   const pending = progress.remainingIds.filter((id) => !done.includes(id) && id !== currentId);
   const order = campaign.contactIds;
   const nextId = pending.find((id) => order.indexOf(id) > order.indexOf(currentId)) ?? pending[0] ?? null;
-  // Just the two contacts on screen, looked up by id (never the whole list).
+  // Just the two contacts in view, looked up by id (never the whole list).
   const { data: lookedUp } = useProspectLookup([currentId, nextId]);
-  const contact = (lookedUp?.get(currentId) as Contact | undefined) ?? null;
-  const next = nextId ? ((lookedUp?.get(nextId) as Contact | undefined) ?? null) : null;
+  const current = lookedUp?.get(currentId) ?? null;
+  const next = nextId ? (lookedUp?.get(nextId) ?? null) : null;
   const finished = new Set([...done, ...campaign.contactIds.filter((id) => !progress.remainingIds.includes(id))]);
   const position = Math.min(finished.size + 1, order.length);
 
-  const advance = () => {
-    const nowDone = [...done, currentId];
-    if (nextId) {
-      onChange({ campaign, currentId: nextId, done: nowDone });
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const nextIdRef = useRef(nextId);
+  nextIdRef.current = nextId;
+
+  const advance = useCallback(() => {
+    const s = sessionRef.current;
+    const following = nextIdRef.current;
+    const nowDone = [...s.done, s.currentId];
+    if (following) {
+      onChange({ campaign: s.campaign, currentId: following, done: nowDone });
       return;
     }
-    updateCampaign.mutate({ id: campaign.id, patch: { status: "completed" } });
-    success("Campaign complete", `Every number in "${campaign.name}" has been dialed.`);
+    updateCampaign.mutate({ id: s.campaign.id, patch: { status: "completed" } });
+    success("Campaign complete", `Every number in "${s.campaign.name}" has been dialed.`);
     onChange(null);
-  };
+  }, [onChange, success, updateCampaign]);
 
-  const handleCallEnd = (data: { outcome: string }) => {
-    const status = recordStatusForOutcome(data.outcome);
-    if (status) updateProspect.mutate({ id: currentId, patch: { status } });
+  const end = useCallback(() => onChange(null), [onChange]);
+
+  const skip = useCallback(() => {
+    if (dialer.state !== "idle") dialer.discardSummary();
     advance();
-  };
+  }, [advance, dialer]);
 
-  const menu = (
-    <SelectMenu
-      value={null}
-      placement="bottom-end"
-      width={220}
-      onChange={(v) => {
-        if (v === "skip") advance();
-        if (v === "open") navigate(`/contacts/${currentId}`);
-        if (v === "end") onChange(null);
-      }}
-      sections={[
-        {
-          title: campaign.name,
-          options: [
-            { value: "skip", label: next ? `Skip to ${nameOf(next)}` : "Skip (last contact)" },
-            { value: "open", label: "Open contact details" },
-            { value: "end", label: "End dialing session" },
-          ],
-        },
-      ]}
-      triggerTitle="Dialer options"
-      triggerClassName="p-1 rounded-[6px] text-white/70 hover:text-white hover:bg-white/10"
-      trigger={<MoreVertical className="w-4 h-4" />}
-    />
-  );
+  useEffect(() => {
+    onQueue({ campaignName: campaign.name, position, total: order.length, current, next, skip, end });
+  }, [onQueue, campaign.name, position, order.length, current, next, skip, end]);
 
-  const footer = (
-    <div className="flex items-center justify-between gap-3 text-white/70">
-      <span className="truncate">
-        {next ? (
-          <>
-            Next: <b className="text-white">{nameOf(next)}</b>
-            {next.phone && <span className=""> · {next.phone}</span>}
-          </>
-        ) : (
-          "Last contact in this campaign"
-        )}
-      </span>
-      <span className="shrink-0 tabular-nums">
-        {position} of {order.length}
-      </span>
-    </div>
-  );
+  // Dial each contact once, as soon as it is looked up and the dialer is free.
+  // Without a free line it waits, and dials once one is picked in the dock.
+  const dialedRef = useRef<string | null>(null);
+  const warnedRef = useRef(false);
+  const { state, line, dial } = dialer;
+  useEffect(() => {
+    if (!current || dialedRef.current === currentId || state !== "idle") return;
+    if (!current.phone) {
+      dialedRef.current = currentId;
+      warning("Skipped a contact", `${contactDisplayName(current)} has no phone number.`);
+      advance();
+      return;
+    }
+    if (!line) {
+      if (!warnedRef.current) warning("No free sending number", "Pick a number under Calling from in the dialer.");
+      warnedRef.current = true;
+      return;
+    }
+    dialedRef.current = currentId;
+    void dial(
+      {
+        contactType: "prospect",
+        contactId: currentId,
+        phone: current.phone,
+        name: contactDisplayName(current),
+        campaignId: (current.campaign_id as string | null | undefined) ?? null,
+      },
+      { saveLabel: "Save & next", onSaved: advance },
+    );
+  }, [current, currentId, state, line, dial, advance, warning]);
 
-  return (
-    <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[55]" aria-label="Power dialer">
-      {contact ? (
-        <Softphone
-          key={currentId}
-          variant="compact"
-          lead={contact as any}
-          prospectId={currentId}
-          callerId={line?.phoneNumber}
-          phoneId={line?.id ?? null}
-          member={member}
-          autoDial={!!contact.phone && !!member && !!line}
-          compactMenu={menu}
-          compactFooter={footer}
-          onCallEnd={handleCallEnd}
-        />
-      ) : (
-        <div className="dark w-[380px] rounded-[12px] border border-white/10 bg-[#0b1622] p-4 text-center text-[13px] text-white/70 shadow-2xl">
-          Loading contact…
-          <div className="mt-3 flex justify-center gap-2">
-            <button onClick={advance} className="h-8 px-3 rounded-md bg-white/10 text-white flex items-center gap-1.5">
-              <SkipForward className="w-3.5 h-3.5" /> Skip
-            </button>
-            <button onClick={() => onChange(null)} className="h-8 px-3 rounded-md bg-white/10 text-white flex items-center gap-1.5">
-              <Square className="w-3.5 h-3.5" /> End
-            </button>
-          </div>
-        </div>
-      )}
-      {!line && contact && (
-        <p className="mt-2 rounded-[8px] bg-amber-500/90 px-3 py-1.5 text-center text-[12px] font-medium text-black">
-          No free sending number to dial from. Check Phone Numbers.
-        </p>
-      )}
-    </div>
-  );
+  return null;
 }

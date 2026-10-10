@@ -275,7 +275,7 @@ Rules:
 - Keep `status` as the **system** result (`IN_PROGRESS|COMPLETED|FAILED|NO_ANSWER|BUSY`). This is how Close separates system dispositions from outcomes, and it resolves bug #7.
 
 ### 5.4 Fix prospect notes
-Add `notes` (TEXT) to `agencyProspect` and map `notes ↔ notes`. Stop reading and writing `outboundLabel` for notes (`map-prospect.ts:160,193`, `routes/prospects/index.ts:382`).
+Add `notes` (TEXT) to `agencyProspect` and map `notes` to `notes` both ways. Stop reading and writing `outboundLabel` for notes (`map-prospect.ts:160,193`, `routes/prospects/index.ts:382`).
 
 ### 5.5 Regenerate the typed client
 After the schema changes, run `bun run api:client` so genql picks up the new objects. Stop casting the client to `any` in new code.

@@ -2,7 +2,12 @@ export interface AgencyCall {
   id: string;
   name?: string;
   direction?: string;
+  /** System result: IN_PROGRESS | COMPLETED | FAILED | NO_ANSWER | BUSY. */
   status?: string;
+  /** Operator outcome (DISPOSITION_OPTIONS), or null until one is picked. */
+  disposition?: string | null;
+  /** Free-text call notes from the dialer dock. */
+  notes?: string | null;
   fromNumber?: string;
   toNumber?: string;
   startedAt?: string;
