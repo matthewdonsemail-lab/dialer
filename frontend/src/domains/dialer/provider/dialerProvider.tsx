@@ -13,8 +13,7 @@ import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/domains/ap
 import { classifyFailure, getSipConfig, isSipConfigured, sipLog, type ClassifiedFailure } from "@/domains/dialer/sip";
 import { CallLifecycle } from "@/domains/dialer/lifecycle";
 import { attachRemoteMedia, getMicStream, loadSip, sendSessionDtmf, startAgent, type SipAgent } from "@/domains/dialer/sip";
-import { pickCallLine, regionNumberLabel } from "@/domains/dialer/route";
-import { regionName } from "@dialer/shared";
+import { pickCallLine } from "@/domains/dialer/route";
 
 /** Explicit opt-in only (?simulate=1): simulated calls never happen silently. */
 export const SIMULATE_CALLS =
@@ -29,6 +28,8 @@ export interface DialTarget {
   name: string;
   /** Campaign whose script the Script button opens. */
   campaignId?: string | null;
+  /** The contact's country (any spelling), so the call goes out from a number in it. */
+  country?: string | null;
 }
 
 export interface DialOptions {
@@ -493,14 +494,14 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     }
     // Same-country calling: a contact abroad is called from one of our numbers
     // in their country; with none, an international call needs "Dial anyway".
-    const route = pickCallLine(lines, line, { number: next.phone });
-    if (route.abroad && !confirmed.has("abroad") && route.from && route.to) {
-      return hold("abroad", `${next.phone} is ${regionNumberLabel(route.to)} and you have no free ${regionName(route.to)} line, so this is an international call from ${line?.phoneNumber ?? "your number"}.`);
+    const route = pickCallLine(lines, line, { number: next.phone, country: next.country });
+    if (route.abroad && !confirmed.has("abroad")) {
+      return hold("abroad", `${next.name || next.phone} is in ${route.toName ?? "another country"} and you have no free number there, so this is an international call from ${line?.phoneNumber ?? "your number"}.`);
     }
     const from = route.line;
     if (route.switched && from) {
       setLineId(from.id);
-      toastInfo(`Calling from ${from.phoneNumber}`, `Your ${regionName(route.to!)} number, so the call stays local.`);
+      toastInfo(`Calling from ${from.phoneNumber}`, `Your ${route.toName ?? "local"} number, so the call stays local.`);
     }
     overrideRef.current = null;
     setCooldownNotice(null);

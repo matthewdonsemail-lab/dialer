@@ -42,8 +42,8 @@ import { usePowerDialer, contactDisplayName } from "@/domains/campaigns/powerDia
 import { usePersistedState } from "@/domains/app/persistedState";
 import { useCalls } from "@/domains/calls/data";
 import { contactsApi, contactName, useContactFacets, useProspectLookup, type ContactRow } from "@/domains/contact/list";
-import { lineRegion, pickCallLine } from "@/domains/dialer/route";
-import { regionName, regionOfCountry } from "@dialer/shared";
+import { lineCountry, lineRegion, pickCallLine } from "@/domains/dialer/route";
+import { regionOfCountry } from "@dialer/shared";
 import { countryCode, countryName } from "@/domains/country/lookup";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disposition";
 import { isLive, useDialer, type CallState } from "@/domains/dialer/provider";
@@ -464,11 +464,14 @@ function ContactsTab() {
     }
     return groups;
   }, [facets]);
+  // "Local to" the line: its own country (a US number is not local to Canada,
+  // though both dial +1); only a line with no country falls back to its region.
+  const fromCountry = lineCountry(line);
   const fromRegion = lineRegion(line);
-  const sameCountry = [...countries.entries()].filter(([code]) => fromRegion !== null && regionOfCountry(code) === fromRegion);
+  const sameCountry = [...countries.entries()].filter(([code]) => (fromCountry ? code === fromCountry : fromRegion !== null && regionOfCountry(code) === fromRegion));
   const lineRaws = sameCountry.flatMap(([, g]) => g.raws);
   const countryOptions: DockFilterOption[] = [
-    ...(fromRegion && line
+    ...((fromCountry || fromRegion) && line
       ? [{ value: "line", label: `Local to ${line.phoneNumber}`, icon: <CountryFlag code={countryCode(line.countryCode)} />, hint: sameCountry.reduce((n, [, g]) => n + g.count, 0) }]
       : []),
     ...[...countries.entries()]
@@ -535,7 +538,7 @@ function ContactsTab() {
         rows.map((r) => {
           const name = contactName(r) ?? "Unknown";
           const route = r.phone ? pickCallLine(lines, line, { number: r.phone, country: r.country as string | undefined }) : null;
-          const toName = route?.to ? regionName(route.to) : "";
+          const toName = route?.toName ?? "";
           return (
             <ListRow
               key={`${r.type}-${r.id}`}
@@ -545,7 +548,7 @@ function ContactsTab() {
               meta={[r.phone || "No number", r.company].filter(Boolean).join(" · ")}
               onClick={() =>
                 r.phone &&
-                void dial({ contactType: r.type, contactId: r.id, phone: r.phone, name, campaignId: (r.campaign_id as string | null) ?? null })
+                void dial({ contactType: r.type, contactId: r.id, phone: r.phone, name, campaignId: (r.campaign_id as string | null) ?? null, country: (r.country as string | undefined) ?? null })
               }
               trailing={
                 <span className="flex items-center gap-1.5 shrink-0">
@@ -555,7 +558,7 @@ function ContactsTab() {
                     </span>
                   )}
                   {route?.abroad && (
-                    <Chip icon={Globe} iconClassName="text-amber-600" title={`You have no free ${toName} line, so this is an international call from ${line?.phoneNumber}`}>
+                    <Chip icon={Globe} iconClassName="text-amber-600" title={`In ${toName || "another country"} and you have no free number there, so this is an international call from ${line?.phoneNumber}`}>
                       International
                     </Chip>
                   )}

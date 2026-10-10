@@ -269,7 +269,7 @@ export function ContactSidebar({
               disabled={!contact.phone}
               onClick={() =>
                 contact.phone &&
-                void dial({ contactType: contact.type, contactId: contact.id, phone: contact.phone, name: contact.name, campaignId: contact.campaignId })
+                void dial({ contactType: contact.type, contactId: contact.id, phone: contact.phone, name: contact.name, campaignId: contact.campaignId, country: contact.country })
               }
             />
             <QuickAction icon={MessageSquare} label="SMS" tone="text-sky-600" disabled={!contact.phone} onClick={() => onCompose("sms")} />

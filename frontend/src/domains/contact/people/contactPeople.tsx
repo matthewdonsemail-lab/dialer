@@ -136,6 +136,7 @@ function PersonRow({ person, contact, onEdit }: { person: Person; contact: Conta
               phone: person.phone,
               name: contact.name && contact.name !== person.name ? `${person.name} (${contact.name})` : person.name,
               campaignId: contact.campaignId,
+              country: contact.country,
             })
           }
           disabled={!person.phone}

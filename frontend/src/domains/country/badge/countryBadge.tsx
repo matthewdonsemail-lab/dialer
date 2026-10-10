@@ -1,5 +1,6 @@
 import { Globe } from "@/domains/ui/icons";
-import { countryCode, countryName, flagUrl } from "@/domains/country/lookup";
+import { countryCode, countryName } from "@/domains/country/lookup";
+import { flagUrl } from "./flagUrl";
 
 /** Rectangular flag for an ISO code; a globe when the country is unknown. */
 export function CountryFlag({ code, className = "" }: { code: string | null; className?: string }) {

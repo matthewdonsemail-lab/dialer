@@ -147,7 +147,7 @@ export function ContactFeed({
             icon={Phone}
             disabled={!contact.phone}
             onClick={() =>
-              contact.phone && void dial({ contactType: contact.type, contactId: contact.id, phone: contact.phone, name: contact.name, campaignId: contact.campaignId })
+              contact.phone && void dial({ contactType: contact.type, contactId: contact.id, phone: contact.phone, name: contact.name, campaignId: contact.campaignId, country: contact.country })
             }
           >
             Call

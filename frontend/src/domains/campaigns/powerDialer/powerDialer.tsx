@@ -168,6 +168,7 @@ function PowerDialerDriver({
         phone: current.phone,
         name: contactDisplayName(current),
         campaignId: (current.campaign_id as string | null | undefined) ?? null,
+        country: (current.country as string | null | undefined) ?? null,
       },
       { saveLabel: "Save & next", onSaved: advance },
     );
