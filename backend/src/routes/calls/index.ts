@@ -8,6 +8,7 @@ import { createLogger } from "../../lib/logger/index.js";
 import type { AgencyCall } from "./types.js";
 import { mapCall, splitStatus } from "./helpers/index.js";
 import { callResultMachine } from "@dialer/shared";
+import { forgetLastCalls } from "../../lib/twenty/lastCall/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -255,6 +256,7 @@ router.post("/", async (req: AuthRequest, res) => {
       }
     }
 
+    forgetLastCalls();
     res.status(201).json(mapCall(created));
   } catch (err: any) {
     log.error("Failed to log call:", err.message);
@@ -294,6 +296,7 @@ router.patch("/:id", async (req, res) => {
     }
     const actor = await resolveActor(req);
     const updated = await updateTwenty<AgencyCall>('agencyCalls', req.params.id as string, patch, actor);
+    forgetLastCalls();
     res.json(mapCall(updated));
   } catch (err: any) {
     log.error("Failed to update call:", err.message);

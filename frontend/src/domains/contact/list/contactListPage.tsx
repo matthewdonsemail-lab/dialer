@@ -17,7 +17,7 @@ import { DataTable, ToolbarButton, useDataTable, type DataColumn } from "@/domai
 import type { HeaderFilterOption } from "@/domains/ui/table";
 import { CampaignModal } from "@/domains/campaigns/campaignModal";
 import { ScriptsModal } from "@/domains/scripts/workspace";
-import { DispositionBadge } from "@/domains/calls/disposition";
+import { DispositionBadge, DispositionIcon, dispositionMeta } from "@/domains/calls/disposition";
 import { defaultCampaignName, useCreateCallCampaign } from "@/domains/campaigns/data";
 import { usePowerDialer } from "@/domains/campaigns/powerDialer";
 import type { CallCampaign } from "@/domains/api/client";
@@ -76,6 +76,9 @@ function useDebounced<T>(value: T, ms: number): T {
   }, [value, ms]);
   return v;
 }
+
+/** The Last call filter value for contacts with no call (matches the backend). */
+const NEVER_CALLED = "__never";
 
 function option(value: string, label: string, icon: React.ReactNode, count?: number): StatusOption {
   return { value, label, icon, hint: count, dotColor: "", bgTint: "", textColor: "" };
@@ -138,6 +141,22 @@ export function ProspectPage() {
     .sort((a, b) => b[1] - a[1])
     .map(([raw, n]) => option(raw, raw === BLANK ? "No industry" : raw, null, n));
 
+  // Values with counts from Twenty for the place columns.
+  const valueOptions = (counts: Record<string, number> | undefined, blank: string) =>
+    Object.entries(counts ?? {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([raw, n]) => option(raw, raw === BLANK ? blank : raw, null, n));
+  const companyOptions = valueOptions(facets?.industry, "No company");
+  const stateOptions = valueOptions(facets?.state, "No state");
+  const cityOptions = valueOptions(facets?.city, "No city");
+
+  // Last call: how the newest call ended, most common first, then Never called.
+  const lastCallOptions = Object.entries(facets?.lastCall ?? {})
+    .filter(([raw]) => raw !== NEVER_CALLED)
+    .sort((a, b) => b[1] - a[1])
+    .map(([raw, n]) => option(raw, dispositionMeta(raw).label, <DispositionIcon status={raw} />, n));
+  if (facets?.lastCall) lastCallOptions.push(option(NEVER_CALLED, "Never called", null, facets.lastCall[NEVER_CALLED] ?? 0));
+
   // Toolbar dropdowns and column-header filters share one state (table.columnFilters).
   const pick = (key: string, options: StatusOption[]) => {
     const v = columnFilters[key];
@@ -148,7 +167,14 @@ export function ProspectPage() {
     country: pick("country", countryOptions),
     contact_type: pick("contact_type", typeOptions),
     industry: pick("industry", industryOptions),
+    company: pick("company", companyOptions),
+    state: pick("state", stateOptions),
+    city: pick("city", cityOptions),
+    last_call: pick("last_call", lastCallOptions),
   };
+  // Free-text column filters (every name and number is different).
+  const nameText = columnFilters.name ?? "";
+  const phoneText = columnFilters.phone ?? "";
 
   const search = useDebounced(table.search, 300);
   const sort = table.sort && SERVER_SORTABLE.has(table.sort.key) ? table.sort : null;
@@ -158,6 +184,12 @@ export function ProspectPage() {
     country: active.country !== ALL ? countryGroups.get(active.country)?.raws : undefined,
     type: active.contact_type !== ALL ? [active.contact_type as ContactType] : undefined,
     industry: active.industry !== ALL ? [active.industry] : undefined,
+    company: active.company !== ALL ? [active.company] : undefined,
+    state: active.state !== ALL ? [active.state] : undefined,
+    city: active.city !== ALL ? [active.city] : undefined,
+    lastCall: active.last_call !== ALL ? active.last_call : undefined,
+    name: nameText || undefined,
+    phone: phoneText || undefined,
     sort: sort?.key,
     dir: sort?.direction,
   };
@@ -268,7 +300,7 @@ export function ProspectPage() {
     opts.map((o) => ({ value: o.value, label: o.label, count: typeof o.hint === "number" ? o.hint : undefined, icon: o.icon }));
 
   const columns: DataColumn<ContactRow>[] = [
-    { key: "name", label: "Name", type: "title", width: 210, value: (r) => contactName(r) ?? "", onClick: open, headerExtra: fieldLink("name") },
+    { key: "name", label: "Name", type: "title", width: 210, value: (r) => contactName(r) ?? "", onClick: open, headerExtra: fieldLink("name"), filterable: true, filterMode: "contains" },
     {
       key: "contact_type",
       label: "Type",
@@ -283,8 +315,8 @@ export function ProspectPage() {
       ),
       filterable: true,
     },
-    { key: "company", label: "Company", type: "text", width: 150, value: (r) => r.company, onClick: open, headerExtra: fieldLink("company") },
-    { key: "phone", label: "Phone", type: "phone", width: 175, value: (r) => r.phone, onClick: open, headerExtra: fieldLink("phone") },
+    { key: "company", label: "Company", type: "text", width: 150, value: (r) => r.company, onClick: open, headerExtra: fieldLink("company"), filterable: true },
+    { key: "phone", label: "Phone", type: "phone", width: 175, value: (r) => r.phone, onClick: open, headerExtra: fieldLink("phone"), filterable: true, filterMode: "contains" },
     {
       key: "status",
       label: "Status",
@@ -301,6 +333,7 @@ export function ProspectPage() {
       type: "custom",
       width: 190,
       sortable: false,
+      filterable: true,
       value: (r) => r.lastCall?.status ?? null,
       render: (r) =>
         r.lastCall ? (
@@ -312,8 +345,8 @@ export function ProspectPage() {
           <span className="text-[12px] text-[var(--ods-text-tertiary)]">Never called</span>
         ),
     },
-    { key: "state", label: "State", type: "text", width: 110, value: (r) => r.state, headerExtra: fieldLink("state") },
-    { key: "city", label: "City", type: "text", width: 120, value: (r) => r.city, headerExtra: fieldLink("city") },
+    { key: "state", label: "State", type: "text", width: 110, value: (r) => r.state, headerExtra: fieldLink("state"), filterable: true },
+    { key: "city", label: "City", type: "text", width: 120, value: (r) => r.city, headerExtra: fieldLink("city"), filterable: true },
     {
       key: "country",
       label: "Country",
@@ -362,10 +395,14 @@ export function ProspectPage() {
             country: asHeaderOptions(countryOptions),
             contact_type: asHeaderOptions(typeOptions),
             industry: asHeaderOptions(industryOptions),
+            company: asHeaderOptions(companyOptions),
+            state: asHeaderOptions(stateOptions),
+            city: asHeaderOptions(cityOptions),
+            last_call: asHeaderOptions(lastCallOptions),
           },
         }}
         onClearFilters={() => {
-          for (const key of ["status", "country", "contact_type", "industry"]) setColumnFilter(key, ALL);
+          for (const key of ["status", "country", "contact_type", "industry", "company", "state", "city", "last_call", "name", "phone"]) setColumnFilter(key, ALL);
         }}
         selection={{
           onDelete: handleBulkDelete,

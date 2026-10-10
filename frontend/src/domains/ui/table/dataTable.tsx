@@ -54,6 +54,11 @@ export interface DataColumn<T> {
   /** Offer the column's values as a filter in its header menu. */
   filterable?: boolean;
   /**
+   * "values" (default): pick one of the column's values. "contains": a text
+   * box, for columns where every value is different (names, phone numbers).
+   */
+  filterMode?: "values" | "contains";
+  /**
    * The value the header filter groups by, when it should differ from the
    * displayed text (e.g. duration buckets, "Has recording"). Display and
    * sorting are unaffected. Return null to leave a row out of every option.
@@ -279,7 +284,7 @@ export function DataTable<T>({
       return out;
     }
     for (const col of columns) {
-      if (!col.filterable) continue;
+      if (!col.filterable || col.filterMode === "contains") continue;
       const counts = new Map<string, number>();
       for (const r of rows ?? []) {
         const t = filterText(col, r);
@@ -302,7 +307,10 @@ export function DataTable<T>({
     const filtered = pageRows.filter((r) => {
       for (const [key, value] of Object.entries(columnFilters)) {
         const col = byKey.get(key);
-        if (col && filterText(col, r) !== value) return false;
+        if (!col) continue;
+        if (col.filterMode === "contains") {
+          if (!cellText(col, r).toLowerCase().includes(value.toLowerCase())) return false;
+        } else if (filterText(col, r) !== value) return false;
       }
       if (!q) return true;
       if (searchText && searchText(r).toLowerCase().includes(q)) return true;
@@ -393,6 +401,7 @@ export function DataTable<T>({
         label={col.label}
         value={col.filterable ? (columnFilters[col.key] ?? "all") : undefined}
         options={col.filterable ? (facets.get(col.key) ?? []) : undefined}
+        contains={col.filterable && col.filterMode === "contains"}
         onChange={(v) => setColumnFilter(col.key, v)}
         sort={
           sortable

@@ -3,7 +3,8 @@ import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty, fetchTwenty } from "../../lib/twenty/client/index.js";
 import { twentyGraphqlClient } from "../../lib/twenty/graphql/index.js";
 import { contactTypes, idList } from "./helpers/query.js";
-import { leadGqlQuery, pageWindow, prospectGqlQuery } from "./helpers/queryGql.js";
+import { leadGqlQuery, pageWindow, prospectGqlQuery, type IdScope } from "./helpers/queryGql.js";
+import { lastCallIndex, NEVER_CALLED, outcomeCounts } from "../../lib/twenty/lastCall/index.js";
 import { mapLeadToFrontend } from "../leads/helpers/index.js";
 import { guardContactStatus } from "../../lib/pipelines/index.js";
 import { checkSmsRoute, offerMachine, onPageSent, toE164 } from "@dialer/shared";
@@ -101,8 +102,21 @@ router.get("/page", async (req, res) => {
 
     const PROSPECT_NODE = { __scalar: true, phoneNumber: { __scalar: true }, primaryPhone: { __scalar: true }, videoUrl: { __scalar: true } };
     const LEAD_NODE = { __scalar: true, email: { __scalar: true }, phone: { __scalar: true } };
-    const pq = types.prospects ? prospectGqlQuery(params) : null;
-    const lq = types.leads ? leadGqlQuery(params) : null;
+    // Last call filter: the contacts whose newest call ended that way, or
+    // (Never called) every contact without a call.
+    let scope: IdScope | undefined;
+    const lastCall = typeof params.lastCall === "string" ? params.lastCall.trim() : "";
+    if (lastCall) {
+      const index = await lastCallIndex();
+      if (lastCall === NEVER_CALLED) scope = { notIn: [...index.keys()] };
+      else {
+        const ids = [...index.entries()].filter(([, outcome]) => outcome === lastCall).map(([id]) => id);
+        if (ids.length === 0) return res.json({ offset, rows: [], totalCount: 0, counts: { prospect: 0, lead: 0 } });
+        scope = { in: ids };
+      }
+    }
+    const pq = types.prospects ? prospectGqlQuery(params, scope) : null;
+    const lq = types.leads ? leadGqlQuery(params, scope) : null;
 
     const fetchSlice = async (object: "agencyProspects" | "agencyLeads", q: { filter?: unknown; orderBy: unknown }, node: object, first: number, skip: number) => {
       const r: any = await client.query({
@@ -161,7 +175,7 @@ router.get("/page", async (req, res) => {
         });
         for (const c of calls?.data?.agencyCalls ?? []) {
           const owner = c.agencyProspectId || c.agencyLeadId;
-          if (owner && !last.has(owner)) last.set(owner, { id: c.id, status: c.status ?? null, at: c.startedAt ?? c.createdAt ?? null });
+          if (owner && !last.has(owner)) last.set(owner, { id: c.id, status: c.disposition || c.status || null, at: c.startedAt ?? c.createdAt ?? null });
         }
       } catch (err: any) {
         log.info(`Last-call lookup skipped: ${err.message}`);
@@ -199,18 +213,26 @@ router.get("/facets", async (_req, res) => {
       }
       return out;
     };
-    const [status, country, industry, campaign, creators] = await Promise.all([
+    const [status, country, industry, campaign, creators, state, city, last] = await Promise.all([
       group("coldCallStatus"),
       group("country"),
       group("niche"),
       group("campaignIdId"),
       group("createdByMemberId").catch(() => ({}) as Record<string, number>),
+      group("region").catch(() => ({}) as Record<string, number>),
+      group("city").catch(() => ({}) as Record<string, number>),
+      // A failed call walk only loses the Last call counts, not the other filters.
+      lastCallIndex().catch((err) => {
+        log.info(`Last-call counts skipped: ${err.message}`);
+        return null;
+      }),
     ]);
     const creator = Object.entries(creators).reduce((sum, [k, n]) => (k === "__blank" ? sum : sum + n), 0);
     const total = Object.values(country).reduce((a, b) => a + b, 0);
     const leadsBody: any = await fetchTwenty("agencyLeads", { limit: 1 });
     const leads = typeof leadsBody?.totalCount === "number" ? leadsBody.totalCount : 0;
-    res.json({ total: total + leads, type: { prospect: total, lead: leads }, status, country, industry, campaign, creator });
+    const lastCall = last ? { ...outcomeCounts(last), [NEVER_CALLED]: Math.max(0, total + leads - last.size) } : {};
+    res.json({ total: total + leads, type: { prospect: total, lead: leads }, status, country, industry, campaign, creator, state, city, lastCall });
   } catch (err: any) {
     log.error("Failed to count prospect facets:", err.message);
     res.status(500).json({ error: "Failed to count contacts in Twenty", details: err.message });

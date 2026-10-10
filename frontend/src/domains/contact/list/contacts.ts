@@ -53,6 +53,12 @@ export interface ContactFacets {
   campaign: Record<string, number>;
   /** Prospects that name the member who created them. */
   creator: number;
+  /** Raw region (state) value -> count. */
+  state?: Record<string, number>;
+  /** Raw city value -> count. */
+  city?: Record<string, number>;
+  /** How the newest call ended -> contacts ("__never" = never called). */
+  lastCall?: Record<string, number>;
 }
 
 export interface ContactQuery {
@@ -63,6 +69,15 @@ export interface ContactQuery {
   country?: string[];
   industry?: string[];
   campaign?: string;
+  /** Text the name / phone contains. */
+  name?: string;
+  phone?: string;
+  /** Prospect-only value filters (raw values, "__blank" = empty). */
+  company?: string[];
+  state?: string[];
+  city?: string[];
+  /** Outcome of the newest call, or "__never". */
+  lastCall?: string;
   sort?: string;
   dir?: "asc" | "desc";
 }
@@ -77,6 +92,12 @@ function toParams(query: ContactQuery, offset = 0, limit = PAGE_SIZE): string {
   if (query.country?.length) p.set("country", query.country.join("|"));
   if (query.industry?.length) p.set("industry", query.industry.join("|"));
   if (query.campaign) p.set("campaign", query.campaign);
+  if (query.name?.trim()) p.set("name", query.name.trim());
+  if (query.phone?.trim()) p.set("phone", query.phone.trim());
+  if (query.company?.length) p.set("company", query.company.join("|"));
+  if (query.state?.length) p.set("state", query.state.join("|"));
+  if (query.city?.length) p.set("city", query.city.join("|"));
+  if (query.lastCall) p.set("lastCall", query.lastCall);
   if (query.sort) p.set("sort", query.sort);
   if (query.dir) p.set("dir", query.dir);
   return p.toString();

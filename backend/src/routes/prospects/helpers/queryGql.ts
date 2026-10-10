@@ -54,6 +54,37 @@ function statusFilter(raw: unknown): Filter | null {
   return clauses.length > 1 ? { or: clauses } : clauses[0];
 }
 
+/** `field in values`, where "__blank" also matches an empty field. */
+function inOrBlank(field: string, values: string[]): Filter | null {
+  if (!values.length) return null;
+  const named = values.filter((v) => v !== "__blank");
+  const clauses: Filter[] = named.length ? [{ [field]: { in: named } }] : [];
+  if (values.includes("__blank")) clauses.push({ or: [{ [field]: { is: "NULL" } }, { [field]: { eq: "" } }] });
+  return clauses.length > 1 ? { or: clauses } : clauses[0];
+}
+
+function contains(raw: unknown): string {
+  return typeof raw === "string" ? raw.trim().slice(0, 120) : "";
+}
+
+/**
+ * Ids from the last-call filter: only these (`in`), or all but these
+ * (`notIn`, for "Never called"). Resolved by the route from the call index.
+ */
+export interface IdScope {
+  in?: string[];
+  notIn?: string[];
+}
+
+function idScope(scope?: IdScope): Filter | null {
+  if (scope?.in) return { id: { in: scope.in } };
+  if (scope?.notIn?.length) return { not: { id: { in: scope.notIn } } };
+  return null;
+}
+
+/** Column filters only prospects have (no such field on agencyLead). */
+const PROSPECT_ONLY = ["country", "industry", "company", "state", "city"];
+
 function orderBy(params: Record<string, unknown>, fields: Record<string, string>): Record<string, string>[] {
   const field = fields[typeof params.sort === "string" ? params.sort : ""] ?? "createdAt";
   const dir = params.dir === "asc" ? "AscNullsLast" : params.dir === "desc" ? "DescNullsLast" : field === "createdAt" ? "DescNullsLast" : "AscNullsLast";
@@ -66,7 +97,7 @@ function combine(parts: Filter[]): Filter | undefined {
 }
 
 /** Values are passed as GraphQL variables, never spliced into a query string. */
-export function prospectGqlQuery(params: Record<string, unknown>) {
+export function prospectGqlQuery(params: Record<string, unknown>, scope?: IdScope) {
   const parts: Filter[] = [];
   const text = typeof params.q === "string" ? params.q.trim().slice(0, 120) : "";
   if (text) {
@@ -75,25 +106,32 @@ export function prospectGqlQuery(params: Record<string, unknown>) {
   }
   const status = statusFilter(params.status);
   if (status) parts.push(status);
-  const countries = list(params.country);
-  if (countries.length) {
-    const named = countries.filter((c) => c !== "__blank");
-    const clauses: Filter[] = named.length ? [{ country: { in: named } }] : [];
-    if (countries.includes("__blank")) clauses.push({ country: { is: "NULL" } });
-    parts.push(clauses.length > 1 ? { or: clauses } : clauses[0]);
+  const name = contains(params.name);
+  if (name) parts.push({ name: { ilike: `%${name}%` } });
+  const phone = contains(params.phone);
+  if (phone) parts.push({ phone: { ilike: `%${phone}%` } });
+  for (const [param, field] of [["country", "country"], ["industry", "niche"], ["company", "niche"], ["state", "region"], ["city", "city"]]) {
+    const clause = inOrBlank(field, list(params[param]));
+    if (clause) parts.push(clause);
   }
-  const industries = list(params.industry);
-  if (industries.length) parts.push({ niche: { in: industries } });
+  const ids = idScope(scope);
+  if (ids) parts.push(ids);
   if (typeof params.campaign === "string" && UUID.test(params.campaign)) parts.push({ campaignIdId: { eq: params.campaign } });
   return { filter: combine(parts), orderBy: orderBy(params, PROSPECT_SORT) };
 }
 
-/** Lead version; null when a prospect-only filter (country, industry) is set. */
-export function leadGqlQuery(params: Record<string, unknown>) {
-  if (list(params.country).length || list(params.industry).length) return null;
+/** Lead version; null when a prospect-only filter (country, industry, place) is set. */
+export function leadGqlQuery(params: Record<string, unknown>, scope?: IdScope) {
+  if (PROSPECT_ONLY.some((k) => list(params[k]).length)) return null;
   const parts: Filter[] = [];
   const text = typeof params.q === "string" ? params.q.trim().slice(0, 120) : "";
   if (text) parts.push({ or: ["name", "contactName"].map((f) => ({ [f]: { ilike: `%${text}%` } })) });
+  const name = contains(params.name);
+  if (name) parts.push({ or: ["name", "contactName"].map((f) => ({ [f]: { ilike: `%${name}%` } })) });
+  const phone = contains(params.phone);
+  if (phone) parts.push({ phone: { primaryPhoneNumber: { ilike: `%${phone}%` } } });
+  const ids = idScope(scope);
+  if (ids) parts.push(ids);
   const status = statusFilter(params.status);
   if (status) parts.push(status);
   if (typeof params.campaign === "string" && UUID.test(params.campaign)) parts.push({ campaignIdId: { eq: params.campaign } });

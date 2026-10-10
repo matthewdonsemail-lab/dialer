@@ -1,4 +1,6 @@
-import { ArrowDownAZ, ArrowUpZA, ListFilter, X } from "@/domains/ui/icons";
+import { useState } from "react";
+import { ArrowDownAZ, ArrowUpZA, ListFilter, Search, X } from "@/domains/ui/icons";
+import { inputClass } from "@/domains/ui/input";
 import type { SortDirection } from "./listSort";
 import { MenuRow, SelectMenu } from "@/domains/ui/menu";
 
@@ -18,6 +20,8 @@ interface HeaderFilterProps {
   /** Filter values. Omit or pass [] for sort-only columns. */
   options?: HeaderFilterOption[];
   onChange?: (newValue: string) => void;
+  /** Free-text "contains" filter instead of a value list (names, phone numbers). */
+  contains?: boolean;
   /** Sort controls. `direction` is null when this column is not the sort key. */
   sort?: { direction: SortDirection | null; onSort: (direction: SortDirection | null) => void };
 }
@@ -29,7 +33,7 @@ const ALL = "all";
  * with counts. The icon stays visible (in brand colour) while the column is
  * sorted or filtered, so the header shows what is shaping the table.
  */
-export function HeaderFilter({ label, value = ALL, options = [], onChange, sort }: HeaderFilterProps) {
+export function HeaderFilter({ label, value = ALL, options = [], onChange, contains = false, sort }: HeaderFilterProps) {
   const filtered = value !== ALL;
   const sorted = (sort?.direction ?? null) !== null;
   const active = filtered || sorted;
@@ -54,9 +58,10 @@ export function HeaderFilter({ label, value = ALL, options = [], onChange, sort 
           <ListFilter className="w-3.5 h-3.5" />
         )
       }
-      header={(close) =>
-        sort ? (
-          <div className={options.length > 0 ? "pb-1 mb-1 border-b border-[var(--ods-border)]" : ""}>
+      header={(close) => (
+        <>
+        {sort ? (
+          <div className={options.length > 0 || contains ? "pb-1 mb-1 border-b border-[var(--ods-border)]" : ""}>
             <div className="ods-menu-group-label">
               Sort {label}
             </div>
@@ -89,8 +94,10 @@ export function HeaderFilter({ label, value = ALL, options = [], onChange, sort 
               </button>
             )}
           </div>
-        ) : null
-      }
+        ) : null}
+        {contains && <ContainsFilter label={label} value={filtered ? value : ""} onApply={(text) => { close(); onChange?.(text.trim() || ALL); }} />}
+        </>
+      )}
       sections={
         options.length > 0
           ? [
@@ -100,5 +107,44 @@ export function HeaderFilter({ label, value = ALL, options = [], onChange, sort 
           : []
       }
     />
+  );
+}
+
+/** "Filter <label>" text box: Enter applies, the X clears. */
+function ContainsFilter({ label, value, onApply }: { label: string; value: string; onApply: (text: string) => void }) {
+  const [text, setText] = useState(value);
+  return (
+    <div className="px-1 pb-1">
+      <div className="ods-menu-group-label">Filter {label}</div>
+      <form
+        className="relative"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onApply(text);
+        }}
+      >
+        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ods-text-tertiary)] pointer-events-none" />
+        <input
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.stopPropagation()}
+          placeholder={`${label} contains...`}
+          aria-label={`Filter ${label}`}
+          className={`${inputClass} !h-8 !pl-8 !pr-8`}
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onApply("")}
+            title="Clear filter"
+            aria-label={`Clear the ${label} filter`}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-[var(--ods-text-tertiary)] hover:text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </form>
+    </div>
   );
 }
