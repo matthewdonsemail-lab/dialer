@@ -23,6 +23,10 @@ export interface MenuOption {
   icon?: ReactNode;
   /** Right-aligned hint such as a count. */
   hint?: ReactNode;
+  /** A second line under the label (what choosing it means). */
+  description?: string;
+  /** Shown but not choosable; `description` should say why. */
+  disabled?: boolean;
 }
 
 export interface MenuSection {
@@ -256,12 +260,21 @@ export function MenuRow({
     <div
       role="option"
       aria-selected={selected}
-      onClick={onSelect}
+      aria-disabled={option.disabled || undefined}
+      onClick={option.disabled ? undefined : onSelect}
       tabIndex={-1}
-      className="ods-menu-item"
+      title={option.disabled ? option.description : undefined}
+      className={`ods-menu-item ${option.disabled ? "opacity-45 cursor-not-allowed" : ""} ${option.description ? "!items-start !h-auto py-1.5" : ""}`}
     >
-      {option.icon ?? (option.dot && <span className={`ods-menu-dot ${option.dot}`} />)}
-      <span className="flex-1 truncate">{option.label}</span>
+      {option.icon ?? (option.dot && <span className={`ods-menu-dot ${option.dot} ${option.description ? "mt-1.5" : ""}`} />)}
+      {option.description ? (
+        <span className="flex-1 min-w-0">
+          <span className="block truncate">{option.label}</span>
+          <span className="ods-menu-desc">{option.description}</span>
+        </span>
+      ) : (
+        <span className="flex-1 truncate">{option.label}</span>
+      )}
       {option.hint !== undefined && <span className="ods-menu-hint">{option.hint}</span>}
       {selected && <Check className="ods-menu-icon" />}
     </div>

@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { ChevronDown } from "@/components/ui/icons";
+import { contactStatusMachine, toContactStatus, toLegacyStatus } from "@dialer/shared";
+import { TONE_DOT } from "@/primitives";
+import { SelectMenu } from "@/components/ui/Menu";
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -128,17 +132,21 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
           <div>
             <label className="block text-sm font-medium text-[var(--ods-text-primary)] mb-1">Phone</label>
             <div className="flex">
-              <select
+              <SelectMenu
                 value={formData.phone_country}
-                onChange={(e) => setFormData((prev) => ({ ...prev, phone_country: e.target.value }))}
-                className="w-24 px-2 py-2 border border-[var(--ods-border-strong)] rounded-l-lg text-sm bg-[var(--ods-bg-secondary)] focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-              >
-                {COUNTRY_CODES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, phone_country: v }))}
+                width={200}
+                searchable
+                sections={[{ options: COUNTRY_CODES.map((c) => ({ value: c.code, label: c.label })) }]}
+                triggerTitle="Country code"
+                triggerClassName="w-24 h-9 px-2 rounded-l-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-secondary)] text-[14px] inline-flex items-center justify-between gap-1"
+                trigger={
+                  <>
+                    <span className="truncate">{COUNTRY_CODES.find((c) => c.code === formData.phone_country)?.label ?? formData.phone_country}</span>
+                    <ChevronDown className="w-3 h-3 opacity-60" aria-hidden="true" />
+                  </>
+                }
+              />
               <input
                 type="tel"
                 value={formData.phone}
@@ -197,19 +205,29 @@ export function LeadForm({ onClose, onSubmit, initialData }: LeadFormProps) {
           />
           <div>
             <label className="block text-sm font-medium text-[var(--ods-text-primary)] mb-1">Status</label>
-            <select
+            <SelectMenu
               value={formData.status}
-              onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))}
-              className="w-full px-3 py-2 border border-[var(--ods-border-strong)] rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-[var(--ods-bg-primary)]"
-            >
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="interested">Interested</option>
-              <option value="not_interested">Not Interested</option>
-              <option value="callback">Callback</option>
-              <option value="converted">Converted</option>
-              <option value="do_not_contact">Do Not Contact</option>
-            </select>
+              onChange={(v) => setFormData((prev) => ({ ...prev, status: v as typeof prev.status }))}
+              width={260}
+              sections={[
+                {
+                  options: contactStatusMachine.states.map((s) => ({
+                    value: toLegacyStatus(s),
+                    label: contactStatusMachine.def(s).label,
+                    dot: TONE_DOT[contactStatusMachine.def(s).tone],
+                    description: contactStatusMachine.def(s).description,
+                  })),
+                },
+              ]}
+              triggerClassName="w-full h-9 px-3 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] text-[14px] inline-flex items-center gap-2"
+              trigger={
+                <>
+                  <span className={`w-2.5 h-2.5 rounded-md ${TONE_DOT[contactStatusMachine.def(toContactStatus(formData.status) ?? "NEW").tone]}`} aria-hidden="true" />
+                  <span className="flex-1 text-left">{contactStatusMachine.label(toContactStatus(formData.status))}</span>
+                  <ChevronDown className="w-3 h-3 opacity-60" aria-hidden="true" />
+                </>
+              }
+            />
           </div>
         </div>
       </form>

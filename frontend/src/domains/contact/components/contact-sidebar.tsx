@@ -9,8 +9,10 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  Lock,
   Mail,
   MessageSquare,
+  Pencil,
   Phone,
   Search,
   Star,
@@ -19,17 +21,19 @@ import {
   Users,
 } from "@/components/ui/icons";
 import { Chip, statusIcon } from "@/components/ui/Chip";
-import { StatusSelect } from "@/components/common/StatusSelect";
 import { CountryFlag } from "@/components/common/CountryBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { api } from "@/lib/api-client";
 import { countryCode, countryName } from "@/lib/country";
-import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { useDialer } from "@/components/dialer/DialerProvider";
-import { INPUT, initials, type Contact } from "./model";
-import { ContactPeople, usePeople } from "./ContactPeople";
+import { Button, Pill, Section, StateSelect, inputClass as INPUT } from "@/primitives";
+import { contactStatusMachine, toContactStatus, toLegacyStatus } from "@dialer/shared";
+import type { Contact } from "../types/contact";
+import { initials } from "../utils/to-contact";
+import { ContactPeople } from "./contact-people";
+import { usePeople } from "../lib/use-people";
 
 
 type Patch = Record<string, unknown>;
@@ -47,7 +51,7 @@ interface FieldDef {
 }
 
 const link = (href: string, label: string) => (
-  <a href={href} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[var(--ods-brand-600)] hover:underline inline-flex items-center gap-1 min-w-0">
+  <a href={href} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="ods-link inline-flex items-center gap-1 min-w-0">
     <span className="truncate">{label}</span>
     <ExternalLink className="w-3 h-3 shrink-0" />
   </a>
@@ -187,14 +191,6 @@ export function ContactSidebar({
   const { data: people } = usePeople(contact);
   const primary = people?.[0] ?? null;
 
-  const plural = contact.type === "lead" ? "agencyLeads" : "agencyProspects";
-  const { data: meta } = useQuery<{ fields: Record<string, Array<{ label: string; value: string; color: string }>> }>({
-    queryKey: ["twenty-meta", plural],
-    queryFn: () => api.twentyMeta.fields(plural),
-    staleTime: Infinity,
-  });
-  const statusOptions = meta?.fields["coldCallStatus"] ? mapLeadProspectStatusOptions(meta.fields["coldCallStatus"]) : [];
-
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     return folders(contact.type)
@@ -215,19 +211,16 @@ export function ContactSidebar({
   return (
     <div className="flex flex-col min-h-0 h-full">
       <div className="h-12 px-3 shrink-0 flex items-center justify-between gap-2 border-b border-[var(--ods-border)]">
-        <button
-          onClick={() => navigate("/contacts")}
-          className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)]"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Contacts
-        </button>
-        <Chip icon={contact.type === "lead" ? User : Users}>{contact.type === "lead" ? "Lead" : "Prospect"}</Chip>
+        <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => navigate("/contacts")}>
+          Contacts
+        </Button>
+        <Pill icon={contact.type === "lead" ? User : Users}>{contact.type === "lead" ? "Lead" : "Prospect"}</Pill>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 space-y-3">
-        {/* contact card */}
-        <div className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-3 space-y-3">
-          <div className="flex items-start gap-3">
+        {/* who this is, where they are in the pipeline, and what to do next */}
+        <section className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] overflow-hidden">
+          <div className="p-3 flex items-start gap-3">
             <div className="w-10 h-10 shrink-0 rounded-md bg-[var(--ods-brand-600)]/15 text-[var(--ods-brand-600)] flex items-center justify-center text-[14px] font-semibold">
               {initials(contact.name)}
             </div>
@@ -246,23 +239,25 @@ export function ContactSidebar({
                 )}
               </div>
             </div>
-            <button
-              onClick={() => setConfirmDelete(true)}
-              title={`Delete this ${contact.type}`}
-              className="w-8 h-8 shrink-0 rounded-[8px] inline-flex items-center justify-center text-[var(--ods-text-tertiary)] hover:text-red-600 hover:bg-[var(--ods-hover)]"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <Button variant="ghost" size="sm" icon={Trash2} aria-label={`Delete this ${contact.type}`} title={`Delete this ${contact.type}`} onClick={() => setConfirmDelete(true)} />
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {statusOptions.length > 0 && <StatusSelect value={contact.status || "new"} options={statusOptions} onChange={(status) => void onSave({ status })} />}
+          <div className="px-3 pb-3 space-y-2">
+            <div className="text-[12px] font-semibold text-[var(--ods-text-secondary)]">Status</div>
+            <StateSelect
+              machine={contactStatusMachine}
+              value={toContactStatus(contact.status)}
+              onChange={(next, { override }) => void onSave({ status: toLegacyStatus(next), ...(override ? { reopen: true } : {}) })}
+            />
             {contact.qualification && (
-              <Chip icon={statusIcon(contact.qualification)} iconClassName={contact.qualification === "QUALIFIED" ? "text-emerald-600" : "text-red-600"}>
-                {contact.qualification === "QUALIFIED" ? "Qualified" : contact.qualification === "DISQUALIFIED" ? "Disqualified" : contact.qualification}
-              </Chip>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-[12px] font-semibold text-[var(--ods-text-secondary)]">Qualification</span>
+                <Pill tone={contact.qualification === "QUALIFIED" ? "positive" : "negative"}>
+                  {contact.qualification === "QUALIFIED" ? "Qualified" : contact.qualification === "DISQUALIFIED" ? "Disqualified" : contact.qualification}
+                </Pill>
+              </div>
             )}
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-4 border-t border-[var(--ods-border)] divide-x divide-[var(--ods-border)]">
             <QuickAction
               icon={Phone}
               label="Call"
@@ -277,57 +272,43 @@ export function ContactSidebar({
             <QuickAction icon={Mail} label="Email" tone="text-violet-600" disabled={!contact.email} onClick={() => contact.email && window.open(`mailto:${contact.email}`)} />
             <QuickAction icon={FileText} label="Note" tone="text-amber-600" onClick={() => onCompose("note")} />
           </div>
-        </div>
+        </section>
 
         <ContactPeople contact={contact} />
 
         {/* field search */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0 flex items-center gap-2 h-9 px-2.5 rounded-[8px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] focus-within:border-[var(--ods-brand-500)]">
-            <Search className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
+          <div className="flex-1 min-w-0 flex items-center gap-2 h-9 px-3 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] focus-within:border-[var(--ods-brand-500)]">
+            <Search className="w-3.5 h-3.5 shrink-0 text-[var(--ods-text-tertiary)]" aria-hidden="true" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search fields"
+              aria-label="Search fields"
               className="flex-1 min-w-0 bg-transparent text-[14px] outline-none placeholder:text-[var(--ods-text-tertiary)]"
             />
           </div>
-          <button
-            onClick={() => setHideEmpty(!hideEmpty)}
+          <Button
+            variant="secondary"
             aria-pressed={hideEmpty}
             title={hideEmpty ? "Show empty fields" : "Hide empty fields"}
-            className={`h-9 px-2.5 shrink-0 rounded-[8px] border text-[12px] font-semibold whitespace-nowrap ${
-              hideEmpty
-                ? "border-[var(--ods-brand-600)] bg-[var(--ods-brand-600)]/10 text-[var(--ods-text-primary)]"
-                : "border-[var(--ods-border)] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)]"
-            }`}
+            onClick={() => setHideEmpty(!hideEmpty)}
+            className={hideEmpty ? "!border-[var(--ods-brand-600)] !bg-[var(--ods-brand-600)]/10" : ""}
           >
             Hide empty
-          </button>
+          </Button>
         </div>
 
-        {/* field folders */}
+        {/* field folders: rows run edge to edge so every divider meets the border */}
         {groups.length === 0 && <p className="p-4 text-center text-[13px] text-[var(--ods-text-tertiary)]">No fields match "{query}".</p>}
         {groups.map((g) => {
           const open = query.trim() !== "" || !closed.includes(g.title);
           return (
-            <div key={g.title} className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)]">
-              <button
-                onClick={() => toggleFolder(g.title)}
-                aria-expanded={open}
-                className="w-full h-10 px-3 flex items-center justify-between text-[14px] font-semibold"
-              >
-                {g.title}
-                {open ? <ChevronDown className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" /> : <ChevronRight className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />}
-              </button>
-              {open && (
-                <div className="px-3 pb-2 border-t border-[var(--ods-border)]">
-                  {g.fields.map((f) => (
-                    <FieldRow key={f.key} field={f} contact={contact} onSave={onSave} onCopied={() => success("Copied", f.label)} />
-                  ))}
-                </div>
-              )}
-            </div>
+            <Section key={g.title} title={g.title} count={g.fields.length} collapsed={!open} onToggle={() => toggleFolder(g.title)}>
+              {g.fields.map((f) => (
+                <FieldRow key={f.key} field={f} contact={contact} onSave={onSave} onCopied={() => success("Copied", f.label)} />
+              ))}
+            </Section>
           );
         })}
       </div>
@@ -363,18 +344,24 @@ function QuickAction({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       title={label}
-      className="h-14 rounded-md bg-[var(--ods-bg-tertiary)] hover:bg-[var(--ods-hover)] disabled:opacity-40 flex flex-col items-center justify-center gap-1 text-[12px] font-semibold"
+      className="h-14 hover:bg-[var(--ods-hover)] disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1 text-[12px] font-semibold"
     >
-      <Icon className={`w-4 h-4 ${tone}`} />
+      <Icon className={`w-4 h-4 ${tone}`} aria-hidden="true" />
       {label}
     </button>
   );
 }
 
-/** Label above value. Click an editable value to change it; Enter or leaving the field saves, Escape cancels. */
+/**
+ * Label above value. Editable fields show a pencil and, when empty, an
+ * "Add ..." prompt; read-only fields show a lock that says where they come
+ * from. Enter or leaving the input saves, Escape cancels; every save is
+ * recorded in Twenty and shows up in Record history.
+ */
 function FieldRow({ field, contact, onSave, onCopied }: { field: FieldDef; contact: Contact; onSave: (p: Patch) => Promise<boolean>; onCopied: () => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -382,42 +369,63 @@ function FieldRow({ field, contact, onSave, onCopied }: { field: FieldDef; conta
   const cancelled = useRef(false);
   const value = field.value(contact);
   const text = field.text(contact);
+  const editable = !!field.patch;
+  const raw = field.key === "phone" ? contact.phone ?? "" : field.key === "email" ? contact.email ?? "" : text ?? "";
 
   const start = () => {
-    if (!field.patch) return;
+    if (!editable) return;
     cancelled.current = false;
-    setDraft(field.key === "phone" ? contact.phone ?? "" : field.key === "email" ? contact.email ?? "" : text ?? "");
+    setDraft(raw);
     setEditing(true);
   };
   const commit = async () => {
     setEditing(false);
     if (cancelled.current || !field.patch) return;
     const next = draft.trim();
-    const current = field.key === "phone" ? contact.phone ?? "" : field.key === "email" ? contact.email ?? "" : text ?? "";
-    if (next === current) return;
+    if (next === raw) return;
     if (await onSave(field.patch(contact, next))) {
       setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
+      setTimeout(() => setSaved(false), 2000);
     }
   };
 
   return (
-    <div className="group py-2 border-b last:border-b-0 border-[var(--ods-border)]">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[12px] font-medium text-[var(--ods-text-tertiary)]">{field.label}</span>
-        <span className="flex items-center gap-1">
-          {saved && <Check className="w-3 h-3 text-emerald-600" aria-label="Saved" />}
+    <div className="group px-3 py-2">
+      <div className="flex items-center justify-between gap-2 h-6">
+        <span className="text-[12px] font-semibold text-[var(--ods-text-secondary)] inline-flex items-center gap-1">
+          {field.label}
+          {!editable && (
+            <span title="Filled by enrichment or Twenty. Edit it in Twenty." className="inline-flex">
+              <Lock className="w-2.5 h-2.5" aria-label="Read only" />
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-0.5">
+          {saved && <Pill tone="positive">Saved</Pill>}
           {text && !editing && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Copy}
+              aria-label={`Copy ${field.label.toLowerCase()}`}
+              title={`Copy ${field.label.toLowerCase()}`}
               onClick={() => {
                 void navigator.clipboard?.writeText(text);
                 onCopied();
               }}
-              title={`Copy ${field.label.toLowerCase()}`}
-              className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--ods-text-tertiary)] hover:text-[var(--ods-text-primary)]"
-            >
-              <Copy className="w-3 h-3" />
-            </button>
+              className="!h-6 !w-6 opacity-0 group-hover:opacity-100 focus:opacity-100"
+            />
+          )}
+          {editable && !editing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Pencil}
+              aria-label={`Edit ${field.label.toLowerCase()}`}
+              title={`Edit ${field.label.toLowerCase()}`}
+              onClick={start}
+              className="!h-6 !w-6 opacity-60 group-hover:opacity-100 focus:opacity-100"
+            />
           )}
         </span>
       </div>
@@ -426,6 +434,7 @@ function FieldRow({ field, contact, onSave, onCopied }: { field: FieldDef; conta
           autoFocus
           type={field.inputType ?? "text"}
           value={draft}
+          aria-label={field.label}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => void commit()}
           onKeyDown={(e) => {
@@ -437,16 +446,16 @@ function FieldRow({ field, contact, onSave, onCopied }: { field: FieldDef; conta
           }}
           className={`${INPUT} mt-1`}
         />
-      ) : (
-        <div
-          onClick={field.patch ? start : undefined}
-          title={field.patch ? "Click to edit" : undefined}
-          className={`mt-0.5 min-h-[22px] text-[14px] break-words ${
-            field.patch ? "cursor-text rounded-[6px] -mx-1 px-1 hover:bg-[var(--ods-hover)]" : ""
-          } ${value ? "text-[var(--ods-text-primary)]" : "text-[var(--ods-text-tertiary)]"}`}
-        >
-          {value ?? "--"}
+      ) : value ? (
+        <div onClick={editable ? start : undefined} className={`mt-0.5 text-[14px] font-semibold break-words text-[var(--ods-text-primary)] ${editable ? "cursor-text" : ""}`}>
+          {value}
         </div>
+      ) : editable ? (
+        <button type="button" onClick={start} className="mt-0.5 text-[14px] font-semibold ods-link">
+          Add {field.label.toLowerCase()}
+        </button>
+      ) : (
+        <div className="mt-0.5 text-[14px] text-[var(--ods-text-tertiary)]">Not set</div>
       )}
     </div>
   );

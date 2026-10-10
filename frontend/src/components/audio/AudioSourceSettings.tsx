@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { SelectMenu } from "@/components/ui/Menu";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -14,6 +15,7 @@ import {
   PhoneOff,
   Star,
   type IconComponent,
+  ChevronDown,
 } from "@/components/ui/icons";
 import { Chip } from "@/components/ui/Chip";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -154,7 +156,7 @@ function DeviceSelect({
   note?: string;
 }) {
   return (
-    <label className="block">
+    <div className="block">
       <span className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--ods-text-primary)] mb-1.5">
         {icon} {label}
         {note && (
@@ -163,20 +165,30 @@ function DeviceSelect({
           </span>
         )}
       </span>
-      <select
+      <SelectMenu
         value={value}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full h-10 px-3 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] text-[14px] text-[var(--ods-text-primary)] outline-none focus:border-[var(--ods-brand-500)] disabled:opacity-60"
-      >
-        <option value="">System default</option>
-        {devices.map((d, i) => (
-          <option key={d.deviceId || i} value={d.deviceId}>
-            {d.label || `${label} ${i + 1}`}
-          </option>
-        ))}
-      </select>
-    </label>
+        onChange={onChange}
+        width={320}
+        sections={[
+          {
+            options: [
+              { value: "", label: "System default" },
+              ...devices.map((d, i) => ({ value: d.deviceId, label: d.label || `${label} ${i + 1}` })),
+            ],
+          },
+        ]}
+        triggerClassName="w-full h-9 px-3 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] hover:bg-[var(--ods-hover)] text-[14px] text-[var(--ods-text-primary)] inline-flex items-center gap-2 disabled:opacity-60"
+        trigger={
+          <>
+            <span className="flex-1 min-w-0 text-left truncate">
+              {value ? devices.find((d) => d.deviceId === value)?.label || "Selected device" : "System default"}
+            </span>
+            <ChevronDown className="w-3 h-3 opacity-60" aria-hidden="true" />
+          </>
+        }
+      />
+    </div>
   );
 }
 

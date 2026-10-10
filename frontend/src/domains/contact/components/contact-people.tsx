@@ -1,20 +1,14 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, ExternalLink, Mail, Pencil, Phone, Plus, Trash2 } from "@/components/ui/icons";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink, Mail, Pencil, Phone, Plus, Trash2, Users } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
 import { useDialer } from "@/components/dialer/DialerProvider";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { api, type Person, type PersonInput } from "@/lib/api-client";
-import { INPUT, initials, type Contact } from "./model";
-
-/** The people at this business (agencyPerson in Twenty). */
-export function usePeople(contact: Contact) {
-  return useQuery<Person[]>({
-    queryKey: ["people", contact.type, contact.id],
-    queryFn: () => api.people.list(contact.type === "lead" ? { leadId: contact.id } : { prospectId: contact.id }),
-    staleTime: 60_000,
-  });
-}
+import { Button, Section, SectionRow, buttonClass, inputClass as INPUT } from "@/primitives";
+import type { Contact } from "../types/contact";
+import { initials } from "../utils/to-contact";
+import { usePeople } from "../lib/use-people";
 
 const subtitle = (p: Person) => [p.jobTitle, p.role && p.role !== p.jobTitle ? p.role : null].filter(Boolean).join(" · ");
 
@@ -40,7 +34,7 @@ export function ContactPeople({ contact }: { contact: Contact }) {
       setEditing(null);
       success(id ? "Person updated" : "Person added", person.name);
     },
-    onError: () => toastError("Not saved", "Twenty did not accept the change. Try again."),
+    onError: (err) => toastError("Not saved", err instanceof Error && err.message ? err.message : "Twenty did not accept the change. Try again."),
   });
 
   const remove = useMutation({
@@ -54,69 +48,72 @@ export function ContactPeople({ contact }: { contact: Contact }) {
   });
 
   return (
-    <div className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)]">
-      <div className="h-10 px-3 flex items-center justify-between">
-        <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex items-center gap-2 text-[14px] font-semibold">
-          People
-          <span className="h-5 min-w-5 px-1.5 rounded-md bg-[var(--ods-bg-tertiary)] text-[12px] tabular-nums inline-flex items-center justify-center">{people.length}</span>
-          {open ? <ChevronDown className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" /> : <ChevronRight className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />}
-        </button>
-        {canAdd && (
-          <button
+    <Section
+      title="People"
+      icon={Users}
+      count={people.length}
+      collapsed={!open}
+      onToggle={() => setOpen(!open)}
+      tip={{ title: "People", icon: Users, what: "The people at this business, stored in Twenty as agencyPerson. Call, email or edit them here; every change is recorded in Record history." }}
+      action={
+        canAdd ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Plus}
             onClick={() => {
               setOpen(true);
               setEditing("new");
             }}
-            className="h-7 px-2 rounded-[8px] text-[12px] font-semibold text-[var(--ods-brand-600)] hover:bg-[var(--ods-hover)] inline-flex items-center gap-1"
           >
-            <Plus className="w-3 h-3" /> Add
-          </button>
-        )}
-      </div>
-      {open && (
-        <div className="border-t border-[var(--ods-border)]">
-          {isLoading ? (
-            <div className="p-3 flex items-center gap-2.5" role="status" aria-label="Loading">
-              <div className="w-8 h-8 rounded-md bg-[var(--ods-bg-tertiary)] animate-pulse" />
-              <div className="flex-1 space-y-1.5">
-                <div className="h-3.5 w-1/2 rounded-md bg-[var(--ods-bg-tertiary)] animate-pulse" />
-                <div className="h-3 w-1/3 rounded-md bg-[var(--ods-bg-tertiary)] animate-pulse" />
-              </div>
+            Add
+          </Button>
+        ) : undefined
+      }
+    >
+      {isLoading ? (
+        <SectionRow>
+          <div className="flex items-center gap-2.5" role="status" aria-label="Loading">
+            <div className="w-8 h-8 rounded-md bg-[var(--ods-bg-tertiary)] animate-pulse" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3.5 w-1/2 rounded-md bg-[var(--ods-bg-tertiary)] animate-pulse" />
+              <div className="h-3 w-1/3 rounded-md bg-[var(--ods-bg-tertiary)] animate-pulse" />
             </div>
-          ) : (
-            <>
-              {people.length === 0 && editing !== "new" && (
-                <p className="px-3 py-3 text-[13px] text-[var(--ods-text-tertiary)]">No one recorded yet. Add the owner or whoever answers the phone.</p>
-              )}
-              {people.map((p) =>
-                editing === p.id ? (
-                  <PersonForm
-                    key={p.id}
-                    person={p}
-                    busy={save.isPending || remove.isPending}
-                    onCancel={() => setEditing(null)}
-                    onSave={(data) => save.mutate({ id: p.id, data })}
-                    onRemove={() => remove.mutate(p.id)}
-                  />
-                ) : (
-                  <PersonRow key={p.id} person={p} contact={contact} onEdit={() => setEditing(p.id)} />
-                ),
-              )}
-              {editing === "new" && <PersonForm busy={save.isPending} onCancel={() => setEditing(null)} onSave={(data) => save.mutate({ id: null, data })} />}
-            </>
-          )}
-        </div>
+          </div>
+        </SectionRow>
+      ) : people.length === 0 && editing !== "new" ? (
+        <SectionRow>
+          <p className="text-[13px] text-[var(--ods-text-tertiary)]">No one recorded yet. Add the owner or whoever answers the phone.</p>
+        </SectionRow>
+      ) : (
+        [
+          ...people.map((p) =>
+            editing === p.id ? (
+              <PersonForm
+                key={p.id}
+                person={p}
+                busy={save.isPending || remove.isPending}
+                onCancel={() => setEditing(null)}
+                onSave={(data) => save.mutate({ id: p.id, data })}
+                onRemove={() => remove.mutate(p.id)}
+              />
+            ) : (
+              <PersonRow key={p.id} person={p} contact={contact} onEdit={() => setEditing(p.id)} />
+            ),
+          ),
+          editing === "new" ? <PersonForm key="new" busy={save.isPending} onCancel={() => setEditing(null)} onSave={(data) => save.mutate({ id: null, data })} /> : null,
+        ]
       )}
-    </div>
+    </Section>
   );
 }
 
 function PersonRow({ person, contact, onEdit }: { person: Person; contact: Contact; onEdit: () => void }) {
   const { dial } = useDialer();
   const sub = subtitle(person);
-  const action = "w-8 h-8 shrink-0 rounded-[8px] inline-flex items-center justify-center hover:bg-[var(--ods-hover)] disabled:opacity-30";
+  const action = buttonClass({ variant: "ghost", size: "sm", iconOnly: true });
   return (
-    <div className="group px-3 py-2.5 flex items-center gap-2.5 border-b last:border-b-0 border-[var(--ods-border)]">
+    <div className="group px-3 py-2.5 flex items-center gap-2.5">
       {person.avatarUrl ? (
         <img src={person.avatarUrl} alt="" className="w-8 h-8 shrink-0 rounded-md object-cover" />
       ) : (
@@ -187,7 +184,7 @@ function PersonForm({
   });
   const field = (key: keyof PersonInput, label: string, type = "text", placeholder = "") => (
     <label className="block">
-      <span className="block text-[12px] font-medium text-[var(--ods-text-tertiary)] mb-1">{label}</span>
+      <span className="block text-[12px] font-semibold text-[var(--ods-text-secondary)] mb-1">{label}</span>
       <input
         type={type}
         value={draft[key] ?? ""}
@@ -204,7 +201,7 @@ function PersonForm({
         e.preventDefault();
         if (draft.name.trim()) onSave(draft);
       }}
-      className="p-3 space-y-2.5 border-b last:border-b-0 border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]"
+      className="p-3 space-y-2.5 bg-[var(--ods-bg-secondary)]"
     >
       {field("name", "Name", "text", "e.g. John Lally")}
       {field("jobTitle", "Job title", "text", "e.g. Owner")}
@@ -212,17 +209,11 @@ function PersonForm({
       {field("email", "Email", "email")}
       {field("linkedin", "LinkedIn", "url", "linkedin.com/in/…")}
       <div className="flex items-center gap-2 pt-1">
-        <button type="submit" disabled={busy || !draft.name.trim()} className="h-9 px-3 rounded-[8px] bg-[var(--ods-brand-600)] text-white text-[13px] font-semibold disabled:opacity-50">
-          {busy ? "Saving…" : person ? "Save" : "Add person"}
-        </button>
-        <button type="button" onClick={onCancel} className="h-9 px-3 rounded-[8px] border border-[var(--ods-border-strong)] text-[13px] font-semibold hover:bg-[var(--ods-hover)]">
-          Cancel
-        </button>
-        {onRemove && (
-          <button type="button" onClick={onRemove} disabled={busy} title="Remove this person" className="ml-auto w-9 h-9 rounded-[8px] inline-flex items-center justify-center text-[var(--ods-text-tertiary)] hover:text-red-600 hover:bg-[var(--ods-hover)]">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <Button type="submit" variant="primary" disabled={!draft.name.trim()} busy={busy} busyLabel="Saving…">
+          {person ? "Save" : "Add person"}
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+        {onRemove && <Button variant="danger-soft" icon={Trash2} onClick={onRemove} disabled={busy} title="Remove this person" aria-label="Remove this person" className="ml-auto" />}
       </div>
     </form>
   );

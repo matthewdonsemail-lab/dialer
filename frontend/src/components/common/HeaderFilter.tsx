@@ -57,7 +57,7 @@ export function HeaderFilter({ label, value = ALL, options = [], onChange, sort 
       header={(close) =>
         sort ? (
           <div className={options.length > 0 ? "pb-1 mb-1 border-b border-[var(--ods-border)]" : ""}>
-            <div className="px-3 py-1.5 bg-[var(--ods-bg-secondary)] text-[11px] font-semibold uppercase tracking-wider text-[var(--ods-text-tertiary)]">
+            <div className="ods-menu-group-label">
               Sort {label}
             </div>
             <MenuRow

@@ -1,5 +1,4 @@
 import { Fragment, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   CalendarDays,
@@ -19,10 +18,9 @@ import {
 } from "@/components/ui/icons";
 import { Chip } from "@/components/ui/Chip";
 import { SelectMenu } from "@/components/ui/Menu";
-import { api } from "@/lib/api-client";
-import type { AdminActivityResponse } from "@/lib/admin";
-import { historyRows, text, type Display, type FieldOptions, type HistoryRow } from "@/lib/record-history";
-import type { Contact } from "./model";
+import { text, type Display, type HistoryRow } from "@/domains/activity";
+import type { Contact } from "../types/contact";
+import { useRecordHistory } from "../lib/use-record-history";
 
 /* ------------------------------------------------------------ shared bits */
 
@@ -39,7 +37,7 @@ export function HistoryValue({ value }: { value: Display }) {
       );
     case "link":
       return (
-        <a href={value.href} target="_blank" rel="noreferrer" title={value.href} className="inline-block max-w-full truncate align-bottom font-semibold text-[var(--ods-brand-600)] hover:underline">
+        <a href={value.href} target="_blank" rel="noreferrer" title={value.href} className="inline-block max-w-full truncate align-bottom font-semibold ods-link">
           {value.text}
         </a>
       );
@@ -47,7 +45,7 @@ export function HistoryValue({ value }: { value: Display }) {
       return (
         <span className="inline-flex items-center gap-1 align-middle" title={value.colors.join(", ")}>
           {value.colors.slice(0, 6).map((c) => (
-            <span key={c} className="w-4 h-4 rounded-[4px] border border-[var(--ods-border)]" style={{ background: c }} />
+            <span key={c} className="w-4 h-4 rounded-md border border-[var(--ods-border)]" style={{ background: c }} />
           ))}
         </span>
       );
@@ -62,6 +60,14 @@ export function HistoryValue({ value }: { value: Display }) {
 export function HistorySentence({ row }: { row: HistoryRow }) {
   const label = <span className="font-semibold text-[var(--ods-text-primary)]">{row.label}</span>;
   if (row.kind === "created" || row.kind === "deleted" || row.kind === "restored" || row.kind === "note") return label;
+  // Long values (summaries, metadata) are shown as a block under the row.
+  if (row.after.kind === "long" || row.before.kind === "long") {
+    return (
+      <>
+        {label} {row.kind === "set" ? "added" : row.kind === "cleared" ? "cleared" : "updated"}
+      </>
+    );
+  }
   if (row.kind === "set") {
     return (
       <>
@@ -95,7 +101,7 @@ function LongText({ value, tone = "neutral" }: { value: string; tone?: "neutral"
     >
       <div className={open || !long ? "" : "line-clamp-4"}>{value}</div>
       {long && (
-        <button onClick={() => setOpen(!open)} className="mt-1 text-[12px] font-semibold text-[var(--ods-brand-600)] hover:underline">
+        <button onClick={() => setOpen(!open)} className="mt-1 text-[12px] font-semibold ods-link">
           {open ? "Show less" : "Show more"}
         </button>
       )}
@@ -122,25 +128,6 @@ const ICON_TONE: Partial<Record<HistoryRow["kind"], string>> = {
   deleted: "text-red-600",
   note: "text-amber-600",
 };
-
-export function useRecordHistory(contact: Contact) {
-  const plural = contact.type === "lead" ? "agencyLeads" : "agencyProspects";
-  const activity = useQuery<AdminActivityResponse>({
-    queryKey: ["record-activity", contact.type, contact.id],
-    queryFn: () => api.admin.recordActivity(`${contact.type}:${contact.id}`),
-    staleTime: 30_000,
-  });
-  const { data: meta } = useQuery<{ fields: FieldOptions }>({
-    queryKey: ["twenty-meta", plural],
-    queryFn: () => api.twentyMeta.fields(plural),
-    staleTime: Infinity,
-  });
-  const rows = useMemo(
-    () => historyRows(activity.data, meta?.fields ?? {}, contact.type === "lead" ? "Lead" : "Prospect"),
-    [activity.data, meta, contact.type],
-  );
-  return { rows, isLoading: activity.isLoading, error: activity.error as Error | null };
-}
 
 /* ------------------------------------------------------------ the panel */
 

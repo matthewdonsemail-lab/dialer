@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { SelectMenu } from "@/components/ui/Menu";
 import { api } from "@/lib/api-client";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { Play, Pause, Download, Phone } from "@/components/ui/icons";
@@ -292,17 +293,16 @@ export function WaveformPlayer({
       <span className="shrink-0 text-[12px] tabular-nums text-[var(--ods-text-secondary)]">
         {formatTime(current)} / {formatTime(duration)}
       </span>
-      <select
-        value={rate}
-        onChange={(e) => changeRate(Number(e.target.value))}
-        aria-label="Playback speed"
-        title="Playback speed"
-        className="shrink-0 bg-transparent text-[12px] font-semibold text-[var(--ods-text-primary)] outline-none cursor-pointer"
-      >
-        {[1, 1.25, 1.5, 2].map((r) => (
-          <option key={r} value={r}>{r}x</option>
-        ))}
-      </select>
+      <SelectMenu
+        value={String(rate)}
+        onChange={(v) => changeRate(Number(v))}
+        width={120}
+        placement="top-end"
+        sections={[{ title: "Speed", options: [1, 1.25, 1.5, 2].map((r) => ({ value: String(r), label: `${r}x` })) }]}
+        triggerTitle="Playback speed"
+        triggerClassName="shrink-0 h-8 px-2 rounded-[8px] hover:bg-[var(--ods-hover)] text-[12px] font-semibold text-[var(--ods-text-primary)] tabular-nums"
+        trigger={<>{rate}x</>}
+      />
       <a
         href={audioSrc ?? undefined}
         download

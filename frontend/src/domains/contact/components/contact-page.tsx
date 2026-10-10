@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { Button } from "@/primitives";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, BarChart3, BookOpen, FileText, Globe, User } from "@/components/ui/icons";
@@ -10,11 +11,11 @@ import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useCallsForRecord } from "@/hooks/use-call-logs";
 import { api } from "@/lib/api-client";
 import { useUpdateContact, type ContactType } from "@/lib/contacts";
-import { appendNote } from "@/lib/contact-notes";
-import { toContact } from "@/components/contact/model";
-import { ContactSidebar } from "@/components/contact/ContactSidebar";
-import { ContactFeed, type ComposerMode } from "@/components/contact/ContactFeed";
-import { RailIcons, RailPanel, type RailTab } from "@/components/contact/ContactRail";
+import { appendNote } from "../utils/contact-notes";
+import { toContact } from "../utils/to-contact";
+import { ContactSidebar } from "./contact-sidebar";
+import { ContactFeed, type ComposerMode } from "./contact-feed";
+import { RailIcons, RailPanel, type RailTab } from "./contact-rail";
 
 type Width = "wide" | "mid" | "narrow";
 type NarrowTab = "details" | "timeline" | RailTab;
@@ -68,8 +69,9 @@ export function ContactPage({ type }: { type: ContactType }) {
         await update.mutateAsync({ id, patch: patch as any });
         queryClient.invalidateQueries({ queryKey: ["record-activity", type, id] });
         return true;
-      } catch {
-        toastError("Not saved", "The change was undone. Try again.");
+      } catch (err) {
+        // The pipeline guard explains a refused move (409); show its reason.
+        toastError("Not saved", err instanceof Error && err.message ? err.message : "The change was undone. Try again.");
         return false;
       }
     },
@@ -104,9 +106,7 @@ export function ContactPage({ type }: { type: ContactType }) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6">
         <p className="text-[14px] text-[var(--ods-text-secondary)]">This {type} was not found. It may have been deleted.</p>
-        <button onClick={() => navigate("/contacts")} className="h-9 px-4 rounded-[8px] border border-[var(--ods-border-strong)] text-[13px] font-semibold">
-          Back to Contacts
-        </button>
+        <Button onClick={() => navigate("/contacts")}>Back to Contacts</Button>
       </div>
     );
   }

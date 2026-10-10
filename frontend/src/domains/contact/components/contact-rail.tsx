@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/primitives";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, BarChart3, BookOpen, Check, FileText, Globe, Pencil, Plus, X, type IconComponent } from "@/components/ui/icons";
 import { CallScriptViewer } from "@/components/scripts/CallScriptViewer";
-import { WebsitePanel } from "@/components/website/WebsitePanel";
+import { WebsitePanel } from "@/domains/website";
 import { formatDuration } from "@/components/dialer/DialerDock";
 import { api } from "@/lib/api-client";
 import { dispositionTypeOfStatus, callStatusLabel } from "@/lib/call-outcome";
 import { timeAgo } from "@/lib/admin";
-import type { Contact } from "./model";
-import { RecordHistory } from "./RecordHistory";
+import type { Contact } from "../types/contact";
+import { RecordHistory } from "./record-history-panel";
 
 export type RailTab = "summary" | "activity" | "script" | "notes" | "website";
 
@@ -107,7 +108,7 @@ function SummaryPanel({ calls }: { calls: any[] }) {
         {tiles.map(([label, value]) => (
           <div key={label} className="rounded-[10px] border border-[var(--ods-border)] p-3">
             <div className="text-[12px] text-[var(--ods-text-tertiary)]">{label}</div>
-            <div className="text-[20px] font-semibold tabular-nums">{value}</div>
+            <div className="text-xl font-bold tabular-nums text-[var(--ods-text-primary)]">{value}</div>
           </div>
         ))}
       </div>
@@ -144,16 +145,12 @@ function NotesPanel({ notes, onSave }: { notes: string; onSave: (n: string) => P
             <Check className="w-3 h-3" /> Saved
           </span>
         )}
-        <button onClick={() => setDraft(notes)} disabled={!dirty} className="h-9 px-4 rounded-[8px] border border-[var(--ods-border-strong)] text-[13px] font-semibold disabled:opacity-40">
+        <Button variant="ghost" disabled={!dirty} onClick={() => setDraft(notes)}>
           Undo
-        </button>
-        <button
-          onClick={async () => setSaved(await onSave(draft))}
-          disabled={!dirty}
-          className="h-9 px-3 rounded-[8px] bg-[var(--ods-brand-600)] text-white text-[13px] font-semibold disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="primary" disabled={!dirty} onClick={async () => setSaved(await onSave(draft))}>
           Save notes
-        </button>
+        </Button>
       </div>
     </div>
   );

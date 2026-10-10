@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { displayValue, fieldName, text } from "@/lib/record-history";
+import { displayValue, fieldName, text } from "@/domains/activity";
 import { api, type CallCampaign } from "@/lib/api-client";
 import { useCalls, type AgencyCallRecord } from "@/hooks/use-call-logs";
 import { useCallCampaigns } from "@/hooks/use-call-campaigns";

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { buttonClass, inputClass } from "@/primitives";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -42,14 +43,11 @@ import { countryCode } from "@/lib/country";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/lib/call-outcome";
 import { isLive, useDialer, type CallState } from "./DialerProvider";
 
-const BTN_PRIMARY =
-  "h-9 px-3 rounded-[8px] bg-[var(--ods-brand-600)] hover:bg-[var(--ods-brand-700)] text-white text-[13px] font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50";
-const BTN_SECONDARY =
-  "h-9 px-4 rounded-[8px] border border-[var(--ods-border-strong)] text-[13px] font-semibold text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)] inline-flex items-center justify-center gap-2 disabled:opacity-50";
-const BTN_ICON =
-  "w-8 h-8 rounded-[8px] inline-flex items-center justify-center text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]";
-const INPUT =
-  "w-full h-9 px-3 rounded-[8px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] text-[14px] text-[var(--ods-text-primary)] placeholder:text-[var(--ods-text-tertiary)] outline-none focus:border-[var(--ods-brand-500)]";
+// Buttons and inputs come from the design primitives (docs/design-system.md).
+const BTN_PRIMARY = buttonClass({ variant: "primary" });
+const BTN_SECONDARY = buttonClass({ variant: "secondary" });
+const BTN_ICON = buttonClass({ variant: "ghost", size: "sm", iconOnly: true });
+const INPUT = inputClass;
 
 export function formatDuration(s: number): string {
   const m = Math.floor(s / 60);

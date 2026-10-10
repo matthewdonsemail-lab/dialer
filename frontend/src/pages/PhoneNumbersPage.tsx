@@ -1,4 +1,5 @@
 import React from "react";
+import { Pill } from "@/primitives";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { DataTable, useDataTable, type DataColumn } from "@/components/table";
@@ -60,9 +61,7 @@ export function PhoneNumbersPage() {
         <span className="inline-flex items-center gap-2">
           {p.phoneNumber}
           {primaryId === p.id && (
-            <span className="font-sans text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[4px] border border-[var(--ods-brand-500)] text-[var(--ods-brand-600)]">
-              Primary
-            </span>
+            <Pill tone="info">Primary</Pill>
           )}
         </span>
       ),

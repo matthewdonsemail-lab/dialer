@@ -955,7 +955,7 @@ Full index with descriptions: [docs/README.md](docs/README.md).
 
 - [Quick start](docs/quick-start.md)
 - [Setup reference](SETUP.md)
-- [Design system](docs/design-system.md) - tokens, table primitives, the Tailwind gotcha
+- [Design system](docs/design-system.md) - the scale, primitives and shared pipelines every screen uses
 - [SIP providers](docs/sip-providers.md)
 
 **Ship it**

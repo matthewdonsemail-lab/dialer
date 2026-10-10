@@ -399,6 +399,42 @@
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%);
   }
 
+  /* Second line of a menu option: readable grey, and on the selected
+     (brand-filled) row it follows the row's white text instead. */
+  .ods-menu-desc {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: normal;
+    color: var(--ods-text-secondary);
+  }
+
+  .ods-menu-item[aria-selected="true"] .ods-menu-desc,
+  .ods-menu-item--selected .ods-menu-desc {
+    color: rgb(255 255 255 / 88%);
+  }
+
+  .ods-menu-item[aria-selected="true"] .ods-menu-hint {
+    color: rgb(255 255 255 / 88%);
+  }
+
+  /* Links: bold brand text with a dashed underline that turns solid on hover
+     (the ListeningKit dashboard recipe). One class for every in-app link. */
+  .ods-link {
+    font-weight: 600;
+    color: var(--ods-brand-600);
+    text-decoration: underline dashed;
+    text-decoration-color: color-mix(in srgb, var(--ods-brand-600) 50%, transparent);
+    text-underline-offset: 3px;
+    transition: text-decoration-color 120ms;
+  }
+
+  .ods-link:hover {
+    text-decoration-style: solid;
+    text-decoration-color: var(--ods-brand-600);
+  }
+
   .ods-menu-item--danger {
     color: var(--ods-danger);
   }
@@ -525,10 +561,46 @@
   }
 }
 
-/* Safety net: no horizontal WebKit scrollbar anywhere, vertical ones untouched. */
-::-webkit-scrollbar:horizontal {
-  display: none;
+/*
+ * Rule: no horizontal scrollbar anywhere in the app (content still scrolls
+ * with trackpad, shift+wheel or touch; only the bar is gone).
+ *
+ * Chromium only honours ::-webkit-scrollbar:horizontal when the base
+ * ::-webkit-scrollbar is styled too, and ignores `display` on it, which is
+ * why the old one-line rule never applied. So: style the base, give
+ * horizontal bars zero height, keep a slim themed vertical thumb.
+ *
+ * Do not set scrollbar-width / scrollbar-color outside the Firefox block
+ * below: Chrome 121+ drops every ::-webkit-scrollbar rule on an element that
+ * has either (scripts/check-design-system.mjs enforces this).
+ */
+::-webkit-scrollbar {
+  width: 10px;
   height: 0;
+}
+::-webkit-scrollbar:horizontal {
+  height: 0;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--ods-text-tertiary) 45%, transparent);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ods-text-tertiary);
+}
+
+/* Firefox cannot hide one axis; thin bars are the closest it gets. */
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--ods-text-tertiary) 45%, transparent) transparent;
+  }
 }
 
 @layer utilities {

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Button } from "@/primitives";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -26,12 +27,14 @@ import { formatDuration } from "@/components/dialer/DialerDock";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { api } from "@/lib/api-client";
 import { countSms } from "@/lib/sms";
-import { parseNotes } from "@/lib/contact-notes";
+import { parseNotes } from "../utils/contact-notes";
 import { countryCode } from "@/lib/country";
 import { dispositionTypeOfStatus } from "@/lib/call-outcome";
-import type { HistoryRow } from "@/lib/record-history";
-import { HistorySentence, rowIcon, useRecordHistory } from "./RecordHistory";
-import { initials, type Contact } from "./model";
+import type { HistoryRow } from "@/domains/activity";
+import { HistorySentence, rowIcon } from "./record-history-panel";
+import { useRecordHistory } from "../lib/use-record-history";
+import type { Contact } from "../types/contact";
+import { initials } from "../utils/to-contact";
 
 export type ComposerMode = "sms" | "note";
 
@@ -106,7 +109,7 @@ export function ContactFeed({
     <div className="flex flex-col min-h-0 h-full">
       <div className="h-12 px-4 shrink-0 flex items-center justify-between gap-3 bg-[var(--ods-bg-primary)] border-b border-[var(--ods-border)]">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-7 h-7 shrink-0 rounded-md bg-[var(--ods-brand-600)]/15 text-[var(--ods-brand-600)] flex items-center justify-center text-[11px] font-semibold">
+          <div className="w-7 h-7 shrink-0 rounded-md bg-[var(--ods-brand-600)]/15 text-[var(--ods-brand-600)] flex items-center justify-center text-[12px] font-semibold">
             {initials(contact.name)}
           </div>
           <span className="text-[15px] font-semibold truncate">{contact.name}</span>
@@ -139,15 +142,16 @@ export function ContactFeed({
               </>
             }
           />
-          <button
+          <Button
+            variant="call"
+            icon={Phone}
+            disabled={!contact.phone}
             onClick={() =>
               contact.phone && void dial({ contactType: contact.type, contactId: contact.id, phone: contact.phone, name: contact.name, campaignId: contact.campaignId })
             }
-            disabled={!contact.phone}
-            className="h-9 px-3 rounded-[8px] bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-[13px] font-semibold inline-flex items-center gap-1.5"
           >
-            <Phone className="w-3.5 h-3.5" /> Call
-          </button>
+            Call
+          </Button>
         </div>
       </div>
 
@@ -221,13 +225,13 @@ function CallItem({ call }: { call: any }) {
       {playing && <WaveformPlayer src={call.recordingUrl} callId={call.id} seed={call.id} />}
       <div className="flex flex-wrap items-center gap-2">
         {hasRecording && !playing && (
-          <button onClick={() => setPlaying(true)} className="h-8 px-2.5 rounded-[8px] border border-[var(--ods-border-strong)] text-[12px] font-semibold inline-flex items-center gap-1.5 hover:bg-[var(--ods-hover)]">
-            <Play className="w-3 h-3" /> Play recording
-          </button>
+          <Button size="sm" icon={Play} onClick={() => setPlaying(true)}>
+            Play recording
+          </Button>
         )}
         {(call.aiScore != null || call.aiSentiment) && <RatingBadge sentiment={call.aiSentiment} score={call.aiScore} />}
         {call.transcriptionStatus === "READY" && <Chip icon={FileText}>Transcript</Chip>}
-        <Link to={`/history/${call.id}`} className="ml-auto text-[12px] font-semibold text-[var(--ods-brand-600)] hover:underline">
+        <Link to={`/history/${call.id}`} className="ml-auto text-[12px] font-semibold ods-link">
           Open call review
         </Link>
       </div>
@@ -315,7 +319,7 @@ function Composer({
               key={key}
               onClick={() => onModeChange(key)}
               aria-pressed={mode === key}
-              className={`h-8 px-3 rounded-[6px] text-[13px] font-semibold inline-flex items-center gap-1.5 ${
+              className={`h-8 px-3 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5 ${
                 mode === key ? "bg-[var(--ods-brand-600)] text-white" : "text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)]"
               }`}
             >
@@ -365,21 +369,17 @@ function Composer({
           {mode === "sms" ? `Chars: ${sms.units} · Segments: ${sms.segments}${sms.encoding === "UCS-2" ? " · Unicode" : ""}` : "Ctrl+Enter to save"}
         </span>
         <div className="flex items-center gap-2">
-          <button onClick={() => setText("")} disabled={!text} className="h-9 px-4 rounded-[8px] border border-[var(--ods-border-strong)] text-[13px] font-semibold hover:bg-[var(--ods-hover)] disabled:opacity-40">
+          <Button variant="ghost" disabled={!text} onClick={() => setText("")}>
             Clear
-          </button>
+          </Button>
           {mode === "note" ? (
-            <button onClick={() => void submit()} disabled={!text.trim() || busy} className="h-9 px-3 rounded-[8px] bg-[var(--ods-brand-600)] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50">
-              <Plus className="w-3.5 h-3.5" /> {busy ? "Saving…" : "Add note"}
-            </button>
+            <Button variant="primary" icon={Plus} disabled={!text.trim()} busy={busy} busyLabel="Saving…" onClick={() => void submit()}>
+              Add note
+            </Button>
           ) : (
-            <button
-              disabled
-              title="SMS sending is wired up in the messaging phase (Phase 2)"
-              className="h-9 px-3 rounded-[8px] bg-[var(--ods-brand-600)] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <Send className="w-3.5 h-3.5" /> Send
-            </button>
+            <Button variant="primary" icon={Send} disabled title="SMS sending is wired up in the messaging phase (Phase 2)">
+              Send
+            </Button>
           )}
         </div>
       </div>

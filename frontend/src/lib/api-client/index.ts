@@ -144,6 +144,8 @@ export const api = {
       }),
     websiteStatus: (id: string) =>
       request<{
+        /** The one page we send (offer site), and whether this app may embed it. */
+        page: { url: string; previewAllowed: boolean; previewBlockedReason: string | null };
         prospect: {
           id: string;
           slug?: string;
@@ -185,7 +187,7 @@ export const api = {
           templateUrl: string | null;
           templateAvailable: boolean;
         };
-      }>(`/api/prospects/${id}/website-status`),
+      }>(`/api/prospects/${id}/website-status?origin=${encodeURIComponent(window.location.origin)}`),
     logWebsiteSent: (id: string, data: { templateUrl?: string; offerUrl?: string; fromNumber?: string; body?: string }) =>
       request<{ success: boolean; sentAt: string; outboundLabel: string | null }>(
         `/api/prospects/${id}/website-sent`,

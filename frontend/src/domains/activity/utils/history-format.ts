@@ -1,4 +1,4 @@
-import { parseNotes } from "@/lib/contact-notes";
+import { parseNotes } from "@/domains/contact/utils/contact-notes";
 import { twentyDotClass, type TwentyOption } from "@/lib/twenty/options";
 import type { AdminActivity, AdminActivityResponse } from "@/lib/admin";
 
@@ -145,7 +145,10 @@ function displayObject(field: string, o: Record<string, any>, options: FieldOpti
     .filter(([, v]) => !isBlank(v) && (typeof v !== "object" || v === null))
     .slice(0, 3)
     .map(([k, v]) => `${fieldName(k)}: ${text(displayValue(k, v, options))}`);
-  return parts.length ? { kind: "text", text: parts.join(" · ") } : { kind: "blank" };
+  if (!parts.length) return { kind: "blank" };
+  // Notes-like blobs (metadata, sources) read as a block under the row, not inline.
+  const joined = parts.join(" · ");
+  return joined.length > 80 ? { kind: "long", text: parts.join("\n") } : { kind: "text", text: joined };
 }
 
 /** Any value Twenty stores, ready to show. */
