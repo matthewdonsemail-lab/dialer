@@ -93,13 +93,13 @@ export function ActivityTable({ events, compact = false }: { events: ResolvedAct
                       {e.changes.slice(0, 4).map((c) => (
                         <span
                           key={c.field}
-                          title={`${fieldLabel(c.field)}: ${formatValue(c.before)} → ${formatValue(c.after)}`}
+                          title={`${fieldLabel(c.field)}: ${formatValue(c.before, c.field)} → ${formatValue(c.after, c.field)}`}
                           className="inline-flex items-center gap-1 max-w-[340px] px-2 py-0.5 rounded-md border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] text-[12px]"
                         >
                           <b className="shrink-0">{fieldLabel(c.field)}</b>
-                          <span className="truncate text-[var(--ods-text-tertiary)] line-through">{formatValue(c.before)}</span>
+                          <span className="truncate text-[var(--ods-text-tertiary)] line-through">{formatValue(c.before, c.field)}</span>
                           <span className="shrink-0 text-[var(--ods-text-tertiary)]">→</span>
-                          <span className="truncate font-medium">{formatValue(c.after)}</span>
+                          <span className="truncate font-medium">{formatValue(c.after, c.field)}</span>
                         </span>
                       ))}
                       {e.changes.length > 4 && <span className="text-[12px] font-semibold text-[var(--ods-text-secondary)]">+{e.changes.length - 4} more</span>}

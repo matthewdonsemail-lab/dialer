@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { displayValue, fieldName, text } from "@/lib/record-history";
 import { api, type CallCampaign } from "@/lib/api-client";
 import { useCalls, type AgencyCallRecord } from "@/hooks/use-call-logs";
 import { useCallCampaigns } from "@/hooks/use-call-campaigns";
@@ -230,13 +231,12 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export function formatValue(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "empty";
-  return String(v);
+/** A field value as readable text (labels, dates, phones), never raw JSON. */
+export function formatValue(v: unknown, field = ""): string {
+  return text(displayValue(field, v));
 }
 
-/** Field name for people: "coldCallStatus" -> "Cold call status". */
+/** Field name for people: "coldCallStatus" -> "Status". */
 export function fieldLabel(field: string): string {
-  const spaced = field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  return fieldName(field);
 }

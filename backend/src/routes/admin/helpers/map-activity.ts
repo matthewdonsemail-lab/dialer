@@ -47,13 +47,26 @@ const ACTIONS: Record<string, AdminAction> = {
   restored: "restored",
 };
 
-/** Keep diff values small: long text and nested objects are summarised. */
-function shorten(value: unknown): unknown {
+/**
+ * Keep diff values bounded but structured. Composite fields (phones, emails,
+ * links, names, brand colours) stay objects so the UI can format them; text
+ * is capped at 2000 characters (enough for a notes entry), lists at 10 items
+ * and nesting at 3 levels. Never turns a value into a cut-off JSON string.
+ */
+export function compactValue(value: unknown, depth = 0): unknown {
   if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value.length > 80 ? `${value.slice(0, 77)}...` : value;
+  if (typeof value === "string") return value.length > 2000 ? `${value.slice(0, 1997)}...` : value;
   if (typeof value === "number" || typeof value === "boolean") return value;
-  const json = JSON.stringify(value);
-  return json.length > 80 ? `${json.slice(0, 77)}...` : json;
+  if (depth >= 3) return null;
+  if (Array.isArray(value)) return value.slice(0, 10).map((v) => compactValue(v, depth + 1));
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 20)
+        .map(([k, v]) => [k, compactValue(v, depth + 1)]),
+    );
+  }
+  return String(value);
 }
 
 export function mapActivity(raw: any, members: Record<string, string>): AdminActivity | null {
@@ -81,6 +94,6 @@ export function mapActivity(raw: any, members: Record<string, string>): AdminAct
     },
     changes: Object.entries(diff)
       .slice(0, 12)
-      .map(([field, v]: [string, any]) => ({ field, before: shorten(v?.before), after: shorten(v?.after) })),
+      .map(([field, v]: [string, any]) => ({ field, before: compactValue(v?.before), after: compactValue(v?.after) })),
   };
 }

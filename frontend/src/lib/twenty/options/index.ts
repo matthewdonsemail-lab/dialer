@@ -100,3 +100,8 @@ export function mapCampaignStatusOptions(twentyOptions: TwentyOption[]): StatusO
       };
     });
 }
+
+/** Tailwind dot class for a Twenty option colour name ("sky" falls back to gray). */
+export function twentyDotClass(color: string | null | undefined): string {
+  return (COLOR_MAP[String(color ?? "").toLowerCase()] ?? COLOR_MAP.gray).dotColor;
+}

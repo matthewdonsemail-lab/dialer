@@ -6,8 +6,9 @@ import { SendWebsiteWidget } from "@/components/website/SendWebsiteWidget";
 import { formatDuration } from "@/components/dialer/DialerDock";
 import { api } from "@/lib/api-client";
 import { dispositionTypeOfStatus, callStatusLabel } from "@/lib/call-outcome";
-import { fieldLabel, formatValue, timeAgo, type AdminActivityResponse } from "@/lib/admin";
+import { timeAgo } from "@/lib/admin";
 import type { Contact } from "./model";
+import { RecordHistory } from "./RecordHistory";
 
 export type RailTab = "summary" | "activity" | "script" | "notes" | "website";
 
@@ -66,7 +67,7 @@ export function RailPanel({
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {tab === "summary" && <SummaryPanel calls={calls} />}
-        {tab === "activity" && <HistoryPanel contact={contact} />}
+        {tab === "activity" && <RecordHistory contact={contact} />}
         {tab === "script" &&
           (contact.campaignId ? (
             <CallScriptViewer bare campaignId={contact.campaignId} onClose={onClose} />
@@ -124,46 +125,6 @@ function SummaryPanel({ calls }: { calls: any[] }) {
         <Empty text="No calls with this contact yet." />
       )}
     </div>
-  );
-}
-
-function HistoryPanel({ contact }: { contact: Contact }) {
-  const { data, isLoading } = useQuery<AdminActivityResponse>({
-    queryKey: ["record-activity", contact.type, contact.id],
-    queryFn: () => api.admin.recordActivity(`${contact.type}:${contact.id}`),
-    staleTime: 30_000,
-  });
-  if (isLoading) return <Empty text="Loading history…" />;
-  const events = data?.activities ?? [];
-  if (!events.length) return <Empty text="Twenty has no recorded changes for this contact." />;
-  return (
-    <ol className="p-3">
-      {events.map((e) => {
-        const who = e.actor.name || (e.actor.memberId ? data?.members[e.actor.memberId] : null) || "Dialer";
-        const Icon = e.action === "created" ? Plus : Pencil;
-        return (
-          <li key={e.id} className="relative pl-7 pb-4 last:pb-0">
-            <span className="absolute left-[11px] top-6 bottom-0 w-px bg-[var(--ods-border)]" aria-hidden="true" />
-            <span className="absolute left-0 top-0 w-6 h-6 rounded-md bg-[var(--ods-bg-tertiary)] flex items-center justify-center">
-              <Icon className="w-3 h-3 text-[var(--ods-text-secondary)]" />
-            </span>
-            <div className="text-[13px] font-semibold capitalize">{e.action}</div>
-            <div className="text-[12px] text-[var(--ods-text-tertiary)]">
-              {who} · {new Date(e.happensAt).toLocaleString()}
-            </div>
-            {e.changes.length > 0 && (
-              <ul className="mt-1 space-y-0.5 text-[12px] text-[var(--ods-text-secondary)]">
-                {e.changes.filter((c) => c.field !== "createdBy" && c.field !== "updatedBy" && c.field !== "searchVector").slice(0, 6).map((c) => (
-                  <li key={c.field} className="break-words">
-                    <b>{fieldLabel(c.field)}</b>: {formatValue(c.before).slice(0, 60)} <span aria-hidden="true">&rarr;</span> {formatValue(c.after).slice(0, 60)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 

@@ -29,7 +29,8 @@ import { countSms } from "@/lib/sms";
 import { parseNotes } from "@/lib/contact-notes";
 import { countryCode } from "@/lib/country";
 import { dispositionTypeOfStatus } from "@/lib/call-outcome";
-import { fieldLabel, formatValue, type AdminActivityResponse } from "@/lib/admin";
+import type { HistoryRow } from "@/lib/record-history";
+import { HistorySentence, rowIcon, useRecordHistory } from "./RecordHistory";
 import { initials, type Contact } from "./model";
 
 export type ComposerMode = "sms" | "note";
@@ -39,21 +40,7 @@ type FeedFilter = "all" | "calls" | "notes" | "updates";
 type FeedItem =
   | { kind: "call"; at: string; call: any }
   | { kind: "note"; at: string | null; author: string | null; body: string }
-  | { kind: "event"; at: string; icon: typeof Plus; text: ReactNode; who: string | null };
-
-/** Record fields whose changes are noise in a timeline. */
-const QUIET_FIELDS = new Set(["notes", "note", "updatedAt", "searchVector", "position", "createdBy", "updatedBy", "lastHeartbeatAt"]);
-
-/** Structured values (JSON objects, lists, composite fields) are summarised, not dumped. */
-function isStructured(v: unknown): boolean {
-  if (v !== null && typeof v === "object") return true;
-  return typeof v === "string" && /^\s*[[{]/.test(v);
-}
-
-function short(v: unknown): string {
-  const text = formatValue(v);
-  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
-}
+  | { kind: "event"; at: string; row: HistoryRow };
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -86,57 +73,25 @@ export function ContactFeed({
   const [filter, setFilter] = usePersistedState<FeedFilter>("contact-feed-filter", "all");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { data: activity } = useQuery<AdminActivityResponse>({
-    queryKey: ["record-activity", contact.type, contact.id],
-    queryFn: () => api.admin.recordActivity(`${contact.type}:${contact.id}`),
-    staleTime: 30_000,
-  });
+  const { rows: history } = useRecordHistory(contact);
 
   const items = useMemo<FeedItem[]>(() => {
     const out: FeedItem[] = [];
     for (const call of calls) out.push({ kind: "call", at: call.startedAt || call.created_at, call });
     for (const n of parseNotes(contact.notes)) out.push({ kind: "note", at: n.at, author: n.author, body: n.body });
-    const members = activity?.members ?? {};
-    let sawCreated = false;
-    for (const e of activity?.activities ?? []) {
-      const who = e.actor.name || (e.actor.memberId ? members[e.actor.memberId] : null) || null;
-      if (e.action === "created") {
-        sawCreated = true;
-        out.push({ kind: "event", at: e.happensAt, icon: Plus, text: <><b>{contact.type === "lead" ? "Lead" : "Prospect"} created</b></>, who });
-        continue;
-      }
-      const changes = e.changes.filter((c) => !QUIET_FIELDS.has(c.field));
-      if (e.action !== "updated" || changes.length === 0) continue;
+    // Record changes, the same rows as Record history. Added notes already
+    // show as note cards, so their history rows are left out here.
+    for (const row of history) if (row.kind !== "note") out.push({ kind: "event", at: row.at, row });
+    if (!history.some((r) => r.kind === "created") && contact.createdAt) {
       out.push({
         kind: "event",
-        at: e.happensAt,
-        icon: Pencil,
-        who,
-        text: (
-          <>
-            {changes.slice(0, 3).map((c, i) => (
-              <span key={c.field}>
-                {i > 0 && ", "}
-                {isStructured(c.before) || isStructured(c.after) ? (
-                  <>
-                    <b>{fieldLabel(c.field)}</b> updated
-                  </>
-                ) : (
-                  <>
-                    <b>{fieldLabel(c.field)}</b> {short(c.before)} <span aria-hidden="true">&rarr;</span> <b>{short(c.after)}</b>
-                  </>
-                )}
-              </span>
-            ))}
-            {changes.length > 3 && <span> and {changes.length - 3} more</span>}
-          </>
-        ),
+        at: contact.createdAt,
+        row: { id: "created", at: contact.createdAt, kind: "created", field: null, label: `${contact.type === "lead" ? "Lead" : "Prospect"} created`, before: { kind: "blank" }, after: { kind: "blank" }, who: "Dialer", source: null },
       });
     }
-    if (!sawCreated && contact.createdAt) out.push({ kind: "event", at: contact.createdAt, icon: Plus, text: <b>{contact.type === "lead" ? "Lead" : "Prospect"} created</b>, who: null });
     // Oldest first, like a chat: undated (older free-form) notes lead.
     return out.sort((a, b) => (a.at ? new Date(a.at).getTime() : 0) - (b.at ? new Date(b.at).getTime() : 0));
-  }, [calls, contact, activity]);
+  }, [calls, contact, history]);
 
   const shown = items.filter((i) => filter === "all" || (filter === "calls" && i.kind === "call") || (filter === "notes" && i.kind === "note") || (filter === "updates" && i.kind === "event"));
 
@@ -216,7 +171,7 @@ export function ContactFeed({
               )}
               {item.kind === "call" && <CallItem call={item.call} />}
               {item.kind === "note" && <NoteItem at={item.at} author={item.author} body={item.body} />}
-              {item.kind === "event" && <EventItem at={item.at} icon={item.icon} text={item.text} who={item.who} />}
+              {item.kind === "event" && <EventItem row={item.row} />}
             </div>
           );
         })}
@@ -294,14 +249,19 @@ function NoteItem({ at, author, body }: { at: string | null; author: string | nu
   );
 }
 
-function EventItem({ at, icon: Icon, text, who }: { at: string; icon: typeof Plus; text: ReactNode; who: string | null }) {
+/** A record change as a centred pill, the same sentence as Record history. */
+function EventItem({ row }: { row: HistoryRow }) {
+  const Icon = rowIcon(row);
   return (
     <div className="flex justify-center">
-      <div className="max-w-full inline-flex items-center gap-2 h-auto min-h-8 px-3 py-1.5 rounded-md border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] text-[12px] text-[var(--ods-text-secondary)]">
+      <div className="max-w-[560px] inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-3 py-1.5 rounded-md border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] text-[13px] leading-6 text-[var(--ods-text-secondary)]">
         <Icon className="w-3 h-3 shrink-0 text-[var(--ods-text-tertiary)]" />
-        <span className="min-w-0">{text}</span>
-        {who && <span className="shrink-0 text-[var(--ods-text-tertiary)]">· {who}</span>}
-        <span className="shrink-0 text-[var(--ods-text-tertiary)]">{time(at)}</span>
+        <span className="min-w-0 text-center">
+          <HistorySentence row={row} />
+        </span>
+        <span className="shrink-0 text-[12px] text-[var(--ods-text-tertiary)]">
+          {row.who} · {time(row.at)}
+        </span>
       </div>
     </div>
   );
