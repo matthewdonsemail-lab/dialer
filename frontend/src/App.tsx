@@ -4,7 +4,16 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Layout } from "@/components/common/Layout";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ToastProvider } from "@/components/ui/Toast";
-import { PageSkeleton } from "@/components/ui/Skeleton";
+import { DetailPageSkeleton } from "@/components/ui/Skeleton";
+import {
+  AppShellSkeleton,
+  AuthCardSkeleton,
+  CallReviewSkeleton,
+  RecordPageSkeleton,
+  ReportStylePageSkeleton,
+  ScriptsPageSkeleton,
+  TablePageSkeleton,
+} from "@/components/ui/PageSkeletons";
 
 const LoginPage = React.lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const CallbackPage = React.lazy(() => import("@/pages/CallbackPage").then((m) => ({ default: m.CallbackPage })));
@@ -20,19 +29,14 @@ const ScriptsPage = React.lazy(() => import("@/pages/ScriptsPage").then((m) => (
 const AdminPage = React.lazy(() => import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 const SettingsPage = React.lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 
-function PageSpinner() {
-  return <PageSkeleton />;
+/** A lazy page with the skeleton of that page as its fallback while its code downloads. */
+function Lazy({ fallback, children }: { fallback: React.ReactNode; children: React.ReactNode }) {
+  return <Suspense fallback={fallback}>{children}</Suspense>;
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="h-screen">
-        <PageSkeleton />
-      </div>
-    );
-  }
+  if (loading) return <AppShellSkeleton />;
   if (!user) {
     return <Navigate to="/login" replace />;
   }
@@ -48,33 +52,34 @@ function ProspectRedirect() {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Suspense fallback={<PageSpinner />}><LoginPage /></Suspense>} />
-      <Route path="/callback" element={<Suspense fallback={<PageSpinner />}><CallbackPage /></Suspense>} />
-      <Route path="/signup" element={<Suspense fallback={<PageSpinner />}><SignupPage /></Suspense>} />
+      <Route path="/login" element={<Lazy fallback={<AuthCardSkeleton />}><LoginPage /></Lazy>} />
+      <Route path="/callback" element={<Lazy fallback={<AuthCardSkeleton />}><CallbackPage /></Lazy>} />
+      <Route path="/signup" element={<Lazy fallback={<AuthCardSkeleton />}><SignupPage /></Lazy>} />
       <Route
         path="/*"
         element={
           <ProtectedRoute>
             <Layout>
-              <Suspense fallback={<PageSpinner />}>
+              {/* Each route below has its own skeleton; this outer one only catches anything missed. */}
+              <Suspense fallback={<ReportStylePageSkeleton />}>
                 <Routes>
                   <Route index element={<Navigate to="/reports" replace />} />
-                  <Route path="reports" element={<ReportsPage />} />
+                  <Route path="reports" element={<Lazy fallback={<ReportStylePageSkeleton pickers={2} />}><ReportsPage /></Lazy>} />
                   {/* Reports replaced the Dashboard; keep old links working. */}
                   <Route path="dashboard" element={<Navigate to="/reports" replace />} />
                   <Route path="leads" element={<Navigate to="/contacts" replace />} />
-                  <Route path="contacts" element={<ProspectPage />} />
+                  <Route path="contacts" element={<Lazy fallback={<TablePageSkeleton columns={10} filters={3} />}><ProspectPage /></Lazy>} />
                   <Route path="prospects" element={<Navigate to="/contacts" replace />} />
-                  <Route path="leads/:leadId" element={<LeadDetailPage />} />
-                  <Route path="contacts/:prospectId" element={<ProspectDetailPage />} />
+                  <Route path="leads/:leadId" element={<Lazy fallback={<RecordPageSkeleton />}><LeadDetailPage /></Lazy>} />
+                  <Route path="contacts/:prospectId" element={<Lazy fallback={<DetailPageSkeleton />}><ProspectDetailPage /></Lazy>} />
                   <Route path="prospects/:prospectId" element={<ProspectRedirect />} />
                   <Route path="campaigns" element={<Navigate to="/contacts" replace />} />
-                  <Route path="scripts" element={<ScriptsPage />} />
-                  <Route path="history" element={<CallHistoryPage />} />
-                  <Route path="history/:callId" element={<CallDetailPage />} />
-                  <Route path="phone-numbers" element={<PhoneNumbersPage />} />
-                  <Route path="admin" element={<AdminPage />} />
-                  <Route path="settings" element={<SettingsPage />} />
+                  <Route path="scripts" element={<Lazy fallback={<ScriptsPageSkeleton />}><ScriptsPage /></Lazy>} />
+                  <Route path="history" element={<Lazy fallback={<TablePageSkeleton columns={8} filters={6} />}><CallHistoryPage /></Lazy>} />
+                  <Route path="history/:callId" element={<Lazy fallback={<CallReviewSkeleton />}><CallDetailPage /></Lazy>} />
+                  <Route path="phone-numbers" element={<Lazy fallback={<TablePageSkeleton columns={7} filters={0} />}><PhoneNumbersPage /></Lazy>} />
+                  <Route path="admin" element={<Lazy fallback={<ReportStylePageSkeleton pickers={1} />}><AdminPage /></Lazy>} />
+                  <Route path="settings" element={<Lazy fallback={<ReportStylePageSkeleton pickers={0} settings />}><SettingsPage /></Lazy>} />
                 </Routes>
               </Suspense>
             </Layout>

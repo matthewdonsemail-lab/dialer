@@ -19,7 +19,8 @@ import {
   type IconComponent,
 } from "@/components/ui/icons";
 import { SectionTitle } from "@/components/ui/SectionTitle";
-import { DetailPageSkeleton } from "@/components/ui/Skeleton";
+import { TableSkeletonRows } from "@/components/ui/Skeleton";
+import { CallReviewSkeleton } from "@/components/ui/PageSkeletons";
 import { useToast } from "@/components/ui/Toast";
 import { CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 import { EmptyState, HeadCell, ReportCard, ReportTable, StatTiles, TD, TR } from "@/components/reports/ReportParts";
@@ -127,7 +128,7 @@ export function CallDetailPage() {
   const records = useDialerRecords(history.data);
   const events = useMemo(() => resolveActivities(history.data, records), [history.data, records]);
 
-  if (isLoading) return <DetailPageSkeleton />;
+  if (isLoading) return <CallReviewSkeleton />;
 
   if (!call) {
     return (
@@ -441,7 +442,15 @@ function KeyPoints({ points }: { points: string[] }) {
 }
 
 function ActivityBody({ loading, error, events, compact = false }: { loading: boolean; error: Error | null; events: ReturnType<typeof resolveActivities>; compact?: boolean }) {
-  if (loading) return <EmptyState>Loading history from Twenty…</EmptyState>;
+  if (loading) {
+    return (
+      <ReportTable>
+        <tbody>
+          <TableSkeletonRows rows={compact ? 5 : 8} columns={compact ? 4 : 5} bordered />
+        </tbody>
+      </ReportTable>
+    );
+  }
   if (error) return <EmptyState>Could not load history. {error.message}</EmptyState>;
   if (events.length === 0) return <EmptyState>No recorded changes yet.</EmptyState>;
   return <ActivityTable events={events} compact={compact} />;

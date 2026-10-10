@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useEvenColumns } from "@/hooks/use-even-columns";
 import { ChevronDown, type IconComponent } from "@/components/ui/icons";
 import { InfoTip, type TipSpec } from "@/components/ui/InfoTip";
 import { SectionTitle } from "@/components/ui/SectionTitle";
@@ -80,9 +81,10 @@ const TONE: Record<NonNullable<Stat["tone"]>, { chip: string; value: string }> =
 
 /** A row of headline numbers: big value, icon chip, explanation behind the eye. */
 export function StatTiles({ stats }: { stats: Stat[] }) {
+  // Whole rows only (6 tiles: 6 x 1, 3 x 2 or 2 x 3), sized from the space the tiles get.
+  const grid = useEvenColumns(stats.length);
   return (
-    // Sized by the space the tiles get (page, modal or table row), not the viewport.
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+    <div ref={grid.ref} style={grid.style} className="grid gap-3">
       {stats.map(({ label, value, tip, icon: Icon, tone = "default" }) => (
         <div key={label} className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-4 min-h-[112px] flex flex-col">
           <div className="flex items-center gap-2.5">

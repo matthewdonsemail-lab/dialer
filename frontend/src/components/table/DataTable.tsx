@@ -17,7 +17,7 @@ import { ColumnVisibilityDropdown } from "@/components/common/ColumnVisibilityDr
 import { HeaderFilter, type HeaderFilterOption } from "@/components/common/HeaderFilter";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";
 import { ColumnResizeHandle, SortableHeaderCell } from "@/components/common/SortableHeaderCell";
-import { TableSkeletonRows } from "@/components/ui/Skeleton";
+import { Skeleton, TableSkeletonRows } from "@/components/ui/Skeleton";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import type { TipSpec } from "@/components/ui/InfoTip";
 import { useColumnOrder } from "@/hooks/use-column-order";
@@ -475,13 +475,17 @@ export function DataTable<T>({
                   );
                   };
 
-  /** Twenty-style placeholder row: a plain gray bar in every cell. */
+  /** Placeholder row while its window loads: the same bars as the first-load skeleton. */
   const skeletonRow = (index: number) => (
     <tr key={`skeleton-${index}`} data-row className="h-9">
-      {selection && <td className="h-9 border-b border-r first:border-l border-[var(--ods-border)]" />}
+      {selection && (
+        <td className="h-9 p-0 border-b border-r first:border-l border-[var(--ods-border)]">
+          <Skeleton className="h-3.5 w-3.5 mx-auto rounded-[3px]" />
+        </td>
+      )}
       {visible.map((col, i) => (
         <td key={col.key} className={CELL}>
-          <span className="block h-3 rounded-[4px] bg-[var(--ods-bg-tertiary)]" style={{ width: `${45 + ((index * 7 + i * 13) % 45)}%` }} />
+          <Skeleton className="h-3" style={{ width: `${45 + ((index * 7 + i * 13) % 45)}%` }} />
         </td>
       ))}
       {rowActions && <td className={CELL} />}
@@ -492,7 +496,7 @@ export function DataTable<T>({
   const serverBody = () => {
     if (!server) return null;
     if (loading && total === 0) {
-      return <TableSkeletonRows columns={visible.length} leadingCheckbox={!!selection} trailingActions={!!rowActions} bordered />;
+      return <TableSkeletonRows rows={30} columns={visible.length} leadingCheckbox={!!selection} trailingActions={!!rowActions} bordered />;
     }
     if (total === 0) {
       return (
@@ -531,9 +535,12 @@ export function DataTable<T>({
           <SectionTitle as="h2" title={title} pill={
               selecting
                 ? `${selectedIds.size} selected`
-                : server && server.total != null
-                  ? server.total.toLocaleString()
-                  : String(shownRows.length)
+                : // Count unknown while the first load is in flight: a placeholder, never a misleading "0".
+                  (server ? server.total == null : loading)
+                  ? <Skeleton className="h-3 w-6" />
+                  : server
+                    ? server.total!.toLocaleString()
+                    : String(shownRows.length)
             } info={info} />
         </div>
         {selecting ? (
@@ -682,6 +689,7 @@ export function DataTable<T>({
                 serverBody()
               ) : loading ? (
                 <TableSkeletonRows
+                  rows={30}
                   columns={visible.length}
                   leadingCheckbox={!!selection}
                   trailingActions={!!rowActions}

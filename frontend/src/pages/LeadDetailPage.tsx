@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "@/components/ui/icons";
-import { DetailPageSkeleton } from "@/components/ui/Skeleton";
+import { RecordPageSkeleton } from "@/components/ui/PageSkeletons";
 import { CountryBadge } from "@/components/common/CountryBadge";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -109,7 +109,7 @@ export function LeadDetailPage() {
 
   if (isLoading) {
     return (
-      <DetailPageSkeleton />
+      <RecordPageSkeleton />
     );
   }
 

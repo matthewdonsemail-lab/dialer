@@ -1,3 +1,5 @@
+import { AdminBodySkeleton } from "@/components/ui/PageSkeletons";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { TabBar } from "@/components/ui/TabBar";
 import { twentyLinks, useTwentyBaseUrl } from "@/lib/twenty/links";
 import { useMemo, useState } from "react";
@@ -15,7 +17,6 @@ import {
 } from "@/components/ui/icons";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { SelectMenu } from "@/components/ui/Menu";
-import { Skeleton } from "@/components/ui/Skeleton";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { BarChart } from "@/components/reports/BarChart";
 import {
@@ -88,7 +89,7 @@ export function AdminPage() {
         <SectionTitle
           as="h1"
           title="Admin"
-          pill={`${events.length} events`}
+          pill={isLoading ? <Skeleton className="h-3 w-14" /> : `${events.length} events`}
           info={{
             title: "Admin",
             icon: Shield,
@@ -115,7 +116,7 @@ export function AdminPage() {
         {error ? (
           <EmptyState>Could not load activity from Twenty. {(error as Error).message}</EmptyState>
         ) : isLoading ? (
-          <AdminSkeleton />
+          <AdminBodySkeleton tab={tab} />
         ) : (
           <>
             {data?.truncated && (
@@ -135,20 +136,6 @@ export function AdminPage() {
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-function AdminSkeleton() {
-  return (
-    <div className="space-y-4" role="status" aria-label="Loading activity">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }, (_, i) => (
-          <Skeleton key={i} className="h-[112px] rounded-[10px]" />
-        ))}
-      </div>
-      <Skeleton className="h-72 rounded-[10px]" />
-      <Skeleton className="h-48 rounded-[10px]" />
     </div>
   );
 }

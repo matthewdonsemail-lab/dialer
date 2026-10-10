@@ -7,6 +7,7 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { TabBar, type TabDef } from "@/components/ui/TabBar";
 import { ReportCard } from "@/components/reports/ReportParts";
 import { usePersistedState } from "@/hooks/use-persisted-state";
+import { useEvenColumns } from "@/hooks/use-even-columns";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { signOut } from "@/lib/auth";
 import { useTheme, type ThemeMode } from "@/lib/theme";
@@ -150,6 +151,10 @@ export function SettingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = usePersistedState<SettingsTab>("settings-tab", "appearance");
+  // Card grids fill whole rows (3 themes: 3 x 1 or 1 x 3, never 2 + 1).
+  const themeGrid = useEvenColumns(THEME_OPTIONS.length, 200);
+  const goalGrid = useEvenColumns(2, 260);
+  const defsGrid = useEvenColumns(3, 240);
   const [params] = useSearchParams();
   useEffect(() => {
     const wanted = params.get("tab");
@@ -178,7 +183,7 @@ export function SettingsPage() {
             unit={THEME_OPTIONS.find((t) => t.mode === mode)?.label ?? "System"}
             tip={{ title: "Theme", icon: Palette, what: "How the dialer looks on this browser.", use: "Pick Light, Dark, or follow your computer." }}
           >
-            <div role="radiogroup" aria-label="Theme" className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+            <div ref={themeGrid.ref} style={themeGrid.style} role="radiogroup" aria-label="Theme" className="grid gap-3">
               {THEME_OPTIONS.map(({ mode: option, label, description, icon: Icon }) => {
                 const selected = mode === option;
                 return (
@@ -251,7 +256,7 @@ export function SettingsPage() {
                 </Link>
               }
             >
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+              <div ref={goalGrid.ref} style={goalGrid.style} className="grid gap-3">
                 <NumberSetting
                   label="Daily call goal"
                   icon={PhoneOutgoing}
@@ -286,7 +291,7 @@ export function SettingsPage() {
               </div>
             </ReportCard>
             <ReportCard title="Definitions" unit="How Reports counts" tip={{ title: "Definitions", icon: Clock, what: "What each Reports chart measures, using the goals above." }}>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
+              <div ref={defsGrid.ref} style={defsGrid.style} className="grid gap-3">
                 {reportDefinitions(conversationSeconds, dailyCallGoal).map((d) => (
                   <div key={d.title} className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-3">
                     <TipCard tip={d} />

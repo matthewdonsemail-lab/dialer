@@ -30,7 +30,7 @@ import { useCampaigns } from "@/hooks/use-campaigns";
 import { useCalls } from "@/hooks/use-call-logs";
 import { useReportSettings } from "@/hooks/use-report-settings";
 import { SelectMenu } from "@/components/ui/Menu";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { ScriptDetailSkeleton, ScriptListSkeleton } from "@/components/ui/PageSkeletons";
 import { SectionTitle, TitlePill } from "@/components/ui/SectionTitle";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -231,11 +231,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
         </div>
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-3 space-y-2">
-              {Array.from({ length: 5 }, (_, i) => (
-                <Skeleton key={i} className="h-[72px] rounded-[8px]" />
-              ))}
-            </div>
+            <ScriptListSkeleton />
           ) : shown.length === 0 ? (
             <EmptyState>{query ? "No scripts match." : "No scripts yet. Press New to write one."}</EmptyState>
           ) : (
@@ -272,9 +268,11 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* selected script */}
       <section className={`${narrow && !showDetail ? "hidden" : "flex"} flex-1 min-w-0 flex-col bg-[var(--ods-bg-secondary)]`}>
-        {!selected || !stats ? (
+        {isLoading ? (
+          <ScriptDetailSkeleton />
+        ) : !selected || !stats ? (
           <div className="flex-1 flex items-center justify-center p-8">
-            <EmptyState>{isLoading ? "Loading scripts…" : "Pick a script on the left, or press New."}</EmptyState>
+            <EmptyState>Pick a script on the left, or press New.</EmptyState>
           </div>
         ) : (
           <>

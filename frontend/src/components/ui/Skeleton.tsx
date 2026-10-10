@@ -1,10 +1,15 @@
+import type React from "react";
 import { cn } from "@/lib/utils";
 
-/** A pulsing placeholder block. Size it with width/height classes. */
-export function Skeleton({ className }: { className?: string }) {
+/**
+ * A pulsing placeholder block, the one skeleton colour and motion in the app.
+ * Size it with width/height classes (or `style` for computed sizes).
+ */
+export function Skeleton({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
     <div
       aria-hidden="true"
+      style={style}
       className={cn("animate-pulse rounded-[4px] bg-[var(--ods-border)]", className)}
     />
   );
@@ -73,28 +78,6 @@ export function CardSkeleton({ lines = 3, className }: { lines?: number; classNa
       {Array.from({ length: lines }, (_, i) => (
         <Skeleton key={i} className={cn("h-3", BAR_WIDTHS[i % BAR_WIDTHS.length])} />
       ))}
-    </div>
-  );
-}
-
-/** Generic page: title bar plus a grid of cards. Used for route-level loading. */
-export function PageSkeleton() {
-  return (
-    <div className="p-6 space-y-6" role="status" aria-label="Loading">
-      <Skeleton className="h-5 w-48" />
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="rounded-[8px] border border-[var(--ods-border)] p-3 space-y-2">
-            <Skeleton className="h-4 w-4" />
-            <Skeleton className="h-5 w-12" />
-            <Skeleton className="h-2.5 w-16" />
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <CardSkeleton lines={5} />
-        <CardSkeleton lines={5} />
-      </div>
     </div>
   );
 }

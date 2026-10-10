@@ -1,3 +1,4 @@
+import { ReportsBodySkeleton } from "@/components/ui/PageSkeletons";
 import { TabBar } from "@/components/ui/TabBar";
 import { Chip } from "@/components/ui/Chip";
 import { useMemo } from "react";
@@ -27,7 +28,6 @@ import { useCalls } from "@/hooks/use-call-logs";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useReportSettings } from "@/hooks/use-report-settings";
 import { SelectMenu } from "@/components/ui/Menu";
-import { Skeleton } from "@/components/ui/Skeleton";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { BarChart } from "@/components/reports/BarChart";
 import {
@@ -145,7 +145,7 @@ export function ReportsPage() {
 
       <div className="p-5 space-y-4">
         {isLoading ? (
-          <ReportsSkeleton />
+          <ReportsBodySkeleton tab={tab} />
         ) : tab === "overview" ? (
           <Overview calls={scoped} range={range} goal={dailyCallGoal} threshold={conversationSeconds} />
         ) : tab === "numbers" ? (
@@ -156,23 +156,6 @@ export function ReportsPage() {
           <DispositionTab calls={scoped} />
         )}
       </div>
-    </div>
-  );
-}
-
-function ReportsSkeleton() {
-  return (
-    <div className="space-y-4" role="status" aria-label="Loading reports">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }, (_, i) => (
-          <Skeleton key={i} className="h-[112px] rounded-[10px]" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Skeleton className="h-72 rounded-[10px]" />
-        <Skeleton className="h-72 rounded-[10px]" />
-      </div>
-      <Skeleton className="h-48 rounded-[10px]" />
     </div>
   );
 }
