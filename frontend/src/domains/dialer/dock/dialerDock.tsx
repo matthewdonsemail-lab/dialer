@@ -12,6 +12,7 @@ import {
   Clock,
   ExternalLink,
   FileText,
+  Globe,
   Keyboard,
   Mic,
   MicOff,
@@ -34,14 +35,16 @@ import { Chip } from "@/domains/ui/chip";
 import { SelectMenu } from "@/domains/ui/menu";
 import { TabBar } from "@/domains/ui/tabBar";
 import { CountryFlag } from "@/domains/country/badge";
-import { DispositionBadge } from "@/domains/calls/disposition";
+import { DispositionBadge, DispositionIcon } from "@/domains/calls/disposition";
 import { AudioSourceSettings } from "@/domains/dialer/audio";
 import { CallScriptViewer } from "@/domains/scripts/viewer";
 import { usePowerDialer, contactDisplayName } from "@/domains/campaigns/powerDialer";
 import { usePersistedState } from "@/domains/app/persistedState";
 import { useCalls } from "@/domains/calls/data";
-import { contactsApi, contactName, useProspectLookup, type ContactRow } from "@/domains/contact/list";
-import { countryCode } from "@/domains/country/lookup";
+import { contactsApi, contactName, useContactFacets, useProspectLookup, type ContactRow } from "@/domains/contact/list";
+import { lineRegion, pickCallLine } from "@/domains/dialer/route";
+import { regionName, regionOfCountry } from "@dialer/shared";
+import { countryCode, countryName } from "@/domains/country/lookup";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disposition";
 import { isLive, useDialer, type CallState } from "@/domains/dialer/provider";
 
@@ -380,35 +383,159 @@ function RecentsTab() {
   );
 }
 
+/** Dock contact filters, kept per browser like the Contacts table's. */
+interface DockFilters {
+  /** "all", "line" (local to the calling line: same numbering region) or an ISO country code. */
+  country: string;
+  /** "all" or an app status ("new", "callback"...). */
+  status: string;
+  /** "all", "__never" or a call outcome. */
+  lastCall: string;
+}
+const DOCK_FILTERS: DockFilters = { country: "all", status: "all", lastCall: "all" };
+const DOCK_STATUSES: Array<[app: string, twenty: string, label: string]> = [
+  ["new", "NEW", "New"],
+  ["contacted", "CONTACTED", "Contacted"],
+  ["interested", "INTERESTED", "Interested"],
+  ["callback", "CALLBACK", "Callback"],
+  ["not_interested", "NOT_INTERESTED", "Not interested"],
+  ["converted", "CONVERTED", "Converted"],
+  ["do_not_contact", "DO_NOT_CONTACT", "Do not contact"],
+];
+
+interface DockFilterOption {
+  value: string;
+  label: string;
+  hint?: number;
+  icon?: ReactNode;
+}
+
+/** One compact filter menu in the dock's Contacts tab. */
+function DockFilter({ label, value, options, onChange }: { label: string; value: string; options: DockFilterOption[]; onChange: (v: string) => void }) {
+  const current = options.find((o) => o.value === value);
+  const active = value !== "all";
+  return (
+    <SelectMenu
+      value={value}
+      onChange={onChange}
+      width={260}
+      searchable={options.length > 8}
+      sections={[{ title: label, options: [{ value: "all", label: "All" }, ...options] }]}
+      triggerTitle={`Filter by ${label.toLowerCase()}`}
+      triggerClassName={`h-7 min-w-0 max-w-[140px] px-2 inline-flex items-center gap-1 rounded-md border text-[12px] font-medium ${
+        active
+          ? "border-[color-mix(in_srgb,var(--ods-brand-600)_40%,transparent)] bg-[color-mix(in_srgb,var(--ods-brand-600)_10%,transparent)] text-[var(--ods-brand-700)] dark:text-[var(--ods-brand-300)]"
+          : "border-[var(--ods-border)] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)]"
+      }`}
+      trigger={
+        <>
+          {active && current?.icon}
+          <span className="truncate">{active ? (current?.label ?? label) : label}</span>
+          <ChevronDown className="w-3 h-3 opacity-60 shrink-0" />
+        </>
+      }
+    />
+  );
+}
+
 function ContactsTab() {
-  const { dial } = useDialer();
+  const { dial, lines, line } = useDialer();
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [saved, setFilters] = usePersistedState<DockFilters>("dialer-contact-filters", DOCK_FILTERS);
+  const f = { ...DOCK_FILTERS, ...saved };
+  const set = (patch: Partial<DockFilters>) => setFilters({ ...f, ...patch });
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q.trim()), 250);
     return () => clearTimeout(t);
   }, [q]);
+  const { data: facets } = useContactFacets();
+
+  // Countries grouped by ISO code ("CA" and "Canada" are one option).
+  const countries = useMemo(() => {
+    const groups = new Map<string, { raws: string[]; count: number }>();
+    for (const [raw, n] of Object.entries(facets?.country ?? {})) {
+      const code = countryCode(raw);
+      if (!code) continue;
+      const g = groups.get(code) ?? { raws: [], count: 0 };
+      g.raws.push(raw);
+      g.count += n;
+      groups.set(code, g);
+    }
+    return groups;
+  }, [facets]);
+  const fromRegion = lineRegion(line);
+  const sameCountry = [...countries.entries()].filter(([code]) => fromRegion !== null && regionOfCountry(code) === fromRegion);
+  const lineRaws = sameCountry.flatMap(([, g]) => g.raws);
+  const countryOptions: DockFilterOption[] = [
+    ...(fromRegion && line
+      ? [{ value: "line", label: `Local to ${line.phoneNumber}`, icon: <CountryFlag code={countryCode(line.countryCode)} />, hint: sameCountry.reduce((n, [, g]) => n + g.count, 0) }]
+      : []),
+    ...[...countries.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([code, g]) => ({ value: code, label: countryName(code), icon: <CountryFlag code={code} />, hint: g.count })),
+  ];
+  const statusOptions: DockFilterOption[] = DOCK_STATUSES.map(([app, twenty, label]) => ({
+    value: app,
+    label,
+    hint: (facets?.status?.[twenty] ?? 0) + (app === "new" ? (facets?.status?.["__blank"] ?? 0) : 0),
+  }));
+  const lastCallOptions: DockFilterOption[] = [
+    ...Object.entries(facets?.lastCall ?? {})
+      .filter(([raw]) => raw !== "__never")
+      .sort((a, b) => b[1] - a[1])
+      .map(([raw, n]) => ({ value: raw, label: outcomeLabel(raw), icon: <DispositionIcon status={raw} />, hint: n })),
+    ...(facets?.lastCall ? [{ value: "__never", label: "Never called", hint: facets.lastCall.__never ?? 0 }] : []),
+  ];
+
+  const countryRaws = f.country === "line" ? lineRaws : f.country !== "all" ? (countries.get(f.country)?.raws ?? [f.country]) : undefined;
+  const query = {
+    q: debounced || undefined,
+    country: countryRaws?.length ? countryRaws : undefined,
+    status: f.status !== "all" ? [f.status] : undefined,
+    lastCall: f.lastCall !== "all" ? f.lastCall : undefined,
+  };
   const { data, isFetching } = useQuery({
-    queryKey: ["dialer-contact-search", debounced],
-    queryFn: () => contactsApi.page({ q: debounced || undefined }, 0),
+    queryKey: ["dialer-contact-search", query],
+    queryFn: () => contactsApi.page(query, 0),
     staleTime: 30_000,
   });
   const rows: ContactRow[] = (data?.rows ?? []).slice(0, 25);
+  const total = data?.totalCount ?? rows.length;
+  const filtered = f.country !== "all" || f.status !== "all" || f.lastCall !== "all";
   return (
     <div>
-      <div className="p-3 pb-2 sticky top-0 bg-[var(--ods-bg-primary)]">
+      <div className="p-3 pb-2 sticky top-0 z-[1] bg-[var(--ods-bg-primary)] space-y-2">
         <div className="relative">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ods-text-tertiary)]" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, company or number" className={`${INPUT} pl-8`} autoFocus />
         </div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <DockFilter label="Country" value={f.country} options={countryOptions} onChange={(v) => set({ country: v })} />
+          <DockFilter label="Status" value={f.status} options={statusOptions} onChange={(v) => set({ status: v })} />
+          <DockFilter label="Last call" value={f.lastCall} options={lastCallOptions} onChange={(v) => set({ lastCall: v })} />
+          {filtered && (
+            <button onClick={() => setFilters(DOCK_FILTERS)} title="Clear filters" aria-label="Clear the contact filters" className={`${BTN_ICON} ml-auto shrink-0`}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        {data && (
+          <div className="text-[12px] text-[var(--ods-text-tertiary)]">
+            {total} {total === 1 ? "contact" : "contacts"}
+            {total > rows.length ? `, first ${rows.length} shown` : ""}
+          </div>
+        )}
       </div>
       {!data && isFetching ? (
         <ListSkeleton />
       ) : rows.length === 0 ? (
-        <Empty text={debounced ? `No contacts match "${debounced}".` : "No contacts yet."} />
+        <Empty text={debounced ? `No contacts match "${debounced}".` : filtered ? "No contacts match these filters." : "No contacts yet."} />
       ) : (
         rows.map((r) => {
           const name = contactName(r) ?? "Unknown";
+          const route = r.phone ? pickCallLine(lines, line, { number: r.phone, country: r.country as string | undefined }) : null;
+          const toName = route?.to ? regionName(route.to) : "";
           return (
             <ListRow
               key={`${r.type}-${r.id}`}
@@ -419,6 +546,21 @@ function ContactsTab() {
               onClick={() =>
                 r.phone &&
                 void dial({ contactType: r.type, contactId: r.id, phone: r.phone, name, campaignId: (r.campaign_id as string | null) ?? null })
+              }
+              trailing={
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {route?.switched && route.line && (
+                    <span className="text-[12px] text-[var(--ods-text-tertiary)] tabular-nums" title={`Called from your ${toName} number ${route.line.phoneNumber}, so the call stays local`}>
+                      via {route.line.phoneNumber}
+                    </span>
+                  )}
+                  {route?.abroad && (
+                    <Chip icon={Globe} iconClassName="text-amber-600" title={`You have no free ${toName} line, so this is an international call from ${line?.phoneNumber}`}>
+                      International
+                    </Chip>
+                  )}
+                  <CountryFlag code={countryCode(r.country as string | undefined)} />
+                </span>
               }
             />
           );

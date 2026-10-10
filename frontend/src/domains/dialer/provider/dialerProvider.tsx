@@ -13,6 +13,8 @@ import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/domains/ap
 import { classifyFailure, getSipConfig, isSipConfigured, sipLog, type ClassifiedFailure } from "@/domains/dialer/sip";
 import { CallLifecycle } from "@/domains/dialer/lifecycle";
 import { attachRemoteMedia, getMicStream, loadSip, sendSessionDtmf, startAgent, type SipAgent } from "@/domains/dialer/sip";
+import { pickCallLine, regionNumberLabel } from "@/domains/dialer/route";
+import { regionName } from "@dialer/shared";
 
 /** Explicit opt-in only (?simulate=1): simulated calls never happen silently. */
 export const SIMULATE_CALLS =
@@ -120,7 +122,7 @@ export const isLive = (s: CallState) => LIVE.includes(s);
 export function DialerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { error: toastError, warning: toastWarning } = useToast();
+  const { error: toastError, warning: toastWarning, info: toastInfo } = useToast();
   const { source: audioSource, microphoneId, speakerId } = useAudioSettings();
   const audioBridge = useAudioBridge();
   const phoneAudio = audioSource !== "computer";
@@ -188,7 +190,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const unansweredRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSipStatusRef = useRef<number | null>(null);
   const iceFailedRef = useRef(false);
-  const overrideRef = useRef<{ target: DialTarget; options: DialOptions } | null>(null);
+  // A dial held back by a check (24h cooldown, international call) until the
+  // operator presses "Dial anyway"; `skip` lists the checks already confirmed.
+  const overrideRef = useRef<{ target: DialTarget; options: DialOptions; skip: Set<"cooldown" | "abroad"> } | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
   const setCallState = useCallback((next: CallState) => {
@@ -473,16 +477,30 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       toastWarning("No phone number", `${next.name || "This contact"} has no number to call.`);
       return;
     }
-    // Per-number cooldown: a number dialled in the last 24h is not redialled
-    // without "Dial anyway" (repeat dials burned real money on 2026-10-02).
-    if (!SIMULATE_CALLS && overrideRef.current?.target !== next && isWithinCooldown(recentCalls, next.phone)) {
-      const last = lastDialTo(recentCalls, next.phone);
-      overrideRef.current = { target: next, options: opts };
+    const confirmed = overrideRef.current?.target === next ? overrideRef.current.skip : new Set<"cooldown" | "abroad">();
+    const hold = (check: "cooldown" | "abroad", notice: string) => {
+      overrideRef.current = { target: next, options: opts, skip: new Set([...confirmed, check]) };
       resetCall();
       setTarget(next);
       setOptions(opts);
-      setCooldownNotice(`Already dialled ${next.phone} at ${last ? last.toLocaleString() : "earlier today"}. Cooldown is ${DIAL_COOLDOWN_HOURS}h.`);
-      return;
+      setCooldownNotice(notice);
+    };
+    // Per-number cooldown: a number dialled in the last 24h is not redialled
+    // without "Dial anyway" (repeat dials burned real money on 2026-10-02).
+    if (!SIMULATE_CALLS && !confirmed.has("cooldown") && isWithinCooldown(recentCalls, next.phone)) {
+      const last = lastDialTo(recentCalls, next.phone);
+      return hold("cooldown", `Already dialled ${next.phone} at ${last ? last.toLocaleString() : "earlier today"}. Cooldown is ${DIAL_COOLDOWN_HOURS}h.`);
+    }
+    // Same-country calling: a contact abroad is called from one of our numbers
+    // in their country; with none, an international call needs "Dial anyway".
+    const route = pickCallLine(lines, line, { number: next.phone });
+    if (route.abroad && !confirmed.has("abroad") && route.from && route.to) {
+      return hold("abroad", `${next.phone} is ${regionNumberLabel(route.to)} and you have no free ${regionName(route.to)} line, so this is an international call from ${line?.phoneNumber ?? "your number"}.`);
+    }
+    const from = route.line;
+    if (route.switched && from) {
+      setLineId(from.id);
+      toastInfo(`Calling from ${from.phoneNumber}`, `Your ${regionName(route.to!)} number, so the call stays local.`);
     }
     overrideRef.current = null;
     setCooldownNotice(null);
@@ -494,9 +512,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setOptions(opts);
     const lc = new CallLifecycle({
       direction: "outbound",
-      fromNumber: line?.phoneNumber ?? "",
+      fromNumber: from?.phoneNumber ?? "",
       toNumber: next.phone,
-      phoneId: line?.id ?? null,
+      phoneId: from?.id ?? null,
       member,
       prospectId: next.contactType === "prospect" ? next.contactId : null,
       leadId: next.contactType === "lead" ? next.contactId : null,
@@ -510,7 +528,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     }
     lifecycleRef.current = lc;
     setCallState("connecting");
-    sipLog.info("app", "dial requested", { to: next.phone, phoneId: line?.id ?? null });
+    sipLog.info("app", "dial requested", { to: next.phone, phoneId: from?.id ?? null });
     // The row exists (IN_PROGRESS) before the INVITE leaves.
     await lc.ensureRow();
     queryClient.invalidateQueries({ queryKey: ["twentyPhones"] });
@@ -527,12 +545,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     }
     if (phoneAudio) return startPhoneAudio(lc);
     return startSip(lc);
-  }, [line, member, phoneAudio, queryClient, recentCalls, resetCall, setCallState, startPhoneAudio, startSip, toastWarning]);
+  }, [line, lines, setLineId, member, phoneAudio, queryClient, recentCalls, resetCall, setCallState, startPhoneAudio, startSip, toastWarning, toastInfo]);
 
   const dialAnyway = useCallback(() => {
     const pending = overrideRef.current;
     if (!pending) return;
-    // Same object as the blocked dial, so the cooldown check lets it through once.
+    // Same object as the held dial, so the checks it confirmed let it through.
     void dial(pending.target, pending.options);
   }, [dial]);
 
