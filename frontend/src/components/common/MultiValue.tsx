@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useToast } from "@/components/ui/Toast";
 import {
   autoUpdate,
   flip,
@@ -72,6 +73,7 @@ function MultiValueList({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const { error: toastError } = useToast();
   const { refs, floatingStyles, context, isPositioned } = useFloating({
     open: true,
     onOpenChange: (next) => {
@@ -92,7 +94,8 @@ function MultiValueList({
       setCopied(v);
       setTimeout(() => setCopied(null), 1200);
     } catch {
-      // clipboard blocked; the value is still visible to copy by hand
+      // Clipboard blocked by the browser: say so, the value is still visible.
+      toastError("Not copied", "The browser blocked the clipboard. Select the text and copy it by hand.");
     }
   };
 

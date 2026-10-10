@@ -1,4 +1,5 @@
 import { TabBar } from "@/components/ui/TabBar";
+import { describeError } from "@/domains/feedback";
 import { Chip } from "@/components/ui/Chip";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -178,8 +179,8 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
       await update.mutateAsync({ id: selected.id, data: payloadOf(draft) });
       setDraft(null);
       success("Script saved", `"${draft.name.trim() || "Untitled script"}" is up to date`);
-    } catch {
-      toastError("Script not saved", "Your changes are still here. Try again.");
+    } catch (err) {
+      toastError("Script not saved", `Your changes are still here. ${describeError(err).detail}`);
     }
   };
 
@@ -196,8 +197,8 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
         setTab("script");
       }
       success(from ? "Script duplicated" : "Script created", from ? "Edit the copy, then save." : "Write the script, link a campaign, then save.");
-    } catch {
-      toastError("Script not created", "Try again.");
+    } catch (err) {
+      toastError("Script not created", describeError(err).detail);
     }
   };
 
@@ -417,8 +418,8 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
           try {
             await remove.mutateAsync(id);
             success("Script deleted", `"${name}" has been removed`);
-          } catch {
-            toastError("Script not deleted", "Try again.");
+          } catch (err) {
+            toastError("Script not deleted", describeError(err).detail);
           }
         }}
       />

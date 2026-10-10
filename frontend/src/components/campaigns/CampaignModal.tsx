@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { describeError } from "@/domains/feedback";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, ChevronRight, MoreVertical, Pencil, Phone, PhoneCall, Search, X } from "@/components/ui/icons";
 import type { CallCampaign, CallCampaignStatus } from "@/lib/api-client";
@@ -110,8 +111,8 @@ export function CampaignModal({
   const setStatus = async (campaign: CallCampaign, status: CallCampaignStatus) => {
     try {
       await update.mutateAsync({ id: campaign.id, patch: { status } });
-    } catch {
-      toastError("Status not saved", "The change was undone. Try again.");
+    } catch (err) {
+      toastError("Status not saved", describeError(err).detail);
     }
   };
 
@@ -133,8 +134,8 @@ export function CampaignModal({
     if (!name || name === selected.name) return;
     try {
       await update.mutateAsync({ id: selected.id, patch: { name } });
-    } catch {
-      toastError("Name not saved", "The change was undone. Try again.");
+    } catch (err) {
+      toastError("Name not saved", describeError(err).detail);
     }
   };
 
@@ -351,8 +352,8 @@ export function CampaignModal({
           try {
             await remove.mutateAsync(id);
             success("Campaign deleted", `"${name}" has been removed`);
-          } catch {
-            toastError("Campaign not deleted", "It has been restored. Try again.");
+          } catch (err) {
+            toastError("Campaign not deleted", `It has been restored. ${describeError(err).detail}`);
           }
         }}
       />

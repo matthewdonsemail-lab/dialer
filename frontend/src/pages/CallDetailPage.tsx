@@ -1,4 +1,5 @@
 import { TabBar } from "@/components/ui/TabBar";
+import { describeError } from "@/domains/feedback";
 import { useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,7 +58,7 @@ export function CallDetailPage() {
   const { callId } = useParams<{ callId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { error: toastError, success } = useToast();
+  const { error: toastError, warning: toastWarning, success } = useToast();
   const { conversationSeconds } = useReportSettings();
   const [tab, setTab] = usePersistedState<Tab>("call-review-tab", "overview");
   // Links like /history/:id?tab=recording open straight on that tab.
@@ -95,16 +96,16 @@ export function CallDetailPage() {
       refresh();
       success("Analysis complete", "The AI review is ready.");
     },
-    onError: (err: any) => toastError("Analysis failed", err?.message || "Try again."),
+    onError: (err) => toastError("Analysis not run", describeError(err).detail),
   });
   const reconcile = useMutation({
     mutationFn: () => api.calls.reconcile(callId ?? ""),
     onSuccess: (r) => {
       refresh();
       if (r?.attached) success("Recording attached", "Telnyx had a recording for this call.");
-      else toastError("No recording found", "Telnyx has no recording for this call yet.");
+      else toastWarning("No recording yet", "Telnyx has no recording for this call yet. Try again in a minute.");
     },
-    onError: (err: any) => toastError("Reconcile failed", err?.message || "Try again."),
+    onError: (err) => toastError("Recording not checked", describeError(err).detail),
   });
 
   const { data: lead } = useQuery<any>({

@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { describeError } from "@/domains/feedback";
 import { Button } from "@/primitives";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -71,7 +72,7 @@ export function ContactPage({ type }: { type: ContactType }) {
         return true;
       } catch (err) {
         // The pipeline guard explains a refused move (409); show its reason.
-        toastError("Not saved", err instanceof Error && err.message ? err.message : "The change was undone. Try again.");
+        toastError("Not saved", describeError(err).detail);
         return false;
       }
     },
@@ -90,8 +91,8 @@ export function ContactPage({ type }: { type: ContactType }) {
       queryClient.invalidateQueries({ queryKey: ["contacts-page"] });
       success("Deleted", `${contact?.name ?? "The contact"} was removed.`);
       navigate("/contacts");
-    } catch {
-      toastError("Not deleted", "Twenty refused the delete. Try again.");
+    } catch (err) {
+      toastError("Not deleted", describeError(err).detail);
     }
   }, [type, id, queryClient, success, contact?.name, navigate, toastError]);
 

@@ -4,6 +4,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Layout } from "@/components/common/Layout";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ToastProvider } from "@/components/ui/Toast";
+import { FeedbackBridge } from "@/domains/feedback";
 import {
   AppShellSkeleton,
   AuthCardSkeleton,
@@ -92,6 +93,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
+        <FeedbackBridge />
         <AppRoutes />
       </ToastProvider>
     </ErrorBoundary>

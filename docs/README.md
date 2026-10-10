@@ -20,6 +20,7 @@ Start at the [README](../README.md). This page is the index of everything else.
 | [../SETUP.md](../SETUP.md) | Full environment variable reference. |
 | [design-system.md](./design-system.md) | The scale, buttons, links, pills, sections, and the shared pipelines (state machines) every screen uses. |
 | [twenty-ui-reference.md](./twenty-ui-reference.md) | How Twenty itself sizes and styles its UI (reference notes). |
+| [feedback-map.md](./feedback-map.md) | Every action, its toasts and how its failures reach the person (generated, checked on push). |
 | [sip-providers.md](./sip-providers.md) | Configuring SIP, for any provider. |
 
 ## Ship it

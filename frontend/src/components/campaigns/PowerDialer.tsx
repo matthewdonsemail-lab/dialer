@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { describeError } from "@/domains/feedback";
 import { useProspectLookup, type ContactRow } from "@/lib/contacts";
 import { type CallCampaign } from "@/lib/api-client";
 import { useToast } from "@/components/ui/Toast";
@@ -52,19 +53,19 @@ export function PowerDialerProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [queue, setQueue] = useState<QueueView | null>(null);
   const { data: calls } = useCalls();
-  const { error: toastError } = useToast();
+  const { warning: toastWarning } = useToast();
 
   const start = useCallback(
     (campaign: CallCampaign) => {
       const progress = campaignProgress(campaign, (calls ?? []) as unknown as CampaignCall[]);
       const first = progress.remainingIds[0];
       if (!first) {
-        toastError("Nothing left to dial", "Every number in this campaign has been called.");
+        toastWarning("Nothing left to dial", "Every number in this campaign has been called.");
         return;
       }
       setSession({ campaign, currentId: first, done: [] });
     },
-    [calls, toastError],
+    [calls, toastWarning],
   );
 
   useEffect(() => {
@@ -92,7 +93,7 @@ function PowerDialerDriver({
   onQueue: (q: QueueView | null) => void;
 }) {
   const dialer = useDialer();
-  const { success, warning } = useToast();
+  const { success, warning, error: toastError } = useToast();
   const { data: calls } = useCalls();
   const updateCampaign = useUpdateCallCampaign();
   const { campaign, currentId, done } = session;
@@ -122,7 +123,10 @@ function PowerDialerDriver({
       onChange({ campaign: s.campaign, currentId: following, done: nowDone });
       return;
     }
-    updateCampaign.mutate({ id: s.campaign.id, patch: { status: "completed" } });
+    updateCampaign.mutate(
+      { id: s.campaign.id, patch: { status: "completed" } },
+      { onError: (err) => toastError("Campaign not marked complete", describeError(err).detail) },
+    );
     success("Campaign complete", `Every number in "${s.campaign.name}" has been dialed.`);
     onChange(null);
   }, [onChange, success, updateCampaign]);

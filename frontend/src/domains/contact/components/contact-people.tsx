@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { describeError } from "@/domains/feedback";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Mail, Pencil, Phone, Plus, Trash2, Users } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
@@ -34,7 +35,7 @@ export function ContactPeople({ contact }: { contact: Contact }) {
       setEditing(null);
       success(id ? "Person updated" : "Person added", person.name);
     },
-    onError: (err) => toastError("Not saved", err instanceof Error && err.message ? err.message : "Twenty did not accept the change. Try again."),
+    onError: (err) => toastError("Person not saved", describeError(err).detail),
   });
 
   const remove = useMutation({
@@ -44,7 +45,7 @@ export function ContactPeople({ contact }: { contact: Contact }) {
       setEditing(null);
       success("Person removed", "It can be restored from Twenty's deleted records.");
     },
-    onError: () => toastError("Not removed", "Try again."),
+    onError: (err) => toastError("Person not removed", describeError(err).detail),
   });
 
   return (

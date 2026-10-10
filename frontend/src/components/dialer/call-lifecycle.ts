@@ -70,7 +70,7 @@ export class CallLifecycle {
   setPhoneActive() {
     const hold = this.hold;
     if (!hold) return;
-    api.twentyPhones.setState(hold.phoneId, { memberId: hold.memberId, state: "ACTIVE" }).catch(() => {});
+    api.twentyPhones.setState(hold.phoneId, { memberId: hold.memberId, state: "ACTIVE" }).catch((err) => sipLog.warn("app", `number state not set to ACTIVE: ${err?.message || err}`));
   }
 
   /**
@@ -87,7 +87,7 @@ export class CallLifecycle {
         this.stopHeartbeat();
         return;
       }
-      api.twentyPhones.heartbeat(hold.phoneId, { memberId: hold.memberId }).catch(() => {});
+      api.twentyPhones.heartbeat(hold.phoneId, { memberId: hold.memberId }).catch((err) => sipLog.warn("app", `claim heartbeat failed: ${err?.message || err}`));
     }, intervalMs);
   }
 
@@ -103,8 +103,10 @@ export class CallLifecycle {
     this.hold = null;
     try {
       await api.twentyPhones.release(hold.phoneId, { memberId: hold.memberId, callId: this.callId ?? undefined });
-    } catch {
-      // best-effort: the claim goes stale without heartbeats
+    } catch (err: any) {
+      // The claim still goes stale without heartbeats, so the number frees
+      // itself; log it so a stuck "in use" number can be traced.
+      sipLog.warn("app", `number release failed (it frees itself when the claim goes stale): ${err?.message || err}`);
     }
   }
 
@@ -215,7 +217,7 @@ export class CallLifecycle {
         error = err;
         sipLog.error("app", `disposition not saved for call ${id}: ${(err as any)?.message || err}`);
       }
-      api.calls.reconcile(id).catch(() => {});
+      api.calls.reconcile(id).catch((err) => sipLog.warn("app", `recording reconcile failed for call ${id}: ${err?.message || err}`));
     }
     await this.release();
     if (error) throw error;

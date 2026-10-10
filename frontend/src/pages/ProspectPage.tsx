@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { describeError } from "@/domains/feedback";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Mail, PhoneCall, RefreshCw, User, Users } from "@/components/ui/icons";
@@ -88,7 +89,7 @@ function option(value: string, label: string, icon: React.ReactNode, count?: num
 export function ProspectPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { success, error: toastError } = useToast();
+  const { success, error: toastError, warning: toastWarning } = useToast();
   const table = useDataTable("prospects");
   const { columnFilters, setColumnFilter } = table;
 
@@ -199,8 +200,8 @@ export function ProspectPage() {
     try {
       await removeContacts([id]);
       success("Contact deleted", `${name} has been removed from the list`);
-    } catch {
-      toastError("Error", "Failed to delete the contact");
+    } catch (err) {
+      toastError("Contact not deleted", describeError(err).detail);
     }
   }
 
@@ -208,8 +209,9 @@ export function ProspectPage() {
     try {
       await (row.type === "lead" ? updateLead : updateProspect).mutateAsync({ id: row.id, patch: { status: newStatus } });
       queryClient.invalidateQueries({ queryKey: ["contacts-facets"] });
-    } catch {
-      toastError("Status not saved", "The change was undone. Try again.");
+    } catch (err) {
+      // The change was rolled back; a pipeline refusal (409) says why.
+      toastError("Status not saved", describeError(err).detail);
     }
   }
 
@@ -219,8 +221,8 @@ export function ProspectPage() {
     try {
       await refresh();
       success("Sync complete", "Contacts refreshed from Twenty");
-    } catch (err: any) {
-      toastError("Sync error", err.message || "Failed to sync");
+    } catch (err) {
+      toastError("Contacts not refreshed", describeError(err).detail);
     } finally {
       setSyncing(false);
     }
@@ -230,8 +232,8 @@ export function ProspectPage() {
     try {
       await removeContacts(ids);
       success("Deleted", `${ids.length} contact(s) deleted`);
-    } catch {
-      toastError("Error", "Failed to delete contacts");
+    } catch (err) {
+      toastError("Contacts not deleted", describeError(err).detail);
     }
   }
 
@@ -239,7 +241,7 @@ export function ProspectPage() {
   async function startCampaignFrom(ids: string[], clearSelection: () => void) {
     const prospectIds = ids.filter((id) => typeOf.get(id) !== "lead");
     if (prospectIds.length === 0) {
-      toastError("No prospects selected", "Call campaigns dial prospects; leads can be called from their own page.");
+      toastWarning("No prospects selected", "Call campaigns dial prospects; leads can be called from their own page.");
       return;
     }
     try {
@@ -247,8 +249,8 @@ export function ProspectPage() {
       clearSelection();
       setCampaignModal({ open: true, campaignId: created.id });
       if (prospectIds.length < ids.length) success("Campaign created", `${ids.length - prospectIds.length} lead(s) were left out; campaigns dial prospects.`);
-    } catch (err: any) {
-      toastError("Campaign not created", err?.message || "Try again.");
+    } catch (err) {
+      toastError("Campaign not created", describeError(err).detail);
     }
   }
 

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { describeError } from "@/domains/feedback";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useToast } from "@/components/ui/Toast";
@@ -75,6 +76,9 @@ interface DialerValue {
   notes: string;
   setNotes: (notes: string) => void;
   notesSaved: boolean;
+  notesError: string | null;
+  /** Saves the current notes again after a failure. */
+  retryNotes: () => void;
   failure: ClassifiedFailure | null;
   cooldownNotice: string | null;
   recWarning: string | null;
@@ -158,6 +162,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const [outcome, setOutcome] = useState("no_answer");
   const [notes, setNotesState] = useState("");
   const [notesSaved, setNotesSaved] = useState(true);
+  /** Why the last notes autosave failed; the dock shows it with Retry. */
+  const [notesError, setNotesError] = useState<string | null>(null);
   const [failure, setFailure] = useState<ClassifiedFailure | null>(null);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
   const [recWarning, setRecWarning] = useState<string | null>(null);
@@ -336,7 +342,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       bridgeLegRef.current = contactLegId;
       lc.markRecordedByBridge(contactLegId);
       const rowId = await lc.ensureRow();
-      if (rowId) api.calls.update(rowId, { telnyxCallId: contactLegId }).catch(() => {});
+      if (rowId) {
+        // Without this stamp the recording webhook cannot find the call row.
+        api.calls.update(rowId, { telnyxCallId: contactLegId }).catch((err) =>
+          sipLog.error("app", `call-control id not saved on call ${rowId}: ${describeError(err).detail}`),
+        );
+      }
       setCallState("ringing");
     } catch (err: any) {
       await fail("Call not placed", err?.message || "The dialer could not ring this contact.");
@@ -530,7 +541,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     if (bridgeLegRef.current && audioBridge.session) {
       // Phone audio: drop the contact; the operator's line stays up.
       bridgeLegRef.current = null;
-      void api.audioSessions.hangup(audioBridge.session.id).catch(() => {});
+      void api.audioSessions.hangup(audioBridge.session.id).catch((err) =>
+        toastError("Contact not hung up", `${describeError(err).detail} End the call from your phone.`),
+      );
     }
     const session = sessionRef.current;
     if (session) {
@@ -633,7 +646,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       return;
     }
     const t = setTimeout(() => {
-      lc.saveNotes(notes).then(() => setNotesSaved(true)).catch(() => {});
+      lc.saveNotes(notes)
+        .then(() => {
+          setNotesSaved(true);
+          setNotesError(null);
+        })
+        .catch((err) => setNotesError(describeError(err).detail));
     }, 800);
     return () => clearTimeout(t);
   }, [notes, notesSaved]);
@@ -648,8 +666,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       if (lc && !lc.ctx.simulated) {
         try {
           await lc.wrapUp(o, notes);
-        } catch (err: any) {
-          toastError("Disposition not saved", `${err?.message || err}. The hangup-time result is still on the call.`);
+        } catch (err) {
+          toastError("Disposition not saved", `${describeError(err).detail} The hangup-time result is still on the call.`);
         }
       } else {
         await lc?.release();
@@ -658,7 +676,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       const status = recordStatusForOutcome(o);
       if (status && t?.contactId && !SIMULATE_CALLS) {
         const update = t.contactType === "lead" ? api.leads.update(t.contactId, { status }) : api.prospects.update(t.contactId, { status });
-        await update.catch(() => toastError("Contact status not updated", "The call was saved; set the status on the contact."));
+        // A pipeline refusal (e.g. the contact is Converted) is expected: say why.
+        await update.catch((err) => toastError("Contact status not updated", `The call was saved. ${describeError(err).detail}`));
       }
       ["calls", "twentyPhones", "contacts-page", "prospect", "lead", "leads"].forEach((key) =>
         queryClient.invalidateQueries({ queryKey: [key] }),
@@ -708,6 +727,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     notes,
     setNotes,
     notesSaved,
+    notesError,
+    retryNotes: () => {
+      setNotesError(null);
+      setNotesSaved(false);
+      setNotesState((n) => n + "");
+    },
     failure,
     cooldownNotice,
     recWarning,
@@ -726,7 +751,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     saveSummary,
     discardSummary,
   }), [isOpen, pinned, setPinned, lines, line, setLineId, registered, phoneAudio, state, target, direction, duration, muted, held,
-    outcome, notes, setNotes, notesSaved, failure, cooldownNotice, recWarning, incoming, options.saveLabel, saving,
+    outcome, notes, setNotes, notesSaved, notesError, failure, cooldownNotice, recWarning, incoming, options.saveLabel, saving,
     dial, dialAnyway, hangup, mute, hold, sendDtmf, accept, decline, saveSummary, discardSummary]);
 
   return (

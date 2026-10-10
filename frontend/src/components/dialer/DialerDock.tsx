@@ -633,15 +633,26 @@ function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onTog
 }
 
 function NotesField() {
-  const { notes, setNotes, notesSaved } = useDialer();
+  const { notes, setNotes, notesSaved, notesError, retryNotes } = useDialer();
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label htmlFor="dialer-notes" className="text-[12px] font-medium text-[var(--ods-text-tertiary)]">
+        <label htmlFor="dialer-notes" className="text-[12px] font-semibold text-[var(--ods-text-secondary)]">
           Notes
         </label>
-        <span className="text-[11px] text-[var(--ods-text-tertiary)] inline-flex items-center gap-1">
-          {notes && (notesSaved ? <><Check className="w-3 h-3 text-emerald-600" /> Saved to the call</> : "Saving…")}
+        <span className="text-[12px] text-[var(--ods-text-secondary)] inline-flex items-center gap-1">
+          {notesError ? (
+            <>
+              <span className="text-red-600 font-semibold" title={notesError}>
+                Not saved
+              </span>
+              <button type="button" onClick={retryNotes} className="ods-link">
+                Retry
+              </button>
+            </>
+          ) : (
+            notes && (notesSaved ? <><Check className="w-3 h-3 text-emerald-600" /> Saved to the call</> : "Saving…")
+          )}
         </span>
       </div>
       <textarea

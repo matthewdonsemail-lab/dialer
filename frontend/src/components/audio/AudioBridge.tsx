@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { describeError } from "@/domains/feedback";
 import { Headphones, Phone, PhoneOff } from "@/components/ui/icons";
 import { api, type AudioSessionView } from "@/lib/api-client";
 import { useAudioSettings } from "@/hooks/use-audio-settings";
@@ -52,17 +53,21 @@ export function AudioBridgeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session || !LIVE.has(session.status)) return;
     const id = session.id;
+    let misses = 0;
     const timer = setInterval(async () => {
       try {
         const next = await api.audioSessions.get(id);
+        misses = 0;
         setSession(next);
         if (next.status === "ready") settle(next);
         if (next.status === "failed" || next.status === "ended") {
           settle(null);
           if (next.status === "failed") toastError("Phone audio did not connect", next.error ?? "Try again.");
         }
-      } catch {
-        // transient; keep polling
+      } catch (err) {
+        // One miss is noise; three in a row means the line state is unknown.
+        misses += 1;
+        if (misses === 3) toastError("Phone line status unknown", `${describeError(err).detail} The prompt may be out of date.`);
       }
     }, 1000);
     return () => clearInterval(timer);
@@ -101,7 +106,10 @@ export function AudioBridgeProvider({ children }: { children: ReactNode }) {
     const current = session;
     settle(null);
     setSession(null);
-    if (current && LIVE.has(current.status)) await api.audioSessions.end(current.id).catch(() => {});
+    if (current && LIVE.has(current.status)) {
+      // The line also ends on its own when the phone hangs up; just record why it did not end here.
+      await api.audioSessions.end(current.id).catch((err) => console.warn("Phone line not ended", err));
+    }
   }, [session, settle]);
 
   // Switching to computer audio closes any phone line.

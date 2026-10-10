@@ -17,12 +17,8 @@ export function getAuthToken(): string | null {
 }
 
 /** A non-2xx API response. `status` lets callers tell "signed out" (401) from a transient failure. */
-export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+export { ApiError } from "./api-error";
+import { ApiError } from "./api-error";
 
 /** Phone audio line (Call me / Dial in), as /api/audio-sessions returns it. */
 export interface AudioSessionView {
@@ -88,14 +84,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    // fetch only throws when no response arrived at all.
+    throw new ApiError(0, "The dialer server could not be reached.", null, "NETWORK", path);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, body.error || `Request failed: ${res.status}`);
+    const details = typeof body.details === "string" ? body.details : body.details ? JSON.stringify(body.details) : null;
+    throw new ApiError(res.status, body.error || `Request failed: ${res.status}`, details, typeof body.code === "string" ? body.code : null, path);
   }
 
   if (res.status === 204) return undefined as T;

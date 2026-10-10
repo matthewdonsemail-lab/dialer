@@ -25,6 +25,8 @@ pre-push:
       run: node scripts/check-no-rounded-full.mjs
     - name: design system holds (docs/design-system.md)
       run: node scripts/check-design-system.mjs
+    - name: every CRUD action reports its failure (docs/feedback-map.md)
+      run: node scripts/audit-feedback.mjs --check
     - name: no out-of-scope paths are tracked
       run: node scripts/check-scope.mjs
     - name: no credentials in tracked source

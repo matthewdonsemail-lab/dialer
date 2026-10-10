@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { describeError } from "@/domains/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { checkSmsRoute, onPageSent, outreachMachine, regionName, regionOfCountry, regionOfNumber, videoMachine } from "@dialer/shared";
 import { Check, ChevronDown, Copy, ExternalLink, Eye, Globe, MessageSquare, Phone, Play, Sparkles, Video } from "@/components/ui/icons";
@@ -111,7 +112,7 @@ export function WebsitePanel({ prospectId, prospectPhone, prospectCountry }: { p
       ["prospect-website-status", "prospect", "record-activity"].forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
       success("Marked as sent", "Outreach moved to Message sent.");
     },
-    onError: (err) => toastError("Not marked as sent", err instanceof Error ? err.message : "Try again."),
+    onError: (err) => toastError("Not marked as sent", describeError(err).detail),
   });
 
   const ensureOffer = useMutation({
@@ -120,7 +121,7 @@ export function WebsitePanel({ prospectId, prospectPhone, prospectCountry }: { p
       queryClient.invalidateQueries({ queryKey: ["prospect-website-status", prospectId] });
       success(res.action === "created" ? "Industry copy created" : "Industry copy found", `Edit it in Twenty under agencyOffers (INDUSTRY:${res.industryKey}).`);
     },
-    onError: (err) => toastError("Not created", err instanceof Error ? err.message : "Try again."),
+    onError: (err) => toastError("Industry copy not created", describeError(err).detail),
   });
 
   if (isLoading) return <PanelSkeleton />;
