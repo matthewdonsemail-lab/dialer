@@ -39,7 +39,7 @@ export async function metadataMutation<T = any>(mutation: string): Promise<T> {
 
 export async function getObjectId(nameSingular: string): Promise<string | null> {
   const data = await metadataMutation<any>(
-    `{ objects(paging: {first: 100}) { edges { node { id nameSingular } } } }`
+    `{ objects(paging: {first: 200}) { edges { node { id nameSingular } } } }`
   );
   const found = data.objects.edges
     .map((e: any) => e.node)
@@ -49,7 +49,7 @@ export async function getObjectId(nameSingular: string): Promise<string | null> 
 
 export async function getFieldNames(objectMetadataId: string): Promise<Set<string>> {
   const data = await metadataMutation<any>(
-    `{ objects(paging: {first: 100}) { edges { node { id fields(paging: {first: 100}) { edges { node { name } } } } } } }`
+    `{ objects(paging: {first: 200}) { edges { node { id fields(paging: {first: 200}) { edges { node { name } } } } } } }`
   );
   const node = data.objects.edges
     .map((e: any) => e.node)

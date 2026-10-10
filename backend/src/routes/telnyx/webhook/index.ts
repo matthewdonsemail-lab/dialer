@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listTwentyAll, createTwenty, updateTwenty } from "../../../lib/twenty/client/index.js";
+import { listTwenty, createTwenty, updateTwenty } from "../../../lib/twenty/client/index.js";
 import { analyzeCallTranscript, isAiConfigured } from "../../../lib/ai/analysis/index.js";
 import { createLogger } from "../../../lib/logger/index.js";
 import type { AgencyCall } from "../../calls/types.js";
@@ -31,9 +31,15 @@ const log = createLogger('telnyx-webhook');
 
 const router = Router();
 
+/** A value safe inside a quoted Twenty REST filter literal. */
+function filterLiteral(value: string): string {
+  return `"${value.replace(/["\\[\]]/g, "")}"`;
+}
+
+/** The call row for a Telnyx call, looked up by filter (not a scan of every call). */
 async function findCallByTelnyxId(telnyxCallId: string): Promise<AgencyCall | null> {
-  const calls = await listTwentyAll<AgencyCall>('agencyCalls');
-  return calls.find((c) => c.telnyxCallId === telnyxCallId) ?? null;
+  const calls = await listTwenty<AgencyCall>('agencyCalls', { limit: 1, filter: `telnyxCallId[eq]:${filterLiteral(telnyxCallId)}` });
+  return calls[0] ?? null;
 }
 
 /**
@@ -44,7 +50,11 @@ async function findCallByTelnyxId(telnyxCallId: string): Promise<AgencyCall | nu
 async function findOpenCallByParties(from?: string, to?: string): Promise<AgencyCall | null> {
   if (!from && !to) return null;
   const windowStart = Date.now() - 120 * 60_000;
-  const calls = await listTwentyAll<AgencyCall>('agencyCalls');
+  // Only the last two hours of calls, filtered in Twenty.
+  const calls = await listTwenty<AgencyCall>('agencyCalls', {
+    limit: 200,
+    filter: `createdAt[gte]:"${new Date(windowStart).toISOString()}"`,
+  });
   let best: AgencyCall | null = null;
   let bestAt = 0;
   for (const r of calls) {

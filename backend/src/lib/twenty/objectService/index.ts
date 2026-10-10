@@ -1,6 +1,7 @@
 import { createLogger } from "../../logger/index.js";
 import { loadSyncConfig } from "../client/index.js";
 import { setupCallHistorySchema } from "../agencyCall/index.js";
+import { setupProspectSchema } from "../agencyProspect/index.js";
 import { setupCallCampaignSchema } from "../callCampaign/index.js";
 import { setupAudioSessionSchema } from "../audioSession/index.js";
 
@@ -551,6 +552,12 @@ export async function setupTwentyCRM(): Promise<{
     results.objects.push({ name: "dialerAudioSessions", id: audioSchema.objectId, isNew: audioSchema.objectIsNew });
     for (const f of audioSchema.fields) {
       results.fields.push({ object: "dialerAudioSessions", name: f.name, isNew: f.isNew });
+    }
+
+    // 10. Dialer fields on the existing agencyProspect object (contact notes).
+    const prospectSchema = await setupProspectSchema();
+    for (const f of prospectSchema.fields) {
+      results.fields.push({ object: "agencyProspects", name: f.name, isNew: f.isNew });
     }
 
     log.info(`Setup completed. Created ${results.objects.length} objects and ${results.fields.length} fields.`);

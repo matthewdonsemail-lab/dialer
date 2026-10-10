@@ -77,7 +77,7 @@ export function LeadDetailPage() {
   function handleCallEnd(data: { outcome: string; duration: number; notes: string; direction: "outbound" | "inbound"; recordingUrl?: string | null; callId?: string | null }) {
     // Call row is already logged to agencyCalls by the Softphone (with recording).
     queryClient.invalidateQueries({ queryKey: ["calls"] });
-    queryClient.invalidateQueries({ queryKey: ["twenty-phones"] });
+    queryClient.invalidateQueries({ queryKey: ["twentyPhones"] });
 
     // The disposition decides what the record becomes (see lib/call-outcome).
     const newStatus = recordStatusForOutcome(data.outcome);

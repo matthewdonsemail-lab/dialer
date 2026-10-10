@@ -244,10 +244,6 @@ router.get("/:id", async (req, res) => {
     log.info(`Getting prospect ${req.params.id}`);
     const id = req.params.id as string;
     const prospect = await getTwenty<AgencyProspect>('agencyProspects', id);
-    log.info(`Raw prospect from Twenty: ${JSON.stringify(prospect)}`);
-    log.info(`  All keys: ${JSON.stringify(Object.keys(prospect as any))}`);
-    log.info(`  campaignIdId: ${prospect.campaignIdId}`);
-    log.info(`  Any campaign-related keys: ${Object.keys(prospect as any).filter(k => k.toLowerCase().includes('campaign')).join(', ')}`);
 
     const mapped = mapProspectDetail(prospect);
 
@@ -306,6 +302,7 @@ router.post("/", async (req: AuthRequest, res) => {
       externalId: undefined,
       outboundState: tags?.[0],
       coldCallStatus,
+      ...(notes ? { notes } : {}),
       // Own-field member attribution (omitted for legacy/fallback sessions).
       ...(req.workspaceMemberId ? { createdByMemberId: req.workspaceMemberId } : {}),
     };
@@ -379,7 +376,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     if (city !== undefined) payload.city = city;
     if (state !== undefined) payload.region = state;
     if (source !== undefined) payload.niche = source;
-    if (notes !== undefined) payload.outboundLabel = notes;
+    if (notes !== undefined) payload.notes = notes || null;
     if (tags?.[0] !== undefined) payload.outboundState = tags[0];
 
     // Handle campaign relation

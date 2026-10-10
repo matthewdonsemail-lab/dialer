@@ -1019,7 +1019,6 @@ export function Softphone({
         // Put call on hold via SIP re-invite
         try {
           await session.pause();
-          console.log("Call put on hold");
         } catch (err) {
           console.error("Failed to put call on hold:", err);
           setCallState("active");
@@ -1029,7 +1028,6 @@ export function Softphone({
         // Resume call
         try {
           await session.resume();
-          console.log("Call resumed");
         } catch (err) {
           console.error("Failed to resume call:", err);
         }

@@ -31,7 +31,9 @@ export interface AgencyProspect {
   coldCallStatus?: string;
   utmSource?: string;
   source?: string;
-  note?: string;
+  /** Free-text contact notes (created by setupProspectSchema; never stored in outboundLabel). */
+  notes?: string | null;
+  qualificationStatus?: string | { value?: string; label?: string } | null;
   /** WorkspaceMember UUID responsible for the prospect (our attribution, server-derived). */
   createdByMemberId?: string;
   campaignIdId?: string; // Relation to agencyCampaign

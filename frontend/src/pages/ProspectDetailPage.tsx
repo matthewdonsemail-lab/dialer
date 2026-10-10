@@ -93,11 +93,6 @@ export function ProspectDetailPage() {
   });
 
 
-  React.useEffect(() => {
-    if (prospect) console.log("ProspectDetailPage data:", JSON.stringify(prospect, null, 2));
-    if (prospect) console.log("ProspectDetailPage campaign_id:", prospect.campaign_id);
-  }, [prospect]);
-
   // Fetch status options from Twenty CRM
   const { data: meta } = useQuery<{ fields: Record<string, Array<{ label: string; value: string; color: string }>> }>({
     queryKey: ["twenty-meta", "agencyProspects"],
@@ -144,7 +139,7 @@ export function ProspectDetailPage() {
     // Call row is already logged to agencyCalls by the Softphone (with recording);
     // here we advance prospect status and refresh phone claim state.
     queryClient.invalidateQueries({ queryKey: ["calls"] });
-    queryClient.invalidateQueries({ queryKey: ["twenty-phones"] });
+    queryClient.invalidateQueries({ queryKey: ["twentyPhones"] });
 
     // The disposition decides what the record becomes (see lib/call-outcome).
     const newStatus = recordStatusForOutcome(data.outcome);
