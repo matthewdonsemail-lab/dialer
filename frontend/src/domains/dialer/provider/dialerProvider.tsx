@@ -45,6 +45,11 @@ export interface DialerLine {
   countryCode: string | null;
   callState: string;
   claimedByMemberId: string | null;
+  /** LONG_CODE, TOLL_FREE or SHORT_CODE. */
+  numberType: string | null;
+  /** US texting registrations: 10DLC campaign (long codes), toll-free verification. */
+  tenDlcCampaignId: string | null;
+  tollFreeVerificationId: string | null;
 }
 
 interface IncomingCall {
@@ -148,6 +153,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         countryCode: p.countryCode ?? null,
         callState: p.callState ?? "IDLE",
         claimedByMemberId: p.claimedByMemberId ?? null,
+        numberType: p.numberType ?? null,
+        tenDlcCampaignId: p.tenDlcCampaignId ?? null,
+        tollFreeVerificationId: p.tollFreeVerificationId ?? null,
       }));
   }, [phones, member?.id]);
   const line = useMemo(() => {
