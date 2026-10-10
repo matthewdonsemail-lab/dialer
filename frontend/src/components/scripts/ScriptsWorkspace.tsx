@@ -1,7 +1,9 @@
+import { TabBar } from "@/components/ui/TabBar";
 import { Chip } from "@/components/ui/Chip";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  ArrowLeft,
   BarChart3,
   BookOpen,
   CalendarDays,
@@ -130,6 +132,18 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Narrow space (phone, small modal): show the list or one script, not both.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setNarrow(el.clientWidth < 760));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const all = (scripts ?? []) as Script[];
   const allCalls = calls ?? [];
   const contacts = prospects ?? [];
@@ -177,6 +191,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
       const created: any = await create.mutateAsync(data);
       if (created?.id) {
         setSelectedId(created.id);
+        setShowDetail(true);
         setDraft(draftOf(created as Script));
         setTab("script");
       }
@@ -189,9 +204,11 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
   const categories = [...new Set([...DEFAULT_CATEGORIES, ...all.map((s) => s.scriptData?.category).filter(Boolean)])] as string[];
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div ref={rootRef} className="flex flex-1 min-h-0">
       {/* script list */}
-      <aside className="w-80 shrink-0 border-r border-[var(--ods-border)] flex flex-col min-h-0">
+      <aside
+        className={`${narrow ? (showDetail ? "hidden" : "flex-1") : "w-80 shrink-0 border-r border-[var(--ods-border)]"} flex flex-col min-h-0`}
+      >
         <div className="p-3 border-b border-[var(--ods-border)] flex items-center gap-2">
           <div className="flex-1 flex items-center gap-2 h-9 px-2.5 rounded-[8px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] focus-within:border-[var(--ods-brand-500)]">
             <Search className="w-4 h-4 text-[var(--ods-text-tertiary)]" />
@@ -229,6 +246,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
                   key={s.id}
                   onClick={() => {
                     setSelectedId(s.id);
+                    setShowDetail(true);
                     setTab("performance");
                   }}
                   className={`w-full text-left px-4 py-3 border-b border-[var(--ods-border)] transition-colors ${
@@ -253,7 +271,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
       </aside>
 
       {/* selected script */}
-      <section className="flex-1 min-w-0 flex flex-col bg-[var(--ods-bg-secondary)]">
+      <section className={`${narrow && !showDetail ? "hidden" : "flex"} flex-1 min-w-0 flex-col bg-[var(--ods-bg-secondary)]`}>
         {!selected || !stats ? (
           <div className="flex-1 flex items-center justify-center p-8">
             <EmptyState>{isLoading ? "Loading scripts…" : "Pick a script on the left, or press New."}</EmptyState>
@@ -261,7 +279,17 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
         ) : (
           <>
             <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3 bg-[var(--ods-bg-primary)] border-b border-[var(--ods-border)]">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                {narrow && (
+                  <button
+                    onClick={() => setShowDetail(false)}
+                    aria-label="Back to scripts"
+                    title="Back to scripts"
+                    className="w-9 h-9 shrink-0 inline-flex items-center justify-center rounded-[8px] border border-[var(--ods-border-strong)] text-[var(--ods-text-secondary)]"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                )}
                 {editing ? (
                   <input
                     value={draft!.name}
@@ -305,30 +333,17 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
             </div>
 
             <div className="px-5 pt-4">
-              <div role="tablist" className="grid grid-cols-4 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-1 gap-1">
-                {TABS.map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    role="tab"
-                    aria-selected={tab === key}
-                    onClick={() => setTab(key)}
-                    className={`h-10 rounded-[8px] inline-flex items-center justify-center gap-2 text-[14px] font-semibold transition-colors ${
-                      tab === key ? "bg-[var(--ods-brand-600)] text-white" : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)]"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {label}
-                    {key === "objections" && (
-                      <span className={`px-1.5 rounded-md text-[12px] ${tab === key ? "bg-white/20" : "bg-[var(--ods-bg-tertiary)]"}`}>
-                        {editing ? draft!.objections.length : Object.keys(selected.scriptData?.objection_responses ?? {}).length}
-                      </span>
-                    )}
-                    {key === "calls" && (
-                      <span className={`px-1.5 rounded-md text-[12px] ${tab === key ? "bg-white/20" : "bg-[var(--ods-bg-tertiary)]"}`}>{stats.calls.length}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
+              <TabBar
+                tabs={TABS.map((t) =>
+                  t.key === "objections"
+                    ? { ...t, badge: editing ? draft!.objections.length : Object.keys(selected.scriptData?.objection_responses ?? {}).length }
+                    : t.key === "calls"
+                      ? { ...t, badge: stats.calls.length }
+                      : t,
+                )}
+                value={tab}
+                onChange={setTab}
+              />
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">

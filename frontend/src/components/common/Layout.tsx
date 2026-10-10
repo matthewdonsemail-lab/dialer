@@ -77,9 +77,28 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   );
 }
 
+/** True below 768px wide (phones, narrow windows); follows resizes. */
+function useNarrowScreen(): boolean {
+  const query = '(max-width: 767px)';
+  const [narrow, setNarrow] = React.useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+  React.useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return narrow;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
-  // Collapsed = icon-only rail. Starts collapsed on phone-width screens; the choice is remembered.
-  const [collapsed, setCollapsed] = usePersistedState('sidebar-collapsed', window.innerWidth < 640);
+  // Collapsed = icon-only rail; the desktop choice is remembered. On narrow
+  // screens the rail is always collapsed and expanding opens it as an overlay
+  // above the page, so pages keep their full width.
+  const [savedCollapsed, setSavedCollapsed] = usePersistedState('sidebar-collapsed', false);
+  const narrow = useNarrowScreen();
+  const [overlayOpen, setOverlayOpen] = React.useState(false);
+  const collapsed = narrow ? !overlayOpen : savedCollapsed;
+  const setCollapsed = (next: boolean) => (narrow ? setOverlayOpen(!next) : setSavedCollapsed(next));
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -150,8 +169,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <PowerDialerProvider>
     <div className="flex h-screen overflow-hidden bg-[var(--ods-bg-secondary,#fafafb)] text-[var(--ods-text-primary,#18181b)] font-sans antialiased">
       {/* always-visible sidebar: every section as an icon + label row */}
+      {narrow && overlayOpen && <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setOverlayOpen(false)} aria-hidden="true" />}
+      {/* On narrow screens a fixed-width rail holds the space; the open sidebar floats over the page. */}
+      {narrow && <div className="w-14 flex-shrink-0" aria-hidden="true" />}
       <aside
-        className={`flex-shrink-0 ${collapsed ? 'w-14' : 'w-56'} bg-[var(--ods-bg-secondary)] border-r border-[var(--ods-border)] flex flex-col select-none transition-[width] duration-200`}
+        onClick={(e) => narrow && overlayOpen && (e.target as HTMLElement).closest('a') && setOverlayOpen(false)}
+        className={`flex-shrink-0 ${collapsed ? 'w-14' : 'w-56'} ${
+          narrow ? 'fixed inset-y-0 left-0 z-50 shadow-[0_12px_32px_rgba(0,0,0,0.25)]' : ''
+        } bg-[var(--ods-bg-secondary)] border-r border-[var(--ods-border)] flex flex-col select-none transition-[width] duration-200`}
       >
         {/* workspace + collapse toggle */}
         <div className={`flex items-center h-12 border-b border-[var(--ods-border)] ${collapsed ? 'justify-center' : 'justify-between px-3'}`}>

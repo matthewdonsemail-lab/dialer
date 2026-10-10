@@ -1,6 +1,7 @@
+import { twentyLinks, useTwentyBaseUrl } from "@/lib/twenty/links";
 import { Chip } from "@/components/ui/Chip";
 import { HeadCell, ReportTable, TD, TR } from "@/components/reports/ReportParts";
-import { Users } from "@/components/ui/icons";
+import { ExternalLink, Users } from "@/components/ui/icons";
 import type { TipSpec } from "@/components/ui/InfoTip";
 import { ACTIONS, OBJECTS, UNATTRIBUTED, fieldLabel, formatValue, timeAgo, type AdminAction, type ResolvedActivity } from "@/lib/admin";
 
@@ -35,6 +36,7 @@ export function ActionBadge({ action }: { action: AdminAction }) {
 }
 
 export function ActivityTable({ events, compact = false }: { events: ResolvedActivity[]; compact?: boolean }) {
+  const twentyBase = useTwentyBaseUrl();
   return (
     <ReportTable>
       <thead>
@@ -66,7 +68,20 @@ export function ActivityTable({ events, compact = false }: { events: ResolvedAct
                 <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
                   <Icon className="w-3.5 h-3.5 shrink-0 text-[var(--ods-text-tertiary)]" />
                   <span className="shrink-0 text-[12px] font-semibold text-[var(--ods-text-secondary)]">{OBJECTS[e.object].singular}</span>
-                  <span className="truncate font-medium">{e.name}</span>
+                  {e.recordId ? (
+                    <a
+                      href={twentyLinks.record(twentyBase, OBJECTS[e.object].twentySingular, e.recordId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Open this ${OBJECTS[e.object].singular.toLowerCase()} in Twenty`}
+                      className="min-w-0 inline-flex items-center gap-1 font-medium hover:text-[var(--ods-brand-600)] hover:underline"
+                    >
+                      <span className="truncate">{e.name}</span>
+                      <ExternalLink className="w-3 h-3 shrink-0 text-[var(--ods-text-tertiary)]" />
+                    </a>
+                  ) : (
+                    <span className="truncate font-medium">{e.name}</span>
+                  )}
                 </span>
               </td>
               {!compact && (

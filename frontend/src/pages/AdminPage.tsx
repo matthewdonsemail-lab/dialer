@@ -1,3 +1,5 @@
+import { TabBar } from "@/components/ui/TabBar";
+import { twentyLinks, useTwentyBaseUrl } from "@/lib/twenty/links";
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -5,6 +7,8 @@ import {
   CalendarDays,
   Clock,
   Database,
+  ExternalLink,
+  Settings,
   Shield,
   Users,
   type IconComponent,
@@ -104,24 +108,7 @@ export function AdminPage() {
       </div>
 
       <div className="px-5">
-        <div role="tablist" className="grid grid-cols-2 md:grid-cols-4 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-1 gap-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={tab === key}
-              onClick={() => setTab(key)}
-              className={`h-10 rounded-[8px] inline-flex items-center justify-center gap-2 text-[14px] font-semibold transition-colors ${
-                tab === key
-                  ? "bg-[var(--ods-brand-600)] text-white"
-                  : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)]"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-        </div>
+        <TabBar tabs={TABS} value={tab} onChange={setTab} />
       </div>
 
       <div className="p-5 space-y-4">
@@ -497,6 +484,7 @@ function DataObjects({
   range: ReturnType<typeof rangeFor>;
 }) {
   const index = recordIndex(records, members);
+  const twentyBase = useTwentyBaseUrl();
   const rows = OBJECT_KEYS.map((o) => {
     const mine = events.filter((e) => e.object === o);
     const a = countBy(mine, (e) => e.action);
@@ -570,7 +558,9 @@ function DataObjects({
           <thead>
             <tr>
               <HeadCell>Object</HeadCell>
-              <HeadCell tip={{ title: "Twenty object", what: "The object's API name in Twenty, for settings and the API." }}>Twenty object</HeadCell>
+              <HeadCell tip={{ title: "Twenty object", what: "The object's API name in Twenty. Click it to open the object's data model in Twenty settings; click the object to open its records." }}>
+                Twenty object
+              </HeadCell>
               <HeadCell tip={{ title: "Records", what: "How many exist now. The bar compares objects." }}>Records</HeadCell>
               <HeadCell tip={{ title: "New in range", what: "Records created in the selected range." }}>New</HeadCell>
               <HeadCell>Updated</HeadCell>
@@ -587,14 +577,32 @@ function DataObjects({
               return (
                 <tr key={r.object} className={TR}>
                   <td className={`${TD} font-semibold`}>
-                    <span className="inline-flex items-center gap-2">
+                    <a
+                      href={twentyLinks.records(twentyBase, OBJECTS[r.object].twenty)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Open ${OBJECTS[r.object].label} in Twenty`}
+                      className="inline-flex items-center gap-1.5 hover:text-[var(--ods-brand-600)] hover:underline"
+                    >
                       <span className="w-7 h-7 rounded-md flex items-center justify-center bg-blue-500/15 text-blue-600">
                         <Icon className="w-3.5 h-3.5" />
                       </span>
                       {OBJECTS[r.object].label}
-                    </span>
+                      <ExternalLink className="w-3 h-3 text-[var(--ods-text-tertiary)]" />
+                    </a>
                   </td>
-                  <td className={`${TD} text-[var(--ods-text-secondary)]`}>{OBJECTS[r.object].twenty}</td>
+                  <td className={`${TD} text-[var(--ods-text-secondary)]`}>
+                    <a
+                      href={twentyLinks.settings(twentyBase, OBJECTS[r.object].twenty)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Open the ${OBJECTS[r.object].twenty} data model in Twenty settings`}
+                      className="inline-flex items-center gap-1.5 hover:text-[var(--ods-brand-600)] hover:underline"
+                    >
+                      {OBJECTS[r.object].twenty}
+                      <Settings className="w-3 h-3 text-[var(--ods-text-tertiary)]" />
+                    </a>
+                  </td>
                   <td className={TD}>
                     <div className="flex items-center gap-2">
                       <div className="w-20 h-2.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">

@@ -1,3 +1,4 @@
+import { TabBar } from "@/components/ui/TabBar";
 import { useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -209,27 +210,7 @@ export function CallDetailPage() {
       </div>
 
       <div className="px-5">
-        <div role="tablist" className="grid grid-cols-2 md:grid-cols-5 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-1 gap-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={tab === key}
-              onClick={() => setTab(key)}
-              className={`h-10 rounded-[8px] inline-flex items-center justify-center gap-2 text-[14px] font-semibold transition-colors ${
-                tab === key
-                  ? "bg-[var(--ods-brand-600)] text-white"
-                  : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)]"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-              {key === "activity" && events.length > 0 && (
-                <span className={`px-1.5 rounded-md text-[12px] ${tab === key ? "bg-white/20" : "bg-[var(--ods-bg-tertiary)]"}`}>{events.length}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        <TabBar tabs={TABS.map((t) => (t.key === "activity" && events.length > 0 ? { ...t, badge: events.length } : t))} value={tab} onChange={setTab} />
       </div>
 
       <div className="p-5 space-y-4">

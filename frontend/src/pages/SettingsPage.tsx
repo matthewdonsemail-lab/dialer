@@ -1,10 +1,12 @@
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { BarChart3, Check, Clock, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, Sun, Timer, User, type IconComponent } from "@/components/ui/icons";
 import { InfoTip, TipCard, type TipSpec } from "@/components/ui/InfoTip";
 import { AudioSourceSettings } from "@/components/audio/AudioSourceSettings";
-import { PageCanvas } from "@/components/common/PageCanvas";
-import { WidgetCard } from "@/components/ui/WidgetCard";
+import { SectionTitle } from "@/components/ui/SectionTitle";
+import { TabBar, type TabDef } from "@/components/ui/TabBar";
+import { ReportCard } from "@/components/reports/ReportParts";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { signOut } from "@/lib/auth";
 import { useTheme, type ThemeMode } from "@/lib/theme";
@@ -129,158 +131,204 @@ function ThemePreview({ dark }: { dark: boolean }) {
   );
 }
 
+type SettingsTab = "appearance" | "audio" | "reports" | "account";
+const SETTINGS_TABS: TabDef<SettingsTab>[] = [
+  { key: "appearance", label: "Appearance", icon: Palette },
+  { key: "audio", label: "Audio Source", icon: Headphones },
+  { key: "reports", label: "Reports", icon: BarChart3 },
+  { key: "account", label: "Account", icon: User },
+];
+
+/**
+ * Settings, laid out like Reports and Admin: a titled header, the shared tab
+ * bar, then report cards with eye tooltips. Links like /settings?tab=audio
+ * open straight on a tab.
+ */
 export function SettingsPage() {
   const { mode, setMode } = useTheme();
   const { dailyCallGoal, setDailyCallGoal, conversationSeconds, setConversationSeconds } = useReportSettings();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [tab, setTab] = usePersistedState<SettingsTab>("settings-tab", "appearance");
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const wanted = params.get("tab");
+    if (wanted && SETTINGS_TABS.some((t) => t.key === wanted)) setTab(wanted as SettingsTab);
+  }, [params, setTab]);
 
   return (
-    <PageCanvas
-      title="Settings"
-      maxWidth="4xl"
-      info={{ title: "Settings", icon: Palette, what: "Appearance, report goals and your account.", use: "Changes save on this browser." }}
-    >
-      <div className="space-y-4">
-        <WidgetCard
-          title="Appearance"
-          icon={Palette}
-          info={{ title: "Appearance", icon: Palette, what: "How the dialer looks on this browser.", use: "Pick Light, Dark, or follow your computer." }}
-        >
-          <div role="radiogroup" aria-label="Theme" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {THEME_OPTIONS.map(({ mode: option, label, description, icon: Icon }) => {
-              const selected = mode === option;
-              return (
-                <button
-                  key={option}
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => setMode(option)}
-                  className={`text-left rounded-[8px] border p-3 space-y-2.5 transition-colors ${
-                    selected
-                      ? "border-[var(--ods-brand-600)] ring-1 ring-[var(--ods-brand-600)]"
-                      : "border-[var(--ods-border)] hover:border-[var(--ods-border-strong)]"
-                  }`}
-                >
-                  {option === "system" ? (
-                    <div className="grid grid-cols-2 gap-1">
-                      <ThemePreview dark={false} />
-                      <ThemePreview dark />
-                    </div>
-                  ) : (
-                    <ThemePreview dark={option === "dark"} />
-                  )}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--ods-text-primary)]">
-                        <Icon className="w-3.5 h-3.5" />
-                        {label}
-                      </div>
-                      <p className="text-[12px] text-[var(--ods-text-secondary)] mt-0.5">{description}</p>
-                    </div>
-                    {selected && <Check className="w-4 h-4 flex-shrink-0 text-[var(--ods-brand-600)]" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </WidgetCard>
-
-        <WidgetCard
-          title="Audio Source"
-          icon={Headphones}
-          info={{
-            title: "Audio Source",
-            icon: Headphones,
-            what: "How you hear and talk on calls: this computer's mic and speakers, or your phone.",
-            formula: ["Your phone", "+", "Telnyx", "=", "One call leg per session"],
-            use: "Call me / Dial in need the Telnyx Call Control app and dial-in number configured on the server.",
-          }}
-        >
-          <AudioSourceSettings />
-        </WidgetCard>
-
-        <WidgetCard
-          title="Reports"
-          icon={BarChart3}
-          info={{
-            title: "Report settings",
-            icon: BarChart3,
-            what: "Goals and definitions used by the Reports page.",
-            use: "Changes save on this browser and update Reports straight away.",
-          }}
-          action={
-            <Link to="/reports" className="text-[12px] font-medium text-[var(--ods-brand-600)] hover:underline">
-              Open Reports
-            </Link>
-          }
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            <NumberSetting
-              label="Daily call goal"
-              icon={PhoneOutgoing}
-              help={{
-                title: "Daily call goal",
-                what: "Outbound calls each team member aims for per day.",
-                formula: ["Calls in a day", "≥", "Goal", "=", "Green cell"],
-                use: "Weekly views use 5× this goal.",
-              }}
-              value={dailyCallGoal}
-              onChange={setDailyCallGoal}
-              min={1}
-              max={2000}
-              suffix="calls / day"
-              defaultValue={DEFAULT_CALL_GOAL}
-            />
-            <NumberSetting
-              label="Conversation length"
-              icon={Timer}
-              help={{
-                title: "Conversation length",
-                what: "How long a connected call must last to count as a conversation.",
-                formula: ["Connected call", "≥", "This length", "=", "Conversation"],
-              }}
-              value={conversationSeconds}
-              onChange={setConversationSeconds}
-              min={5}
-              max={1800}
-              suffix="seconds"
-              defaultValue={DEFAULT_CONVERSATION_SECONDS}
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {reportDefinitions(conversationSeconds, dailyCallGoal).map((d) => (
-              <div key={d.title} className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-3">
-                <TipCard tip={d} />
-              </div>
-            ))}
-          </div>
-        </WidgetCard>
-
-        <WidgetCard title="Account" icon={User}>
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-[var(--ods-text-primary)] truncate">
-                {user?.fullName || user?.email?.split("@")[0] || "Signed in"}
-              </p>
-              <p className="text-[12px] text-[var(--ods-text-secondary)] truncate">{user?.email}</p>
-              <p className="text-[12px] text-[var(--ods-text-tertiary)] mt-1">
-                Your profile is managed in Twenty, the dialer's sign-in.
-              </p>
-            </div>
-            <button
-              onClick={async () => {
-                await signOut();
-                navigate("/login");
-              }}
-              className="h-8 px-3 shrink-0 rounded-[6px] border border-[var(--ods-border)] text-[12px] font-medium text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)] flex items-center gap-1.5"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign out
-            </button>
-          </div>
-        </WidgetCard>
+    <div className="flex flex-col h-full min-h-0 overflow-y-auto bg-[var(--ods-bg-secondary)]">
+      <div className="px-5 pt-5 pb-3">
+        <SectionTitle
+          as="h1"
+          title="Settings"
+          pill="Saved on this browser"
+          info={{ title: "Settings", icon: Palette, what: "Appearance, audio source, report goals and your account.", use: "Changes save as you make them." }}
+        />
       </div>
-    </PageCanvas>
+
+      <div className="px-5">
+        <TabBar tabs={SETTINGS_TABS} value={tab} onChange={setTab} />
+      </div>
+
+      <div className="p-5 space-y-4 max-w-5xl w-full">
+        {tab === "appearance" && (
+          <ReportCard
+            title="Theme"
+            unit={THEME_OPTIONS.find((t) => t.mode === mode)?.label ?? "System"}
+            tip={{ title: "Theme", icon: Palette, what: "How the dialer looks on this browser.", use: "Pick Light, Dark, or follow your computer." }}
+          >
+            <div role="radiogroup" aria-label="Theme" className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+              {THEME_OPTIONS.map(({ mode: option, label, description, icon: Icon }) => {
+                const selected = mode === option;
+                return (
+                  <button
+                    key={option}
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setMode(option)}
+                    className={`text-left rounded-[10px] border p-3 space-y-3 transition-colors bg-[var(--ods-bg-primary)] ${
+                      selected ? "border-[var(--ods-brand-600)] ring-2 ring-[var(--ods-brand-600)]" : "border-[var(--ods-border)] hover:border-[var(--ods-border-strong)]"
+                    }`}
+                  >
+                    {option === "system" ? (
+                      <div className="grid grid-cols-2 gap-1">
+                        <ThemePreview dark={false} />
+                        <ThemePreview dark />
+                      </div>
+                    ) : (
+                      <ThemePreview dark={option === "dark"} />
+                    )}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 text-[15px] font-semibold text-[var(--ods-text-primary)]">
+                          <span className="w-7 h-7 rounded-[7px] flex items-center justify-center bg-blue-500/15 text-blue-600">
+                            <Icon className="w-3.5 h-3.5" />
+                          </span>
+                          {label}
+                        </div>
+                        <p className="text-[13px] text-[var(--ods-text-secondary)] mt-1">{description}</p>
+                      </div>
+                      {selected && <Check className="w-4 h-4 flex-shrink-0 text-[var(--ods-brand-600)]" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </ReportCard>
+        )}
+
+        {tab === "audio" && (
+          <ReportCard
+            title="Audio Source"
+            unit="Calls"
+            tip={{
+              title: "Audio Source",
+              icon: Headphones,
+              what: "How you hear and talk on calls: this computer's mic and speakers, or your phone.",
+              formula: ["Your phone", "+", "Telnyx", "=", "One call leg per session"],
+              use: "Call me / Dial in need the Telnyx Call Control app and dial-in number configured on the server.",
+            }}
+          >
+            <AudioSourceSettings />
+          </ReportCard>
+        )}
+
+        {tab === "reports" && (
+          <>
+            <ReportCard
+              title="Goals"
+              unit="Reports"
+              tip={{
+                title: "Report goals",
+                icon: BarChart3,
+                what: "Targets and definitions the Reports page uses.",
+                use: "Changes update Reports straight away.",
+              }}
+              aside={
+                <Link to="/reports" className="h-8 px-3 inline-flex items-center rounded-md border border-[var(--ods-border-strong)] text-[13px] font-semibold text-[var(--ods-brand-600)] hover:bg-[var(--ods-hover)]">
+                  Open Reports
+                </Link>
+              }
+            >
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+                <NumberSetting
+                  label="Daily call goal"
+                  icon={PhoneOutgoing}
+                  help={{
+                    title: "Daily call goal",
+                    what: "Outbound calls each team member aims for per day.",
+                    formula: ["Calls in a day", "≥", "Goal", "=", "Green cell"],
+                    use: "Weekly views use 5× this goal.",
+                  }}
+                  value={dailyCallGoal}
+                  onChange={setDailyCallGoal}
+                  min={1}
+                  max={2000}
+                  suffix="calls / day"
+                  defaultValue={DEFAULT_CALL_GOAL}
+                />
+                <NumberSetting
+                  label="Conversation length"
+                  icon={Timer}
+                  help={{
+                    title: "Conversation length",
+                    what: "How long a connected call must last to count as a conversation.",
+                    formula: ["Connected call", "≥", "This length", "=", "Conversation"],
+                  }}
+                  value={conversationSeconds}
+                  onChange={setConversationSeconds}
+                  min={5}
+                  max={1800}
+                  suffix="seconds"
+                  defaultValue={DEFAULT_CONVERSATION_SECONDS}
+                />
+              </div>
+            </ReportCard>
+            <ReportCard title="Definitions" unit="How Reports counts" tip={{ title: "Definitions", icon: Clock, what: "What each Reports chart measures, using the goals above." }}>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
+                {reportDefinitions(conversationSeconds, dailyCallGoal).map((d) => (
+                  <div key={d.title} className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-3">
+                    <TipCard tip={d} />
+                  </div>
+                ))}
+              </div>
+            </ReportCard>
+          </>
+        )}
+
+        {tab === "account" && (
+          <ReportCard
+            title="Account"
+            unit="Twenty sign-in"
+            tip={{ title: "Account", icon: User, what: "You sign in with Twenty; your name and email come from your Twenty profile." }}
+            aside={
+              <button
+                onClick={async () => {
+                  await signOut();
+                  navigate("/login");
+                }}
+                className="h-8 px-3 shrink-0 rounded-md border border-[var(--ods-border-strong)] text-[13px] font-semibold text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)] inline-flex items-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sign out
+              </button>
+            }
+          >
+            <div className="flex items-center gap-3">
+              <span className="w-11 h-11 shrink-0 rounded-full bg-[var(--ods-brand-600)] text-white text-[16px] font-bold flex items-center justify-center">
+                {(user?.fullName || user?.email || "?").charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[16px] font-semibold text-[var(--ods-text-primary)] truncate">
+                  {user?.fullName || user?.email?.split("@")[0] || "Signed in"}
+                </p>
+                <p className="text-[13px] text-[var(--ods-text-secondary)] truncate">{user?.email}</p>
+              </div>
+            </div>
+          </ReportCard>
+        )}
+      </div>
+    </div>
   );
 }

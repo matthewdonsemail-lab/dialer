@@ -43,14 +43,15 @@ export interface AdminActivityResponse {
   truncated: boolean;
 }
 
-export const OBJECTS: Record<AdminObject, { label: string; singular: string; icon: IconComponent; twenty: string }> = {
-  call: { label: "Calls", singular: "Call", icon: Phone, twenty: "agencyCalls" },
-  prospect: { label: "Prospects", singular: "Prospect", icon: Users, twenty: "agencyProspects" },
-  lead: { label: "Leads", singular: "Lead", icon: User, twenty: "agencyLeads" },
-  phone: { label: "Phone numbers", singular: "Phone number", icon: Headphones, twenty: "agencyPhones" },
-  callCampaign: { label: "Call campaigns", singular: "Call campaign", icon: PhoneCall, twenty: "callCampaigns" },
-  campaign: { label: "Campaigns", singular: "Campaign", icon: BarChart3, twenty: "agencyCampaigns" },
-  script: { label: "Scripts", singular: "Script", icon: BookOpen, twenty: "agencyScripts" },
+/** `twenty` / `twentySingular`: the object names in Twenty, used for deep links. */
+export const OBJECTS: Record<AdminObject, { label: string; singular: string; icon: IconComponent; twenty: string; twentySingular: string }> = {
+  call: { label: "Calls", singular: "Call", icon: Phone, twenty: "agencyCalls", twentySingular: "agencyCall" },
+  prospect: { label: "Prospects", singular: "Prospect", icon: Users, twenty: "agencyProspects", twentySingular: "agencyProspect" },
+  lead: { label: "Leads", singular: "Lead", icon: User, twenty: "agencyLeads", twentySingular: "agencyLead" },
+  phone: { label: "Phone numbers", singular: "Phone number", icon: Headphones, twenty: "agencyPhones", twentySingular: "agencyPhone" },
+  callCampaign: { label: "Call campaigns", singular: "Call campaign", icon: PhoneCall, twenty: "callCampaigns", twentySingular: "callCampaign" },
+  campaign: { label: "Campaigns", singular: "Campaign", icon: BarChart3, twenty: "agencyCampaigns", twentySingular: "agencyCampaign" },
+  script: { label: "Scripts", singular: "Script", icon: BookOpen, twenty: "agencyScripts", twentySingular: "agencyScript" },
 };
 
 export const ACTIONS: Record<AdminAction, { label: string; color: string; icon: IconComponent; className: string; iconClassName: string }> = {
