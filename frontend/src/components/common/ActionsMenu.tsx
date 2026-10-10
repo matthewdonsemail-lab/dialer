@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, Eye } from "@/components/ui/icons";
 import {
   useFloating,
   autoUpdate,

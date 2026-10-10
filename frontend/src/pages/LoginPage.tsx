@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { beginSignIn } from "@/lib/oauth";
-import { LogIn } from "lucide-react";
+import { LogIn } from "@/components/ui/icons";
 import { TropicalTideBackground } from "@/components/background-gradient/tropical-tide-background";
 import { useToast } from "@/components/ui/Toast";
 

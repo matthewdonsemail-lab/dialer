@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useCallback } from "react";
-import { Play, Pause, Download, Phone } from "lucide-react";
+import { Play, Pause, Download, Phone } from "@/components/ui/icons";
 
 /** 1-5 quality dimensions stored as JSON in call.aiScores. */
 export interface QualityScores {

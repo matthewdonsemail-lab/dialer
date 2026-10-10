@@ -1,6 +1,9 @@
 import React, { useState } from "react";
+import { MultiValue } from "@/components/common/MultiValue";
+import { recordStatusForOutcome } from "@/lib/call-outcome";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUpdateProspect } from "@/hooks/use-prospects";
 import { api } from "@/lib/api-client";
 import { Softphone } from "@/components/softphone/Softphone";
 import { CallScriptWidget } from "@/components/scripts/CallScriptWidget";
@@ -14,9 +17,9 @@ import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
-import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin, Star, CheckCircle, XCircle, ExternalLink } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin, Star, CheckCircle, XCircle, ExternalLink } from "@/components/ui/icons";
 import { CountryBadge } from "@/components/common/CountryBadge";
-import { Spokes } from "@/components/ui/Spinner";
+import { DetailPageSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useCallsForRecord } from "@/hooks/use-call-logs";
@@ -83,20 +86,12 @@ export function ProspectDetailPage() {
   const activePhoneRow = (phones ?? []).find((p: any) => p.phoneNumber === agencyFromNumber) ?? null;
   const prospectCalls = useCallsForRecord({ prospectId: prospectId ?? null });
 
-  // Fetch campaigns to resolve campaign_id to name
-  const { data: campaigns } = useQuery({
-    queryKey: ["campaigns"],
-    queryFn: async () => api.campaigns.list(),
-    staleTime: Infinity,
-  });
-
   const { data: prospect, isLoading } = useQuery<Prospect>({
     queryKey: ["prospect", prospectId],
     queryFn: () => api.prospects.get(prospectId ?? ""),
     staleTime: 0,
   });
 
-  const campaignName = prospect?.campaign_id ? campaigns?.find(c => c.id === prospect.campaign_id)?.name : undefined;
 
   React.useEffect(() => {
     if (prospect) console.log("ProspectDetailPage data:", JSON.stringify(prospect, null, 2));
@@ -114,24 +109,31 @@ export function ProspectDetailPage() {
     ? mapLeadProspectStatusOptions(meta.fields["coldCallStatus"])
     : [];
 
-  const updateProspect = useMutation({
-    mutationFn: (data: Partial<Prospect>) => api.prospects.update(prospectId ?? "", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prospect", prospectId] });
-      queryClient.invalidateQueries({ queryKey: ["prospects"] });
-      setShowEdit(false);
-      success("Prospect updated", "Changes have been saved");
-    },
-    onError: () => {
-      toastError("Error", "Failed to update prospect");
-    },
-  });
+  // Edits apply to the page and the prospects table instantly; failures roll back.
+  const saveProspect = useUpdateProspect();
+  const setStatus = async (status: string) => {
+    if (!prospect) return;
+    try {
+      await saveProspect.mutateAsync({ id: prospect.id, patch: { status } });
+    } catch {
+      toastError("Status not saved", "The change was undone. Try again.");
+    }
+  };
+  const saveEdits = async (data: Partial<Prospect>) => {
+    if (!prospectId) return;
+    setShowEdit(false);
+    try {
+      await saveProspect.mutateAsync({ id: prospectId, patch: data });
+    } catch {
+      toastError("Changes not saved", "They were undone. Try again.");
+    }
+  };
 
   const deleteProspect = useMutation({
     mutationFn: () => api.prospects.delete(prospectId ?? ""),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospects"] });
-      navigate("/prospects");
+      navigate("/contacts");
     },
     onError: () => {
       toastError("Error", "Failed to delete prospect");
@@ -144,48 +146,20 @@ export function ProspectDetailPage() {
     queryClient.invalidateQueries({ queryKey: ["calls"] });
     queryClient.invalidateQueries({ queryKey: ["twenty-phones"] });
 
-    // Update prospect status based on call outcome
-    const statusMap: Record<string, string> = {
-      // Media opened but no human confirmed: not yet a contact.
-      connected: "callback",
-      answered: "contacted",
-      busy: "callback",
-      voicemail: "callback",
-      dnc: "do_not_contact",
-      no_answer: "callback",
-      wrong_number: "not_interested",
-      disconnected: "callback",
-    };
-    const newStatus = statusMap[data.outcome];
+    // The disposition decides what the record becomes (see lib/call-outcome).
+    const newStatus = recordStatusForOutcome(data.outcome);
     if (newStatus && prospect) {
-      try {
-        await api.prospects.update(prospect.id, { status: newStatus as any });
-        queryClient.invalidateQueries({ queryKey: ["prospect", prospectId] });
-        queryClient.invalidateQueries({ queryKey: ["prospects"] });
-        success("Status updated", `Status changed to "${newStatus}"`);
-      } catch {
-        toastError("Error", "Failed to update status");
-      }
+      await setStatus(newStatus);
     }
   }
 
   async function handleStatusChange(newStatus: string) {
-    if (!prospect) return;
-    try {
-      await api.prospects.update(prospect.id, { status: newStatus as any });
-      queryClient.invalidateQueries({ queryKey: ["prospect", prospectId] });
-      queryClient.invalidateQueries({ queryKey: ["prospects"] });
-      success("Status updated", `Status changed to "${newStatus}"`);
-    } catch {
-      toastError("Error", "Failed to update status");
-    }
+    await setStatus(newStatus);
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Spokes className="h-8 w-8 text-[var(--ods-brand-600)]" />
-      </div>
+      <DetailPageSkeleton />
     );
   }
 
@@ -194,7 +168,7 @@ export function ProspectDetailPage() {
       <div className="text-center py-12">
         <p className="text-[13px] text-[var(--ods-text-secondary)]">Prospect not found</p>
         <button
-          onClick={() => navigate("/prospects")}
+          onClick={() => navigate("/contacts")}
           className="mt-4 text-[13px] text-[var(--ods-brand-600)] hover:text-[var(--ods-brand-700)]"
         >
           Back to Prospects
@@ -208,7 +182,7 @@ export function ProspectDetailPage() {
       title={
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/prospects")}
+            onClick={() => navigate("/contacts")}
             aria-label="Back to prospects"
             className="p-1 -ml-1 text-[var(--ods-text-tertiary)] hover:text-[var(--ods-text-primary)] rounded-ods-sm hover:bg-[var(--ods-bg-secondary)] transition"
           >
@@ -323,22 +297,12 @@ export function ProspectDetailPage() {
                 </div>
               )}
 
-              {/* Campaign Badge */}
-              {prospect.campaign_id && (
-                <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-2">
-                    Campaign
-                  </dt>
-                  <Badge variant="blue">{campaignName || prospect.campaign_id.substring(0, 8) + "..."}</Badge>
-                </div>
-              )}
-
               <dl className="flex flex-col gap-[var(--ods-sp-3)]">
                 {/* Phone with validity badge */}
                 <div>
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Phone</dt>
                   <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5 flex items-center gap-1.5">
-                    {prospect.phone ?? "—"}
+                    <MultiValue kind="phone" primary={prospect.phone} extras={(prospect as any).additional_phones} />
                     {(prospect as any).phoneValid === true && (
                       <span title="Phone validated" className="flex items-center gap-0.5 text-[11px] text-emerald-600 font-medium">
                         <CheckCircle className="w-3 h-3" /> Valid
@@ -366,19 +330,19 @@ export function ProspectDetailPage() {
                   </div>
                 )}
 
-                {[
-                  ["Email", prospect.email ?? "—"],
+                {([
+                  ["Email", <MultiValue kind="email" primary={prospect.email} extras={(prospect as any).additional_emails} />],
                   ["Company", prospect.company ?? "—"],
                   ["City", prospect.city ?? "—"],
                   ["State", prospect.state ?? "—"],
                   ["Country", prospect.country ?? "—"],
                   ["Created", prospect.created_at ? new Date(prospect.created_at).toLocaleDateString() : "—"],
-                ].map(([label, value]) => (
+                ] as [string, React.ReactNode][]).map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">
                       {label}
                     </dt>
-                    <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5">{value as string}</dd>
+                    <dd className="text-[13px] text-[var(--ods-text-primary)] mt-0.5">{value}</dd>
                   </div>
                 ))}
 
@@ -567,7 +531,7 @@ export function ProspectDetailPage() {
           />
         </div>
         <div className="flex gap-2 mt-6">
-          <Button variant="primary" onClick={() => updateProspect.mutateAsync(editingData)} isLoading={updateProspect.isPending}>
+          <Button variant="primary" onClick={() => saveEdits(editingData)}>
             Save
           </Button>
           <Button variant="secondary" onClick={() => setShowEdit(false)}>

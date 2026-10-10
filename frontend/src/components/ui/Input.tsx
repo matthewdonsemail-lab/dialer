@@ -15,14 +15,14 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-[var(--ods-text-primary)] mb-1"
           >
             {label}
           </label>
         )}
         <div className="relative">
           {icon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ods-text-tertiary)]">
               {icon === 'phone' && (
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -44,9 +44,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={cn(
-              'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm',
-              'bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500',
-              'disabled:bg-gray-50 disabled:text-gray-500',
+              'w-full px-3 py-2 border border-[var(--ods-border-strong)] rounded-lg text-sm',
+              'bg-[var(--ods-bg-primary)] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500',
+              'disabled:bg-[var(--ods-bg-secondary)] disabled:text-[var(--ods-text-secondary)]',
               icon && 'pl-10',
               className
             )}

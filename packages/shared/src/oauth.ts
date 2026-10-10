@@ -114,11 +114,14 @@ export function decodeJwtPayload<T extends Record<string, unknown>>(token: strin
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   const bytes: number[] = [];
 
+  // "=" is not in BASE64_ALPHABET; map it to 64 so padding is recognised
+  // below instead of failing every payload whose length is not a multiple of 4.
+  const sextet = (ch: string | undefined) => (ch === undefined || ch === "=" ? 64 : BASE64_ALPHABET.indexOf(ch));
   for (let i = 0; i < padded.length; i += 4) {
-    const a = BASE64_ALPHABET.indexOf(padded[i] ?? "=");
-    const b = BASE64_ALPHABET.indexOf(padded[i + 1] ?? "=");
-    const c = BASE64_ALPHABET.indexOf(padded[i + 2] ?? "=");
-    const d = BASE64_ALPHABET.indexOf(padded[i + 3] ?? "=");
+    const a = sextet(padded[i]);
+    const b = sextet(padded[i + 1]);
+    const c = sextet(padded[i + 2]);
+    const d = sextet(padded[i + 3]);
     if (a < 0 || b < 0 || c < 0 || d < 0) {
       throw new TwentyOAuthError(502, "Twenty access token has an invalid JWT payload");
     }

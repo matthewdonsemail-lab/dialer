@@ -1,4 +1,5 @@
 import type { AgencyLead } from "../types.js";
+import { additionalEmails, additionalPhones } from "../../../lib/twenty/contactValues/index.js";
 
 // Status mappings between Twenty and our frontend
 const STATUS_MAP: Record<string, string> = {
@@ -8,6 +9,12 @@ const STATUS_MAP: Record<string, string> = {
   "BOOKED": "callback",
   "CONVERTED": "converted",
   "LOST": "not_interested",
+  // Values the dialer writes (frontendStatusToTwenty) must read back as
+  // themselves, or a saved status shows as "new" after a reload.
+  "INTERESTED": "interested",
+  "CALLBACK": "callback",
+  "NOT_INTERESTED": "not_interested",
+  "DO_NOT_CONTACT": "do_not_contact",
 };
 
 /** Twenty coldCallStatus/status -> frontend status. Pure. */
@@ -69,7 +76,8 @@ export function frontendStatusToTwenty(status: string | undefined, dnc: unknown)
     status === "interested" ? "INTERESTED" :
     status === "callback" ? "CALLBACK" :
     status === "converted" ? "CONVERTED" :
-    status === "not_interested" ? "NOT_INTERESTED" : "NEW"
+    status === "not_interested" ? "NOT_INTERESTED" :
+    status === "do_not_contact" ? "DO_NOT_CONTACT" : "NEW"
   );
 }
 
@@ -78,13 +86,17 @@ export function mapLeadToFrontend(lead: AgencyLead, campaignMap: Record<string, 
   const fullName = lead.name || lead.contactName || "";
   const parts = fullName.split(" ");
   const status = twentyStatusToFrontend(lead);
+  const phone = fromTwentyPhone(lead.phone);
+  const email = fromTwentyEmail(lead.email);
   return {
     id: lead.id,
     first_name: parts[0] || undefined,
     last_name: parts.slice(1).join(" ") || undefined,
     company: lead.company,
-    phone: fromTwentyPhone(lead.phone),
-    email: fromTwentyEmail(lead.email),
+    phone,
+    email,
+    additional_phones: additionalPhones(lead.phone, phone),
+    additional_emails: additionalEmails(lead.email, email),
     website: undefined,
     address: undefined,
     city: undefined,

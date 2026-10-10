@@ -5,8 +5,15 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { queryClient } from "@/lib/query-client";
 import { AuthProvider } from "@/components/auth/AuthProvider";
+import { ThemeProvider } from "@/lib/theme";
 import App from "@/App";
+// Font Awesome's base styles load before the app CSS so Tailwind size
+// utilities (w-4 h-4) override its default 1em icon height.
+import { config as fontAwesomeConfig } from "@fortawesome/fontawesome-svg-core";
+import "@fortawesome/fontawesome-svg-core/styles.css";
 import "@/index.css";
+
+fontAwesomeConfig.autoAddCss = false;
 
 // A deploy replaces hashed chunks: a tab holding a stale index.html then fails
 // to import a deleted chunk (served as text/html by the SPA fallback). Recover
@@ -136,11 +143,13 @@ window.addEventListener("unhandledrejection", (e: PromiseRejectionEvent) => {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </BrowserRouter>
+      </ThemeProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   </React.StrictMode>

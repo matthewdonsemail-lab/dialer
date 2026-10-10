@@ -1,58 +1,104 @@
 /**
- * Single source of truth for the call-disposition vocabulary.
+ * Single source of truth for the call-disposition vocabulary (WAVV's list).
  *
- * Two vocabularies exist and used to drift apart:
- *   - CallOutcome: what the softphone shows/holds while a call is up
+ * Three vocabularies meet here and used to drift apart:
+ *   - CallOutcome: what the operator picks in the softphone
  *   - CallStatus:  what is persisted on agencyCalls.status (a free-text field)
+ *   - record status: what the lead/prospect becomes after the call
  *
- * Every outcome the operator can pick must have an explicit status. The old
- * mapper handled 4 of 7 outcomes and let `voicemail`, `dnc`, `wrong_number`
- * and `disconnected` fall through a `return "COMPLETED"` default, so those
- * selections were silently persisted as a successful connect - which is what
- * made the disposition dropdown look like it was not saving.
+ * Every disposition the operator can pick declares all three explicitly. An
+ * old mapper let unknown outcomes fall through to "COMPLETED", which silently
+ * recorded voicemails and DNCs as successful connects.
  */
 
-/** Operator-visible dispositions. Mirrors OUTCOME_CONFIG keys in OutcomeSelect. */
-export type CallOutcome =
-  | "connected"
-  | "answered"
+export type DispositionType = "positive" | "negative";
+
+/** Operator-selectable dispositions, in WAVV's order. */
+export type Disposition =
+  | "interested"
+  | "appointment_set"
+  | "callback"
+  | "good_number"
+  | "left_callback"
+  | "left_voicemail"
+  | "not_interested"
+  | "bad_number"
   | "no_answer"
-  | "busy"
-  | "voicemail"
-  | "failed"
-  | "disconnected"
   | "wrong_number"
-  | "dnc";
+  | "do_not_contact";
+
+/**
+ * Outcomes the softphone sets on its own: `connected` when the media path
+ * opens (an IVR or voicemail greeting opens it too, so it is not a human
+ * answer) and `failed` when the call could not be placed. Never offered as
+ * choices; the operator replaces `connected` with a real disposition.
+ */
+export type SystemOutcome = "connected" | "failed";
+
+export type CallOutcome = Disposition | SystemOutcome;
 
 /**
  * Values written to agencyCalls.status. The field is TEXT, so new values need
- * no Twenty schema change - only a StatusBadge colour to render properly.
+ * no Twenty schema change. VOICEMAIL and DNC keep their earlier spelling so
+ * existing call history stays grouped with new calls.
  */
 export type CallStatus =
   | "IN_PROGRESS"
   | "COMPLETED"
-  | "NO_ANSWER"
-  | "BUSY"
-  | "VOICEMAIL"
   | "FAILED"
+  | "INTERESTED"
+  | "APPOINTMENT_SET"
+  | "CALLBACK"
+  | "GOOD_NUMBER"
+  | "LEFT_CALLBACK"
+  | "VOICEMAIL"
+  | "NOT_INTERESTED"
+  | "BAD_NUMBER"
+  | "NO_ANSWER"
   | "WRONG_NUMBER"
   | "DNC";
 
-const OUTCOME_TO_STATUS: Record<CallOutcome, CallStatus> = {
-  // Media path opened. Deliberately NOT a connect: an IVR menu or a voicemail
-  // greeting opens the same media path a human does, so this only records that
-  // something answered the phone. See `connected` in OUTCOME_CONFIG.
+export interface DispositionDef {
+  value: Disposition;
+  label: string;
+  type: DispositionType;
+  /** Persisted on the call. */
+  status: CallStatus;
+  /** The lead/prospect status after this call (frontend status vocabulary). */
+  recordStatus: string;
+}
+
+export const DISPOSITIONS: DispositionDef[] = [
+  { value: "interested", label: "Interested", type: "positive", status: "INTERESTED", recordStatus: "interested" },
+  { value: "appointment_set", label: "Appointment Set", type: "positive", status: "APPOINTMENT_SET", recordStatus: "callback" },
+  { value: "callback", label: "Callback", type: "positive", status: "CALLBACK", recordStatus: "callback" },
+  { value: "good_number", label: "Good Number", type: "positive", status: "GOOD_NUMBER", recordStatus: "contacted" },
+  { value: "left_callback", label: "Left Callback", type: "positive", status: "LEFT_CALLBACK", recordStatus: "callback" },
+  { value: "left_voicemail", label: "Left Voicemail", type: "positive", status: "VOICEMAIL", recordStatus: "callback" },
+  { value: "not_interested", label: "Not Interested", type: "negative", status: "NOT_INTERESTED", recordStatus: "not_interested" },
+  { value: "bad_number", label: "Bad Number", type: "negative", status: "BAD_NUMBER", recordStatus: "not_interested" },
+  { value: "no_answer", label: "No Answer", type: "negative", status: "NO_ANSWER", recordStatus: "callback" },
+  { value: "wrong_number", label: "Wrong Number", type: "negative", status: "WRONG_NUMBER", recordStatus: "not_interested" },
+  { value: "do_not_contact", label: "Do Not Contact", type: "negative", status: "DNC", recordStatus: "do_not_contact" },
+];
+
+const BY_VALUE = new Map<string, DispositionDef>(DISPOSITIONS.map((d) => [d.value, d]));
+
+const SYSTEM_STATUS: Record<SystemOutcome, CallStatus> = {
   connected: "COMPLETED",
-  // Operator-confirmed a human spoke.
-  answered: "COMPLETED",
-  no_answer: "NO_ANSWER",
-  busy: "BUSY",
-  voicemail: "VOICEMAIL",
   failed: "FAILED",
-  disconnected: "NO_ANSWER",
-  wrong_number: "WRONG_NUMBER",
-  dnc: "DNC",
 };
+
+/** Label for any outcome, including the system ones. */
+export function outcomeLabel(outcome: string): string {
+  if (outcome === "connected") return "Connected: pick a disposition";
+  if (outcome === "failed") return "Call failed";
+  return BY_VALUE.get(outcome)?.label ?? outcome;
+}
+
+export function dispositionFor(outcome: string): DispositionDef | undefined {
+  return BY_VALUE.get(String(outcome ?? "").trim().toLowerCase());
+}
 
 /**
  * Outcome -> persisted status. Total by construction: an unknown outcome maps
@@ -60,10 +106,43 @@ const OUTCOME_TO_STATUS: Record<CallOutcome, CallStatus> = {
  * be loud, not optimistic.
  */
 export function mapOutcomeToCallStatus(outcome: string): CallStatus {
-  const key = String(outcome ?? "").trim().toLowerCase() as CallOutcome;
-  return OUTCOME_TO_STATUS[key] ?? "FAILED";
+  const key = String(outcome ?? "").trim().toLowerCase();
+  return BY_VALUE.get(key)?.status ?? SYSTEM_STATUS[key as SystemOutcome] ?? "FAILED";
 }
 
+/** The lead/prospect status a call outcome implies, or null to leave it unchanged. */
+export function recordStatusForOutcome(outcome: string): string | null {
+  if (outcome === "connected") return "callback"; // media opened, no human confirmed yet
+  return dispositionFor(outcome)?.recordStatus ?? null;
+}
+
+/**
+ * Positive / negative for a persisted call status, including statuses written
+ * before the WAVV list (COMPLETED, BUSY). In-progress calls are neither.
+ */
+const STATUS_TYPE: Record<string, DispositionType> = {
+  ...Object.fromEntries(DISPOSITIONS.map((d) => [d.status, d.type])),
+  COMPLETED: "positive",
+  BUSY: "negative",
+  FAILED: "negative",
+};
+
+export function dispositionTypeOfStatus(status: string | null | undefined): DispositionType | null {
+  return STATUS_TYPE[String(status ?? "").toUpperCase()] ?? null;
+}
+
+/** Display label for a persisted call status ("APPOINTMENT_SET" -> "Appointment Set"). */
+export function callStatusLabel(status: string | null | undefined): string {
+  const upper = String(status ?? "").toUpperCase();
+  const def = DISPOSITIONS.find((d) => d.status === upper);
+  if (def) return def.label;
+  return upper
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 /** Default per-prospect dial cooldown, in hours. */
 export const DIAL_COOLDOWN_HOURS = 24;

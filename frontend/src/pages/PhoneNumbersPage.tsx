@@ -1,9 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Phone, MapPin, Building, Globe } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { StatusBadge } from "@/components/common/StatusBadge";
-import { Spokes } from "@/components/ui/Spinner";
+import { DataTable, useDataTable, type DataColumn } from "@/components/table";
 
 interface AgencyPhone {
   id: string;
@@ -22,20 +20,21 @@ interface AgencyPhone {
   currentCallId?: string | null;
 }
 
+/** Who holds the number right now, or null when it is free. */
+function holderOf(phone: AgencyPhone): string | null {
+  if ((phone.callState || "IDLE") === "IDLE" || !phone.claimedByMemberId) return null;
+  return `${phone.callState} · ${phone.claimedByEmail || phone.claimedByMemberId}`;
+}
+
 export function PhoneNumbersPage() {
   const { data: phones, isLoading } = useQuery<AgencyPhone[]>({
     queryKey: ["twentyPhones"],
-    queryFn: async () => {
-      return api.twentyPhones.list();
-    },
+    queryFn: async () => api.twentyPhones.list(),
     // Holder state is live: poll so a member grabbing a number shows up here
     staleTime: 10_000,
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Single canonical agency number: all dialing derives from this row.
   const { data: primary } = useQuery<{ phone: { id: string } | null }>({
@@ -45,120 +44,62 @@ export function PhoneNumbersPage() {
   });
   const primaryId = (primary as any)?.phone?.id ?? null;
 
-  const filtered = useMemo(() => {
-    if (!phones) return [];
-    return phones.filter((phone) => {
-      const matchesStatus = statusFilter === "all" || phone.status === statusFilter;
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = !q ||
-        (phone.phoneNumber ?? "").toLowerCase().includes(q) ||
-        (phone.provider ?? "").toLowerCase().includes(q) ||
-        (phone.city ?? "").toLowerCase().includes(q) ||
-        (phone.state ?? "").toLowerCase().includes(q);
-      return matchesStatus && matchesSearch;
-    });
-  }, [phones, statusFilter, searchQuery]);
+  const table = useDataTable("phone-numbers");
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Spokes className="h-8 w-8 text-[var(--ods-brand-600)]" />
-      </div>
-    );
-  }
+  const columns: DataColumn<AgencyPhone>[] = [
+    {
+      key: "phone",
+      label: "Phone Number",
+      type: "phone",
+      width: 220,
+      value: (p) => p.phoneNumber,
+      render: (p) => (
+        <span className="inline-flex items-center gap-2">
+          {p.phoneNumber}
+          {primaryId === p.id && (
+            <span className="font-sans text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[4px] border border-[var(--ods-brand-500)] text-[var(--ods-brand-600)]">
+              Primary
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { key: "provider", label: "Provider", type: "text", width: 130, value: (p) => p.provider, filterable: true },
+    { key: "city", label: "City", type: "text", width: 140, value: (p) => p.city },
+    { key: "state", label: "State", type: "text", width: 120, value: (p) => p.state },
+    { key: "country", label: "Country", type: "text", width: 120, value: (p) => p.country, filterable: true },
+    { key: "status", label: "Status", type: "status", width: 120, value: (p) => p.status, filterable: true },
+    {
+      key: "holder",
+      label: "Holder",
+      type: "custom",
+      width: 220,
+      value: holderOf,
+      text: (p) => holderOf(p) ?? "Free",
+      render: (p) => {
+        const holder = holderOf(p);
+        return holder ? (
+          <span className="inline-flex items-center gap-1.5 text-[var(--ods-text-primary)]" title={`Since ${p.claimedAt || "—"}`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            {holder}
+          </span>
+        ) : (
+          <span className="text-[var(--ods-text-tertiary)]">Free</span>
+        );
+      },
+    },
+    { key: "created", label: "Created", type: "date", value: (p) => p.created_at },
+  ];
 
   return (
-    <div className="flex flex-col h-full w-full select-none bg-[var(--ods-bg-primary)]">
-      {/* Twenty-style Action Bar */}
-      <div className="h-10 px-3 flex items-center justify-between border-b border-[var(--ods-border)] shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-[var(--ods-text-primary)]">Phone Numbers</span>
-          <span className="text-[11px] font-medium text-[var(--ods-text-secondary)] px-1.5 py-0.5 rounded-[4px] bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)]">
-            {filtered.length}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-7 pr-3 py-1.5 text-[12px] border border-[var(--ods-border)] rounded-[4px] bg-[var(--ods-bg-primary)] text-[var(--ods-text-primary)] placeholder:text-[var(--ods-text-tertiary)] outline-none focus:border-[var(--ods-brand-500)]"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-[12px] border border-[var(--ods-border)] rounded-[4px] bg-[var(--ods-bg-primary)] text-[var(--ods-text-primary)] outline-none focus:border-[var(--ods-brand-500)] appearance-none cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="paused">Paused</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Flush Full-Bleed Table */}
-      <div className="flex-1 w-full overflow-auto">
-        <table className="w-full border-collapse text-left">
-          <thead className="sticky top-0 bg-[var(--ods-bg-secondary)] z-10">
-            <tr className="h-8 border-b border-[var(--ods-border)]">
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Phone Number</th>
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Provider</th>
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">City</th>
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">State</th>
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Country</th>
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Status</th>
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Holder</th>
-              <th className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-secondary)]">Created</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--ods-border)]">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="text-center py-8 text-[13px] text-[var(--ods-text-secondary)]">
-                  No phone numbers found in Twenty CRM
-                </td>
-              </tr>
-            ) : filtered.map((phone) => (
-              <tr key={phone.id} className="h-8 hover:bg-[var(--ods-bg-secondary)] transition-colors">
-                <td className="px-3">
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
-                    <span className="text-[13px] font-mono text-[var(--ods-text-primary)]">{phone.phoneNumber}</span>
-                    {primaryId === phone.id && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[4px] border border-[var(--ods-brand-500)] text-[var(--ods-brand-600)]">
-                        Primary
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-3 text-[13px] text-[var(--ods-text-secondary)]">{phone.provider}</td>
-                <td className="px-3 text-[13px] text-[var(--ods-text-secondary)]">{phone.city}</td>
-                <td className="px-3 text-[13px] text-[var(--ods-text-secondary)]">{phone.state}</td>
-                <td className="px-3 text-[13px] text-[var(--ods-text-secondary)]">{phone.country}</td>
-                <td className="px-3"><StatusBadge status={phone.status} /></td>
-                <td className="px-3">
-                  {(phone.callState || "IDLE") === "IDLE" || !phone.claimedByMemberId ? (
-                    <span className="text-[11px] text-[var(--ods-text-tertiary)]">Free</span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--ods-text-primary)]" title={`Since ${phone.claimedAt || "—"}`}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                      {phone.callState} · {phone.claimedByEmail || phone.claimedByMemberId}
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 text-[12px] text-[var(--ods-text-tertiary)]">
-                  {phone.created_at ? new Date(phone.created_at).toLocaleDateString() : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <DataTable
+      state={table}
+      title="Phone Numbers"
+      columns={columns}
+      rows={phones}
+      loading={isLoading}
+      getRowId={(p) => p.id}
+      emptyMessage="No phone numbers found in Twenty CRM"
+    />
   );
 }

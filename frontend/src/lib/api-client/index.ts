@@ -24,6 +24,19 @@ export class ApiError extends Error {
   }
 }
 
+export type CallCampaignStatus = "active" | "completed" | "archived";
+
+/** A WAVV-style dial list (backend: /api/call-campaigns, stored in Twenty). */
+export interface CallCampaign {
+  id: string;
+  name: string;
+  status: CallCampaignStatus;
+  /** agencyProspect ids in dial order */
+  contactIds: string[];
+  createdByName: string | null;
+  createdAt: string;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -178,6 +191,15 @@ export const api = {
       request<any>(`/api/twenty/phones/${id}/state`, { method: "POST", body: JSON.stringify(data) }),
     release: (id: string, data: { memberId: string; force?: boolean; callId?: string }) =>
       request<any>(`/api/twenty/phones/${id}/release`, { method: "POST", body: JSON.stringify(data) }),
+  },
+
+  callCampaigns: {
+    list: () => request<CallCampaign[]>("/api/call-campaigns"),
+    create: (data: { contactIds: string[]; name: string }) =>
+      request<CallCampaign>("/api/call-campaigns", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: { name?: string; status?: CallCampaignStatus }) =>
+      request<CallCampaign>(`/api/call-campaigns/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (id: string) => request<void>(`/api/call-campaigns/${id}`, { method: "DELETE" }),
   },
 
   calls: {

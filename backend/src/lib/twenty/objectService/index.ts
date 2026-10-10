@@ -1,6 +1,7 @@
 import { createLogger } from "../../logger/index.js";
 import { loadSyncConfig } from "../client/index.js";
 import { setupCallHistorySchema } from "../agencyCall/index.js";
+import { setupCallCampaignSchema } from "../callCampaign/index.js";
 
 const log = createLogger('twenty-object-service');
 
@@ -535,6 +536,13 @@ export async function setupTwentyCRM(): Promise<{
     results.objects.push({ name: "agencyCalls", id: callsSchema.objectId, isNew: callsSchema.objectIsNew });
     for (const f of callsSchema.fields) {
       results.fields.push({ object: "agencyCalls", name: f.name, isNew: f.isNew });
+    }
+
+    // 8. Call campaigns (WAVV-style dial lists behind the Contacts phone button).
+    const campaignSchema = await setupCallCampaignSchema();
+    results.objects.push({ name: "callCampaigns", id: campaignSchema.objectId, isNew: campaignSchema.objectIsNew });
+    for (const f of campaignSchema.fields) {
+      results.fields.push({ object: "callCampaigns", name: f.name, isNew: f.isNew });
     }
 
     log.info(`Setup completed. Created ${results.objects.length} objects and ${results.fields.length} fields.`);

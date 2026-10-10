@@ -5,8 +5,8 @@ import { api } from "@/lib/api-client";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { Spokes } from "@/components/ui/Spinner";
-import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines, Star } from "lucide-react";
+import { DetailPageSkeleton } from "@/components/ui/Skeleton";
+import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines, Star } from "@/components/ui/icons";
 import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 import { useToast } from "@/components/ui/Toast";
 
@@ -57,9 +57,7 @@ export function CallDetailPage() {
 
   if (callLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Spokes className="h-8 w-8 text-[var(--ods-brand-600)]" />
-      </div>
+      <DetailPageSkeleton />
     );
   }
 

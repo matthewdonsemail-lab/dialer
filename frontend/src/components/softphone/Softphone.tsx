@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Phone,
+  PhoneCall,
   PhoneOff,
+  PhoneOutgoing,
   Mic,
   MicOff,
   Headphones,
@@ -9,7 +11,7 @@ import {
   Clock,
   RotateCcw,
   Check,
-} from "lucide-react";
+} from "@/components/ui/icons";
 import { getSipConfig, isSipConfigured, getSipDomain, getSipExtension } from "@/sip";
 import { sipLog, classifyFailure, getReport, type ClassifiedFailure } from "@/sip";
 import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/config";
@@ -46,6 +48,22 @@ interface SoftphoneProps {
   member?: CallMember | null;
   prospectId?: string | null;
   leadId?: string | null;
+  /**
+   * Power dialing: place the call as soon as this is true (once per mount).
+   * The cooldown guard still applies, so a number called in the last 24h is
+   * not redialled; the page offers Skip instead.
+   */
+  autoDial?: boolean;
+  /**
+   * "compact" renders the floating WAVV-style card used by the power dialer:
+   * status, contact, one big action button, and a footer slot for "Next up".
+   * Same call logic as the full softphone.
+   */
+  variant?: "full" | "compact";
+  /** Compact only: the card's ⋮ menu (Skip, End session...). */
+  compactMenu?: React.ReactNode;
+  /** Compact only: shown under the controls, e.g. who is called next. */
+  compactFooter?: React.ReactNode;
   onCallEnd?: (outcome: {
     outcome: string;
     duration: number;
@@ -61,7 +79,19 @@ type CallState = "idle" | "connecting" | "ringing" | "active" | "on_hold" | "mut
 const FOCUS_RING =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ods-brand-500)] focus-visible:outline-offset-1";
 
-export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId, onCallEnd }: SoftphoneProps) {
+export function Softphone({
+  lead,
+  callerId,
+  phoneId,
+  member,
+  prospectId,
+  leadId,
+  autoDial = false,
+  variant = "full",
+  compactMenu,
+  compactFooter,
+  onCallEnd,
+}: SoftphoneProps) {
   const { error: toastError, warning: toastWarning } = useToast();
   const [callState, setCallState] = useState<CallState>("idle");
   const [duration, setDuration] = useState(0);
@@ -915,6 +945,14 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
     }
   }, [callState]);
 
+  const autoDialedRef = useRef(false);
+  useEffect(() => {
+    if (!autoDial || autoDialedRef.current || callState !== "idle" || !phoneNumber) return;
+    autoDialedRef.current = true;
+    sipLog.info("app", "power dial: auto-dialing campaign contact", { to: phoneNumber });
+    startCall();
+  }, [autoDial, callState, phoneNumber, startCall]);
+
   const handleSaveOutcome = useCallback(async () => {
     // Wrap-up ends the hold: first persist the final disposition onto the call
     // row (it was stamped at dial/end time with the hangup-time outcome). If
@@ -1033,6 +1071,129 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
           <p className="text-[13px] font-medium">Select a lead to start a call</p>
           <p className="text-[11px] mt-1">Navigate to a lead detail page and use the dialer</p>
         </div>
+      </div>
+    );
+  }
+
+  if (variant === "compact") {
+    const live = callState === "connecting" || callState === "ringing" || callState === "active" || callState === "muted" || callState === "on_hold";
+    const compactStatus: Record<CallState, string> = {
+      idle: "Pending",
+      connecting: "Calling…",
+      ringing: "Ringing…",
+      active: `Connected · ${formatDuration(duration)}`,
+      muted: `Muted · ${formatDuration(duration)}`,
+      on_hold: `On hold · ${formatDuration(duration)}`,
+      ended: `Call ended · ${formatDuration(duration)}`,
+    };
+    const StatusIcon = callState === "idle" || callState === "ended" ? PhoneOff : callState === "active" || callState === "muted" || callState === "on_hold" ? PhoneCall : PhoneOutgoing;
+    return (
+      // `dark` scopes the dark theme tokens to the card, so it is always the
+      // WAVV-style dark dialer whatever the app theme is.
+      <div className="dark w-[380px] max-w-[calc(100vw-24px)] rounded-[12px] border border-white/10 bg-[#0b1622] text-white shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
+        <audio ref={remoteAudioRef} hidden />
+        <audio ref={localAudioRef} hidden />
+        <div className="h-10 px-3 flex items-center justify-between border-b border-white/10">
+          <div className="flex items-center gap-1.5" aria-hidden="true">
+            <span className="w-1 h-4 rounded-sm bg-[#3b82f6] -skew-x-12" />
+            <span className="w-1 h-4 rounded-sm bg-[#60a5fa] -skew-x-12" />
+            <span className="w-1 h-4 rounded-sm bg-[#22c55e] -skew-x-12" />
+          </div>
+          <div className="flex items-center gap-1.5 text-[12px] font-medium" role="status" aria-live="polite">
+            <StatusIcon className={`w-3.5 h-3.5 ${live ? "animate-pulse text-[#22c55e]" : "text-white/70"}`} />
+            {compactStatus[callState]}
+          </div>
+          <div className="min-w-[28px] flex justify-end">{compactMenu}</div>
+        </div>
+
+        <div className="px-4 pt-3 pb-4 text-center">
+          <div className="text-[16px] font-semibold truncate">
+            {`${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Unknown contact"}
+          </div>
+          <div className="text-[13px] font-mono tabular-nums text-white/60">{phoneNumber || "No phone number"}</div>
+
+          {cooldownNotice && (
+            <div className="mt-2 rounded-[6px] bg-amber-500/15 px-2 py-1.5 text-[11px] text-amber-200 text-left">
+              {cooldownNotice}{" "}
+              <button
+                onClick={() => {
+                  cooldownOverrideRef.current = true;
+                  void startCall();
+                }}
+                className="underline font-medium"
+              >
+                Dial anyway
+              </button>
+            </div>
+          )}
+          {recWarning && (
+            <div className="mt-2 rounded-[6px] bg-amber-500/15 px-2 py-1.5 text-[11px] text-amber-200 text-left">
+              {recWarning}: audio works, but this call won't be recorded.
+            </div>
+          )}
+
+          <div className="mt-3">
+            {callState === "idle" ? (
+              <button
+                onClick={startCall}
+                disabled={!phoneNumber}
+                className="w-full h-10 rounded-full bg-[#22c55e] hover:bg-[#16a34a] disabled:opacity-40 text-[14px] font-semibold flex items-center justify-center gap-2"
+              >
+                <Phone className="w-4 h-4" /> Dial
+              </button>
+            ) : live ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={endCall}
+                  className="flex-1 h-10 rounded-full bg-[#ef4444] hover:bg-[#dc2626] text-[14px] font-semibold flex items-center justify-center gap-2"
+                >
+                  <PhoneOff className="w-4 h-4" /> Hang up
+                </button>
+                <button
+                  onClick={toggleMute}
+                  disabled={callState === "on_hold"}
+                  title={callState === "muted" ? "Unmute" : "Mute"}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center ${callState === "muted" ? "bg-red-500/25 text-red-200" : "bg-white/10 hover:bg-white/15"}`}
+                >
+                  {callState === "muted" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={toggleHold}
+                  title={callState === "on_hold" ? "Resume" : "Hold"}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center ${callState === "on_hold" ? "bg-amber-500/25 text-amber-200" : "bg-white/10 hover:bg-white/15"}`}
+                >
+                  <Headphones className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 text-left">
+                <OutcomeSelect value={outcome} onChange={(value) => setOutcome(value)} />
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Call notes (optional)"
+                  className="w-full resize-none rounded-[8px] border border-white/15 bg-white/5 px-2.5 py-2 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-[#3b82f6]"
+                />
+                <button
+                  onClick={handleSaveOutcome}
+                  className="w-full h-10 rounded-full bg-[#22c55e] hover:bg-[#16a34a] text-[14px] font-semibold"
+                >
+                  Save & Next
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        {compactFooter && <div className="px-4 py-2.5 border-t border-white/10 text-[12px]">{compactFooter}</div>}
+        {incomingCall && (
+          <IncomingCallBanner
+            callerName={incomingCall.callerName}
+            callerNumber={incomingCall.callerNumber}
+            onAccept={handleAcceptIncomingCall}
+            onReject={handleRejectIncomingCall}
+          />
+        )}
       </div>
     );
   }
@@ -1182,7 +1343,7 @@ export function Softphone({ lead, callerId, phoneId, member, prospectId, leadId,
 
           <div className="border-t border-[var(--ods-border)] pt-4 flex flex-col gap-3">
             <div>
-              <label className="block text-[11px] font-medium text-[var(--ods-text-tertiary)] mb-1">Outcome</label>
+              <label className="block text-[11px] font-medium text-[var(--ods-text-tertiary)] mb-1">Disposition</label>
               <OutcomeSelect
                 value={outcome}
                 onChange={(value) => setOutcome(value)}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, AlertTriangle, Search, Plus, Trash2, Save, X, Check } from "lucide-react";
+import { BookOpen, AlertTriangle, Search, Plus, Trash2, Save, X, Check } from "@/components/ui/icons";
 import { useFloating, autoUpdate, offset, flip, shift, FloatingPortal } from "@floating-ui/react";
 import { Badge } from "@/components/ui/Badge";
 import { PageCanvas } from "@/components/common/PageCanvas";
@@ -398,8 +398,8 @@ export function ScriptsPage() {
                         value: cat,
                         label: cat,
                         dotColor: "bg-gray-400",
-                        bgTint: "bg-gray-50",
-                        textColor: "text-gray-700",
+                        bgTint: "bg-[var(--ods-bg-secondary)]",
+                        textColor: "text-[var(--ods-text-primary)]",
                       }))}
                       onChange={(val) =>
                         setEditForm({

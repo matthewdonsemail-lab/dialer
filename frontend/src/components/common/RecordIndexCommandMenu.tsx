@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pencil, Trash2, X } from 'lucide-react';
+import { Pencil, Trash2, X } from "@/components/ui/icons";
 
 interface RecordIndexCommandMenuProps {
   selectedCount: number;
@@ -35,7 +35,7 @@ export const RecordIndexCommandMenu: React.FC<RecordIndexCommandMenuProps> = ({
       {onEdit && (
         <button
           onClick={onEdit}
-          className="inline-flex items-center gap-1.5 h-7 px-2 text-[12px] font-medium text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)] hover:bg-black/[0.04] rounded-[4px] border border-[var(--ods-border)] transition-colors"
+          className="inline-flex items-center gap-1.5 h-7 px-2 text-[12px] font-medium text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)] rounded-[4px] border border-[var(--ods-border)] transition-colors"
         >
           <Pencil className="w-3.5 h-3.5" />
           Edit

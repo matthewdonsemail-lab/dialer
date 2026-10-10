@@ -1,5 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Columns3, Check } from 'lucide-react';
+import React, { useState } from "react";
+import {
+  autoUpdate,
+  flip,
+  FloatingPortal,
+  offset,
+  shift,
+  useClick,
+  useDismiss,
+  useFloating,
+  useInteractions,
+} from "@floating-ui/react";
+import { Check, Columns3 } from "@/components/ui/icons";
+import { FilterTriggerContent, filterTriggerClass } from "@/components/ui/Menu";
 
 export interface ColumnDef {
   key: string;
@@ -12,58 +24,79 @@ interface ColumnVisibilityDropdownProps {
   onChange: (key: string, visible: boolean) => void;
 }
 
-export const ColumnVisibilityDropdown: React.FC<ColumnVisibilityDropdownProps> = ({
-  columns,
-  onChange,
-}) => {
+/**
+ * "Columns: 7/9" toolbar control. Stays open while toggling so several
+ * columns can be shown or hidden in one go; outlined while any are hidden.
+ */
+export const ColumnVisibilityDropdown: React.FC<ColumnVisibilityDropdownProps> = ({ columns, onChange }) => {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const { refs, floatingStyles, context } = useFloating({
+    open,
+    onOpenChange: setOpen,
+    placement: "bottom-end",
+    whileElementsMounted: autoUpdate,
+    middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
+  });
+  const { getReferenceProps, getFloatingProps } = useInteractions([useClick(context), useDismiss(context)]);
 
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    if (open) document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [open]);
+  const shown = columns.filter((c) => c.visible).length;
+  const someHidden = shown < columns.length;
 
   return (
-    <div className="relative inline-block text-left" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 h-7 px-2 text-[12px] font-medium text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)] hover:bg-[var(--ods-bg-secondary)] rounded-[4px] border border-[var(--ods-border)] transition-colors"
+        type="button"
+        ref={refs.setReference}
+        {...getReferenceProps()}
+        title="Show or hide columns"
+        className={filterTriggerClass(someHidden)}
       >
         <Columns3 className="w-3.5 h-3.5" />
-        <span>fields</span>
+        <FilterTriggerContent label="Columns" value={`${shown}/${columns.length}`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-1 w-44 bg-[var(--ods-bg-primary)] border border-[var(--ods-border)] rounded-[6px] shadow-lg py-1 z-40 text-[12px]">
-          <div className="px-2 py-1 text-[11px] font-semibold text-[var(--ods-text-tertiary)] uppercase tracking-wider border-b border-[var(--ods-border)] mb-1">
-            toggle columns
-          </div>
-          {columns.map((col) => (
-            <button
-              key={col.key}
-              onClick={() => onChange(col.key, !col.visible)}
-              className="flex items-center justify-between w-full px-2.5 py-1 text-left text-[var(--ods-text-primary)] hover:bg-[var(--ods-bg-secondary)]"
-            >
-              <span>{col.label}</span>
-              <div
-                className={`w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center ${
-                  col.visible
-                    ? 'bg-[var(--ods-brand-600)] border-[var(--ods-brand-600)] text-white'
-                    : 'border-[var(--ods-border)] bg-transparent'
-                }`}
+        <FloatingPortal>
+          <div
+            ref={refs.setFloating}
+            style={floatingStyles}
+            {...getFloatingProps()}
+            className="z-[70] w-56 py-1 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] shadow-[0_12px_32px_rgba(0,0,0,0.18)] select-none"
+          >
+            <div className="px-3 py-1.5 bg-[var(--ods-bg-secondary)] text-[11px] font-semibold uppercase tracking-wider text-[var(--ods-text-tertiary)]">
+              Visible columns
+            </div>
+            {columns.map((col) => (
+              <button
+                key={col.key}
+                role="menuitemcheckbox"
+                aria-checked={col.visible}
+                onClick={() => onChange(col.key, !col.visible)}
+                className="mx-1 w-[calc(100%-8px)] h-9 px-2.5 flex items-center gap-2.5 rounded-[6px] text-[13px] text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
               >
-                {col.visible && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-              </div>
-            </button>
-          ))}
-        </div>
+                <span
+                  className={`w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 ${
+                    col.visible
+                      ? "bg-[var(--ods-brand-600)] border-[var(--ods-brand-600)] text-white"
+                      : "border-[var(--ods-border-strong)]"
+                  }`}
+                >
+                  {col.visible && <Check className="w-3 h-3 stroke-[3]" />}
+                </span>
+                <span className="flex-1 text-left truncate">{col.label}</span>
+              </button>
+            ))}
+            {someHidden && (
+              <button
+                onClick={() => columns.forEach((c) => !c.visible && onChange(c.key, true))}
+                className="mt-1 w-full h-8 border-t border-[var(--ods-border)] text-[12px] font-medium text-[var(--ods-brand-600)] hover:bg-[var(--ods-hover)]"
+              >
+                Show all columns
+              </button>
+            )}
+          </div>
+        </FloatingPortal>
       )}
-    </div>
+    </>
   );
 };

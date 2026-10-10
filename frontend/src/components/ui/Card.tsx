@@ -25,7 +25,7 @@ export function Card({
   return (
     <div
       className={cn(
-        'bg-white rounded-lg border border-gray-200 shadow-sm',
+        'bg-[var(--ods-bg-primary)] rounded-lg border border-[var(--ods-border)] shadow-sm',
         paddingClasses[padding],
         className
       )}
@@ -33,10 +33,10 @@ export function Card({
       {(title || description) && (
         <div className="mb-4">
           {title && (
-            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+            <h3 className="text-lg font-semibold text-[var(--ods-text-primary)]">{title}</h3>
           )}
           {description && (
-            <p className="text-sm text-gray-500 mt-1">{description}</p>
+            <p className="text-sm text-[var(--ods-text-secondary)] mt-1">{description}</p>
           )}
         </div>
       )}
