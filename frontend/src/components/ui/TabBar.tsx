@@ -72,7 +72,7 @@ export function TabBar<K extends string>({
               <Icon className="w-4 h-4" />
               {badge !== undefined && badge !== null && mode !== "roomy" && (
                 <span
-                  className={`absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] leading-4 text-center ${
+                  className={`absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-md text-[10px] leading-4 text-center ${
                     active ? "bg-white text-[var(--ods-brand-600)]" : "bg-[var(--ods-brand-600)] text-white"
                   }`}
                 >

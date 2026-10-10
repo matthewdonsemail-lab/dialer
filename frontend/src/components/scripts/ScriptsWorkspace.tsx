@@ -374,7 +374,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setDraft(null)}
-                    className="flex-1 h-11 rounded-full border border-[var(--ods-border-strong)] text-[15px] font-semibold text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)] inline-flex items-center justify-center gap-2"
+                    className="flex-1 h-11 rounded-md border border-[var(--ods-border-strong)] text-[15px] font-semibold text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)] inline-flex items-center justify-center gap-2"
                   >
                     <X className="w-4 h-4" />
                     Cancel
@@ -382,7 +382,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
                   <button
                     onClick={save}
                     disabled={update.isPending}
-                    className="flex-[2] h-11 rounded-full bg-[var(--ods-brand-600)] text-white text-[15px] font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+                    className="flex-[2] h-11 rounded-md bg-[var(--ods-brand-600)] text-white text-[15px] font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
                   >
                     <Save className="w-4 h-4" />
                     {update.isPending ? "Saving…" : "Save changes"}
@@ -391,7 +391,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
               ) : (
                 <button
                   onClick={() => startEdit()}
-                  className="w-full h-11 rounded-full bg-[var(--ods-brand-600)] text-white text-[15px] font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90"
+                  className="w-full h-11 rounded-md bg-[var(--ods-brand-600)] text-white text-[15px] font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90"
                 >
                   <Pencil className="w-4 h-4" />
                   Edit script

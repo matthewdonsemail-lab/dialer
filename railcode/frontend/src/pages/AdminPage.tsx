@@ -74,9 +74,9 @@ export function AdminPage() {
             {outcomeBreakdown.map((item) => (
               <div key={item.label} className="flex items-center gap-3">
                 <span className="w-20 text-[12px] text-[var(--ods-text-secondary)]">{item.label}</span>
-                <div className="flex-1 bg-[var(--ods-bg-primary)] rounded-full h-4 overflow-hidden">
+                <div className="flex-1 bg-[var(--ods-bg-primary)] rounded-md h-4 overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${item.color} transition-all`}
+                    className={`h-full rounded-md ${item.color} transition-all`}
                     style={{ width: `${(item.count / maxOutcome) * 100}%` }}
                   />
                 </div>
@@ -90,7 +90,7 @@ export function AdminPage() {
           <div className="space-y-2">
             {statusBreakdown.map((item) => (
               <div key={item.label} className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${item.color}`} />
+                <div className={`w-2 h-2 rounded-md ${item.color}`} />
                 <span className="flex-1 text-[12px] text-[var(--ods-text-secondary)]">{item.label}</span>
                 <span className="text-[12px] font-semibold text-[var(--ods-text-primary)]">{item.count}</span>
               </div>

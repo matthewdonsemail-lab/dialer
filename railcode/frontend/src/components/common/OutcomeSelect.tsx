@@ -70,7 +70,7 @@ export function OutcomeSelect({ value = "no_answer", onChange, disabled }: Outco
         className={`h-8 inline-flex items-center gap-2 px-2.5 rounded-[4px] text-[12px] font-medium border border-[var(--ods-border)] ${current.bgTint} ${current.textColor} hover:brightness-95 transition-all select-none w-full justify-between`}
       >
         <span className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${current.dotColor}`} />
+          <span className={`w-1.5 h-1.5 rounded-md ${current.dotColor}`} />
           <span>{current.label}</span>
         </span>
         <ChevronDown className="w-3.5 h-3.5 opacity-60" />
@@ -93,7 +93,7 @@ export function OutcomeSelect({ value = "no_answer", onChange, disabled }: Outco
                     : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-bg-secondary)] hover:text-[var(--ods-text-primary)]"
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${option.dotColor}`} />
+                <span className={`w-1.5 h-1.5 rounded-md ${option.dotColor}`} />
                 <span>{option.label}</span>
               </div>
             ))}

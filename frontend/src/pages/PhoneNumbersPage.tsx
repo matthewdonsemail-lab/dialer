@@ -92,7 +92,7 @@ export function PhoneNumbersPage() {
         const holder = holderOf(p);
         return holder ? (
           <span className="inline-flex items-center gap-1.5 text-[var(--ods-text-primary)]" title={`Since ${p.claimedAt || "—"}`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-md bg-green-500 animate-pulse" />
             {holder}
           </span>
         ) : (

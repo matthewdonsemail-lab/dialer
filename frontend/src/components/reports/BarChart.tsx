@@ -115,7 +115,7 @@ export function BarChart({
           {series.map((s) => (
             <div key={s.label} className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-1.5 text-[var(--ods-text-secondary)]">
-                <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                <span className="w-2 h-2 rounded-md" style={{ background: s.color }} />
                 {s.label}
               </span>
               <span className="font-medium tabular-nums text-[var(--ods-text-primary)]">{valueFormat(s.values[hover] ?? 0)}</span>
@@ -127,7 +127,7 @@ export function BarChart({
       <div className="flex flex-wrap items-center justify-center gap-4 mt-1">
         {series.map((s) => (
           <span key={s.label} className="flex items-center gap-1.5 text-[12px] text-[var(--ods-text-secondary)]">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
+            <span className="w-2.5 h-2.5 rounded-md" style={{ background: s.color }} />
             {s.label}
           </span>
         ))}

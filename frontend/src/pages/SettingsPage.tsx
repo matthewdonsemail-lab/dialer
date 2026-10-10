@@ -321,7 +321,7 @@ export function SettingsPage() {
             }
           >
             <div className="flex items-center gap-3">
-              <span className="w-11 h-11 shrink-0 rounded-full bg-[var(--ods-brand-600)] text-white text-[16px] font-bold flex items-center justify-center">
+              <span className="w-11 h-11 shrink-0 rounded-md bg-[var(--ods-brand-600)] text-white text-[16px] font-bold flex items-center justify-center">
                 {(user?.fullName || user?.email || "?").charAt(0).toUpperCase()}
               </span>
               <div className="min-w-0">

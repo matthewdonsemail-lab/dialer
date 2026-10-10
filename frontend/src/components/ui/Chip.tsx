@@ -45,9 +45,9 @@ export function Chip({
         <Icon className={`w-3.5 h-3.5 shrink-0 ${iconClassName}`} aria-hidden="true" />
       ) : dot ? (
         dot.startsWith("bg-") ? (
-          <span className={`w-2 h-2 shrink-0 rounded-full ${dot}`} />
+          <span className={`w-2 h-2 shrink-0 rounded-md ${dot}`} />
         ) : (
-          <span className="w-2 h-2 shrink-0 rounded-full" style={{ background: dot }} />
+          <span className="w-2 h-2 shrink-0 rounded-md" style={{ background: dot }} />
         )
       ) : null}
       <span className="truncate">{children}</span>

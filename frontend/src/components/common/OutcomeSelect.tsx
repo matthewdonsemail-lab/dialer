@@ -45,7 +45,7 @@ export function OutcomeSelect({ value = "no_answer", onChange, disabled }: Outco
       trigger={
         <>
           <span className="flex items-center gap-2 min-w-0">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${def ? TYPE_DOT[def.type] : "bg-sky-500"}`} />
+            <span className={`w-2 h-2 rounded-md shrink-0 ${def ? TYPE_DOT[def.type] : "bg-sky-500"}`} />
             <span className="truncate">{outcomeLabel(value)}</span>
             {def && (
               <span className="text-[11px] font-normal opacity-70">{def.type === "positive" ? "Positive" : "Negative"}</span>

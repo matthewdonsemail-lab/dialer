@@ -133,7 +133,7 @@ export function PhoneNumbersPage() {
                     <span className="text-[11px] text-[var(--ods-text-tertiary)]">Free</span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--ods-text-primary)]" title={`Since ${phone.claimedAt || "—"}`}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-md bg-green-500 animate-pulse" />
                       {phone.callState} · {phone.claimedByEmail || phone.claimedByMemberId}
                     </span>
                   )}

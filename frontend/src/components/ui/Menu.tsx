@@ -284,7 +284,7 @@ export function FilterTriggerContent({ label, value, dot, icon }: { label: strin
   return (
     <>
       <span className="text-[var(--ods-text-secondary)]">{label}:</span>
-      {icon ?? (dot && <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />)}
+      {icon ?? (dot && <span className={`w-2.5 h-2.5 rounded-md ${dot}`} />)}
       <span className="font-semibold">{value}</span>
       <ChevronDown className="w-3 h-3 opacity-60" />
     </>

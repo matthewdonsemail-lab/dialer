@@ -167,7 +167,7 @@ function GoalLink({ goal }: { goal: number }) {
       title="Change the goal in Settings → Reports"
       className="inline-flex items-center gap-2 h-8 px-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-500/20"
     >
-      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+      <span className="w-2.5 h-2.5 rounded-md bg-emerald-500" />
       Goal {goal}/day
       <Settings className="w-3.5 h-3.5 opacity-70" />
     </Link>
@@ -471,8 +471,8 @@ function NumberHealthTab({ calls, threshold }: { calls: ReportCall[]; threshold:
 function Meter({ value, color = COLORS.outbound, label }: { value: number; color?: string; label: string }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="w-20 h-2.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${Math.min(1, Math.max(0, value)) * 100}%`, background: color }} />
+      <div className="w-20 h-2.5 rounded-md bg-[var(--ods-bg-tertiary)] overflow-hidden">
+        <div className="h-full rounded-md" style={{ width: `${Math.min(1, Math.max(0, value)) * 100}%`, background: color }} />
       </div>
       <span className="font-semibold">{label}</span>
     </div>

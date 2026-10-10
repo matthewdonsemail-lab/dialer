@@ -216,7 +216,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className={`flex items-center h-10 rounded-[6px] ${collapsed ? 'justify-center' : 'justify-between px-2.5'}`}>
             {!collapsed && (
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-6 h-6 rounded-full bg-[var(--ods-bg-tertiary)] flex items-center justify-center text-[11px] font-semibold text-[var(--ods-text-primary)] flex-shrink-0">
+                <div className="w-6 h-6 rounded-md bg-[var(--ods-bg-tertiary)] flex items-center justify-center text-[11px] font-semibold text-[var(--ods-text-primary)] flex-shrink-0">
                   {((user?.user_metadata?.full_name || user?.email || 'U') as string).trim()[0]?.toUpperCase() ?? 'U'}
                 </div>
                 <span className="text-[12px] font-medium text-[var(--ods-text-secondary)] truncate">

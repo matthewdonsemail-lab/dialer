@@ -421,8 +421,8 @@ function TeamActivity({ events, records, range }: { events: ResolvedActivity[]; 
                   <td className={`${TD} ${r.who === UNATTRIBUTED ? "text-[var(--ods-text-tertiary)]" : "font-semibold"}`}>{r.who}</td>
                   <td className={TD}>
                     <div className="flex items-center gap-2">
-                      <div className="w-20 h-2.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-                        <div className="h-full rounded-full bg-[var(--ods-brand-600)]" style={{ width: `${(r.total / max) * 100}%` }} />
+                      <div className="w-20 h-2.5 rounded-md bg-[var(--ods-bg-tertiary)] overflow-hidden">
+                        <div className="h-full rounded-md bg-[var(--ods-brand-600)]" style={{ width: `${(r.total / max) * 100}%` }} />
                       </div>
                       <span className="font-semibold">{r.total}</span>
                     </div>
@@ -592,8 +592,8 @@ function DataObjects({
                   </td>
                   <td className={TD}>
                     <div className="flex items-center gap-2">
-                      <div className="w-20 h-2.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-                        <div className="h-full rounded-full bg-[var(--ods-brand-600)]" style={{ width: `${(r.total / max) * 100}%` }} />
+                      <div className="w-20 h-2.5 rounded-md bg-[var(--ods-bg-tertiary)] overflow-hidden">
+                        <div className="h-full rounded-md bg-[var(--ods-brand-600)]" style={{ width: `${(r.total / max) * 100}%` }} />
                       </div>
                       <span className="font-semibold">{r.total.toLocaleString()}</span>
                     </div>
@@ -603,8 +603,8 @@ function DataObjects({
                   <td className={`${TD} font-semibold ${r.deleted ? "text-red-600" : ""}`}>{r.deleted}</td>
                   <td className={TD}>
                     <div className="flex items-center gap-2">
-                      <div className="w-16 h-2.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(r.attributed ?? 0) * 100}%` }} />
+                      <div className="w-16 h-2.5 rounded-md bg-[var(--ods-bg-tertiary)] overflow-hidden">
+                        <div className="h-full rounded-md bg-emerald-500" style={{ width: `${(r.attributed ?? 0) * 100}%` }} />
                       </div>
                       <span className="font-semibold">{r.total && r.attributed != null ? `${Math.round(r.attributed * 100)}%` : "—"}</span>
                     </div>

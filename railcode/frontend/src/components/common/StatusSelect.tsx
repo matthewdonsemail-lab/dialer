@@ -61,7 +61,7 @@ export function StatusSelect({ value, onChange, disabled, options }: StatusSelec
         disabled={disabled}
         className={`h-5 inline-flex items-center gap-1.5 px-2 rounded-[4px] text-[11px] font-medium border border-[var(--ods-border)] ${current.bgTint} ${current.textColor} hover:brightness-95 transition-all select-none`}
       >
-        <span className={`w-1.5 h-1.5 rounded-full ${current.dotColor}`} />
+        <span className={`w-1.5 h-1.5 rounded-md ${current.dotColor}`} />
         <span>{current.label}</span>
         <ChevronDown className="w-3 h-3 opacity-60 ml-0.5" />
       </button>
@@ -83,7 +83,7 @@ export function StatusSelect({ value, onChange, disabled, options }: StatusSelec
                     : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-bg-secondary)] hover:text-[var(--ods-text-primary)]"
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${option.dotColor}`} />
+                <span className={`w-1.5 h-1.5 rounded-md ${option.dotColor}`} />
                 <span>{option.label}</span>
               </div>
             ))}

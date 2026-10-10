@@ -203,10 +203,10 @@ function DialerCard({ session, onChange }: { session: Session; onChange: (s: Ses
         <div className="dark w-[380px] rounded-[12px] border border-white/10 bg-[#0b1622] p-4 text-center text-[13px] text-white/70 shadow-2xl">
           Loading contact…
           <div className="mt-3 flex justify-center gap-2">
-            <button onClick={advance} className="h-8 px-3 rounded-full bg-white/10 text-white flex items-center gap-1.5">
+            <button onClick={advance} className="h-8 px-3 rounded-md bg-white/10 text-white flex items-center gap-1.5">
               <SkipForward className="w-3.5 h-3.5" /> Skip
             </button>
-            <button onClick={() => onChange(null)} className="h-8 px-3 rounded-full bg-white/10 text-white flex items-center gap-1.5">
+            <button onClick={() => onChange(null)} className="h-8 px-3 rounded-md bg-white/10 text-white flex items-center gap-1.5">
               <Square className="w-3.5 h-3.5" /> End
             </button>
           </div>

@@ -46,7 +46,7 @@ export function CallbackPage() {
       <div className="w-full max-w-md py-16">
         <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-8 space-y-5 text-center">
           <div className="space-y-3" role="status" aria-label="Finishing sign-in">
-            <Skeleton className="h-10 w-10 rounded-full mx-auto" />
+            <Skeleton className="h-10 w-10 rounded-md mx-auto" />
             <Skeleton className="h-3.5 w-2/3 mx-auto" />
             <Skeleton className="h-3 w-1/2 mx-auto" />
           </div>

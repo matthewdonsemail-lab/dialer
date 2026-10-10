@@ -49,7 +49,7 @@ export function MultiValue({
             }}
             aria-expanded={open}
             title={`${others.length} more ${kind === "phone" ? "number" : "email"}${others.length === 1 ? "" : "s"}`}
-            className="shrink-0 h-5 px-2 rounded-full bg-[var(--ods-brand-50)] text-[11px] font-semibold text-[var(--ods-brand-700)] hover:bg-[var(--ods-brand-100)] dark:bg-[var(--ods-brand-900)]/50 dark:text-[var(--ods-brand-300)]"
+            className="shrink-0 h-5 px-2 rounded-md bg-[var(--ods-brand-50)] text-[11px] font-semibold text-[var(--ods-brand-700)] hover:bg-[var(--ods-brand-100)] dark:bg-[var(--ods-brand-900)]/50 dark:text-[var(--ods-brand-300)]"
           >
             +{others.length}
           </button>

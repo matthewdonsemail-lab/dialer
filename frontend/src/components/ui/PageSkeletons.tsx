@@ -20,7 +20,7 @@ export function StatTilesSkeleton({ count = 6 }: { count?: number }) {
           <div className="flex items-center gap-2.5">
             <Skeleton className="w-9 h-9 rounded-[8px]" />
             <Skeleton className="h-3.5 w-20" />
-            <Skeleton className="ml-auto h-4 w-4 rounded-full" />
+            <Skeleton className="ml-auto h-4 w-4 rounded-md" />
           </div>
           <Skeleton className="mt-auto h-7 w-16" />
         </div>
@@ -38,7 +38,7 @@ export function ReportCardSkeleton({ body = "lines", rows = 5, className = "" }:
       <div className="flex items-center gap-2 mb-4 h-7">
         <Skeleton className="h-5 w-40" />
         <Skeleton className="h-6 w-16 rounded-md" />
-        <Skeleton className="h-4 w-4 rounded-full" />
+        <Skeleton className="h-4 w-4 rounded-md" />
       </div>
       {body === "chart" && (
         <div className="h-[220px] flex items-end gap-2 px-6 pb-6 border-b border-l border-[var(--ods-border)]">
@@ -119,7 +119,7 @@ function PageHeaderSkeleton({ pickers = 0 }: { pickers?: number }) {
       <div className="flex items-center gap-2 h-11">
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-6 w-20 rounded-md" />
-        <Skeleton className="h-4 w-4 rounded-full" />
+        <Skeleton className="h-4 w-4 rounded-md" />
       </div>
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: pickers }, (_, i) => (
@@ -301,7 +301,7 @@ export function ScriptDetailSkeleton() {
         </div>
       </div>
       <div className="p-4 border-t border-[var(--ods-border)] bg-[var(--ods-bg-primary)] shrink-0">
-        <Skeleton className="h-11 w-full rounded-full" />
+        <Skeleton className="h-11 w-full rounded-md" />
       </div>
     </div>
   );
@@ -396,7 +396,7 @@ export function RecordPageSkeleton() {
             <div className="flex-1 p-4 flex flex-col items-center gap-4">
               <Skeleton className="h-5 w-40 mt-4" />
               <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-14 w-14 rounded-full" />
+              <Skeleton className="h-14 w-14 rounded-md" />
               <Skeleton className="h-8 w-8 rounded-[6px]" />
               <Skeleton className="h-10 w-full rounded-[8px] mt-auto" />
               <Skeleton className="h-20 w-full rounded-[8px]" />

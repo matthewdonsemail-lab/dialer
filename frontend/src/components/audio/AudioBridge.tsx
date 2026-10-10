@@ -120,7 +120,7 @@ export function AudioBridgeProvider({ children }: { children: ReactNode }) {
           <p className="text-[13px] text-white/60">The dialer is calling you at</p>
           <p className="text-[18px] font-semibold tabular-nums">{pretty(session.agentPhone)} …</p>
           <p className="text-[12px] text-white/60 mt-1">Answer your phone to connect.</p>
-          <button onClick={end} className="mt-3 w-full h-10 rounded-full bg-[#f87171] hover:bg-[#ef4444] text-[14px] font-semibold">
+          <button onClick={end} className="mt-3 w-full h-10 rounded-md bg-[#f87171] hover:bg-[#ef4444] text-[14px] font-semibold">
             Stop
           </button>
         </BridgeCard>
@@ -133,11 +133,11 @@ export function AudioBridgeProvider({ children }: { children: ReactNode }) {
             <b className="text-white tabular-nums tracking-widest">{session.pin}</b> to begin.
           </p>
           <div className="mt-3 flex justify-end gap-2">
-            <button onClick={end} className="h-9 px-4 rounded-full text-[13px] font-semibold text-white/80 hover:bg-white/10">
+            <button onClick={end} className="h-9 px-4 rounded-md text-[13px] font-semibold text-white/80 hover:bg-white/10">
               Cancel
             </button>
             {session.dialInNumber && (
-              <a href={`tel:${session.dialInNumber}`} className="h-9 px-4 rounded-full bg-[#3b82f6] text-[13px] font-semibold flex items-center gap-1.5">
+              <a href={`tel:${session.dialInNumber}`} className="h-9 px-4 rounded-md bg-[#3b82f6] text-[13px] font-semibold flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5" /> Call now
               </a>
             )}
@@ -145,10 +145,10 @@ export function AudioBridgeProvider({ children }: { children: ReactNode }) {
         </BridgeCard>
       )}
       {session && session.status === "ready" && (
-        <div className="dark fixed bottom-4 right-20 z-[56] flex items-center gap-2 rounded-full border border-white/10 bg-[#0b1622] pl-3 pr-1 py-1 text-[12px] text-white shadow-xl">
+        <div className="dark fixed bottom-4 right-20 z-[56] flex items-center gap-2 rounded-md border border-white/10 bg-[#0b1622] pl-3 pr-1 py-1 text-[12px] text-white shadow-xl">
           <Headphones className="w-3.5 h-3.5 text-[#22c55e]" />
           Phone line connected ({session.mode === "call_me" ? "Call me" : "Dial in"})
-          <button onClick={end} title="Hang up your phone line" className="ml-1 h-7 px-2.5 rounded-full bg-white/10 hover:bg-white/15 flex items-center gap-1">
+          <button onClick={end} title="Hang up your phone line" className="ml-1 h-7 px-2.5 rounded-md bg-white/10 hover:bg-white/15 flex items-center gap-1">
             <PhoneOff className="w-3 h-3" /> End line
           </button>
         </div>

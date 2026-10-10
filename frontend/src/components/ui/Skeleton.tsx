@@ -89,7 +89,7 @@ export function DetailPageSkeleton() {
       <div className="flex items-center gap-3">
         <Skeleton className="h-4 w-4" />
         <Skeleton className="h-5 w-48" />
-        <Skeleton className="h-5 w-20 rounded-full" />
+        <Skeleton className="h-5 w-20 rounded-md" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <CardSkeleton lines={6} className="lg:col-span-2" />

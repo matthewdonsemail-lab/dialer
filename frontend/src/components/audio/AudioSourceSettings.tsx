@@ -124,7 +124,7 @@ function Option({
           />
         </span>
         <span
-          className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center ${
+          className={`w-6 h-6 shrink-0 rounded-md border-2 flex items-center justify-center ${
             selected ? "border-[var(--ods-brand-600)] bg-[var(--ods-brand-600)] text-white" : "border-[var(--ods-border-strong)]"
           }`}
         >
@@ -320,13 +320,13 @@ export function AudioSourceSettings() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={testing ? () => stopTest.current() : runTest}
-              className="h-10 px-5 rounded-full bg-[var(--ods-brand-600)] hover:opacity-90 text-white text-[14px] font-semibold"
+              className="h-10 px-5 rounded-md bg-[var(--ods-brand-600)] hover:opacity-90 text-white text-[14px] font-semibold"
             >
               {testing ? "Stop test" : "Test audio"}
             </button>
             <div className="flex-1 min-w-[160px] flex items-center gap-2">
-              <div className="flex-1 h-3 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden" role="meter" aria-label="Microphone level" aria-valuenow={Math.round(level * 100)}>
-                <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-75" style={{ width: `${level * 100}%` }} />
+              <div className="flex-1 h-3 rounded-md bg-[var(--ods-bg-tertiary)] overflow-hidden" role="meter" aria-label="Microphone level" aria-valuenow={Math.round(level * 100)}>
+                <div className="h-full rounded-md bg-emerald-500 transition-[width] duration-75" style={{ width: `${level * 100}%` }} />
               </div>
               <span className="text-[13px] font-semibold text-[var(--ods-text-secondary)] w-20">{testing ? "Speak now" : "Mic level"}</span>
               <InfoTip

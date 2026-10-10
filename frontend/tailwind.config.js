@@ -93,7 +93,6 @@ export default {
         "ods-sm": "var(--ods-radius-sm)",
         "ods-md": "var(--ods-radius-md)",
         "ods-lg": "var(--ods-radius-lg)",
-        "ods-pill": "var(--ods-radius-pill)",
       },
     },
   },

@@ -1229,7 +1229,7 @@ export function Softphone({
               <button
                 onClick={startCall}
                 disabled={!phoneNumber}
-                className="w-full h-10 rounded-full bg-[#22c55e] hover:bg-[#16a34a] disabled:opacity-40 text-[14px] font-semibold flex items-center justify-center gap-2"
+                className="w-full h-10 rounded-md bg-[#22c55e] hover:bg-[#16a34a] disabled:opacity-40 text-[14px] font-semibold flex items-center justify-center gap-2"
               >
                 <Phone className="w-4 h-4" /> Dial
               </button>
@@ -1237,7 +1237,7 @@ export function Softphone({
               <div className="flex items-center gap-2">
                 <button
                   onClick={endCall}
-                  className="flex-1 h-10 rounded-full bg-[#ef4444] hover:bg-[#dc2626] text-[14px] font-semibold flex items-center justify-center gap-2"
+                  className="flex-1 h-10 rounded-md bg-[#ef4444] hover:bg-[#dc2626] text-[14px] font-semibold flex items-center justify-center gap-2"
                 >
                   <PhoneOff className="w-4 h-4" /> Hang up
                 </button>
@@ -1245,7 +1245,7 @@ export function Softphone({
                   onClick={toggleMute}
                   disabled={phoneAudio || callState === "on_hold"}
                   title={phoneAudio ? "Mute on your phone (phone audio)" : callState === "muted" ? "Unmute" : "Mute"}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center ${callState === "muted" ? "bg-red-500/25 text-red-200" : "bg-white/10 hover:bg-white/15"}`}
+                  className={`w-10 h-10 rounded-md flex items-center justify-center ${callState === "muted" ? "bg-red-500/25 text-red-200" : "bg-white/10 hover:bg-white/15"}`}
                 >
                   {callState === "muted" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </button>
@@ -1253,7 +1253,7 @@ export function Softphone({
                   onClick={toggleHold}
                   disabled={phoneAudio}
                   title={phoneAudio ? "Hold on your phone (phone audio)" : callState === "on_hold" ? "Resume" : "Hold"}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center ${callState === "on_hold" ? "bg-amber-500/25 text-amber-200" : "bg-white/10 hover:bg-white/15"}`}
+                  className={`w-10 h-10 rounded-md flex items-center justify-center ${callState === "on_hold" ? "bg-amber-500/25 text-amber-200" : "bg-white/10 hover:bg-white/15"}`}
                 >
                   <Headphones className="w-4 h-4" />
                 </button>
@@ -1270,7 +1270,7 @@ export function Softphone({
                 />
                 <button
                   onClick={handleSaveOutcome}
-                  className="w-full h-10 rounded-full bg-[#22c55e] hover:bg-[#16a34a] text-[14px] font-semibold"
+                  className="w-full h-10 rounded-md bg-[#22c55e] hover:bg-[#16a34a] text-[14px] font-semibold"
                 >
                   Save & Next
                 </button>
@@ -1300,7 +1300,7 @@ export function Softphone({
       <div className="bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] rounded-ods-md overflow-hidden h-[460px] flex flex-col">
         {/* 40px header, flat */}
         <div className="h-10 min-h-[40px] px-4 border-b border-[var(--ods-border)] flex items-center gap-3 shrink-0">
-          <div className="w-6 h-6 rounded-full bg-[var(--ods-bg-tertiary)] flex items-center justify-center shrink-0">
+          <div className="w-6 h-6 rounded-md bg-[var(--ods-bg-tertiary)] flex items-center justify-center shrink-0">
             <Phone className="w-3.5 h-3.5 text-[var(--ods-text-secondary)]" />
           </div>
           <div className="flex-1 min-w-0">
@@ -1316,7 +1316,7 @@ export function Softphone({
               </span>
             )}
             <span
-              className={`w-1.5 h-1.5 rounded-full ${
+              className={`w-1.5 h-1.5 rounded-md ${
                 callState === "active" || callState === "connecting" || callState === "ringing"
                   ? "animate-pulse"
                   : ""
@@ -1367,7 +1367,7 @@ export function Softphone({
               <button
                 onClick={callState === "ended" ? handleRedial : startCall}
                 disabled={!phoneNumber}
-                className={`w-14 h-14 rounded-full bg-[var(--ods-success)] hover:bg-[#15803d] disabled:bg-[var(--ods-bg-tertiary)] disabled:text-[var(--ods-text-tertiary)] disabled:cursor-not-allowed flex items-center justify-center text-white transition ${FOCUS_RING}`}
+                className={`w-14 h-14 rounded-md bg-[var(--ods-success)] hover:bg-[#15803d] disabled:bg-[var(--ods-bg-tertiary)] disabled:text-[var(--ods-text-tertiary)] disabled:cursor-not-allowed flex items-center justify-center text-white transition ${FOCUS_RING}`}
               >
                 {callState === "ended" ? <RotateCcw className="w-6 h-6" /> : <Phone className="w-6 h-6" />}
               </button>
@@ -1375,14 +1375,14 @@ export function Softphone({
               <>
                 <button
                   onClick={endCall}
-                  className={`w-14 h-14 rounded-full bg-[var(--ods-danger)] hover:bg-[#b91c1c] flex items-center justify-center text-white transition ${FOCUS_RING}`}
+                  className={`w-14 h-14 rounded-md bg-[var(--ods-danger)] hover:bg-[#b91c1c] flex items-center justify-center text-white transition ${FOCUS_RING}`}
                 >
                   <PhoneOff className="w-6 h-6" />
                 </button>
                 <button
                   onClick={toggleMute}
                   disabled={phoneAudio || callState === "on_hold"}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition ${FOCUS_RING} ${
+                  className={`w-10 h-10 rounded-md flex items-center justify-center transition ${FOCUS_RING} ${
                     callState === "muted"
                       ? "bg-red-500/10 text-red-600"
                       : "bg-[var(--ods-bg-tertiary)] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-border)]"
@@ -1394,7 +1394,7 @@ export function Softphone({
                 <button
                   onClick={toggleHold}
                   disabled={phoneAudio}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition ${FOCUS_RING} ${
+                  className={`w-10 h-10 rounded-md flex items-center justify-center transition ${FOCUS_RING} ${
                     callState === "on_hold"
                       ? "bg-amber-500/10 text-amber-600"
                       : "bg-[var(--ods-bg-tertiary)] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-border)]"
@@ -1492,7 +1492,7 @@ function IncomingCallBanner({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-[var(--ods-bg-primary)] border border-[var(--ods-border)] rounded-ods-lg max-w-sm w-full p-6 text-center flex flex-col gap-4">
-        <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto animate-pulse">
+        <div className="w-16 h-16 rounded-md bg-emerald-500/10 flex items-center justify-center mx-auto animate-pulse">
           <Phone className="w-8 h-8 text-[var(--ods-success)]" />
         </div>
         <div>
@@ -1503,13 +1503,13 @@ function IncomingCallBanner({
         <div className="flex items-center justify-center gap-6">
           <button
             onClick={onReject}
-            className={`w-14 h-14 rounded-full bg-[var(--ods-danger)] hover:bg-[#b91c1c] flex items-center justify-center text-white transition ${FOCUS_RING}`}
+            className={`w-14 h-14 rounded-md bg-[var(--ods-danger)] hover:bg-[#b91c1c] flex items-center justify-center text-white transition ${FOCUS_RING}`}
           >
             <PhoneOff className="w-6 h-6" />
           </button>
           <button
             onClick={onAccept}
-            className={`w-14 h-14 rounded-full bg-[var(--ods-success)] hover:bg-[#15803d] flex items-center justify-center text-white transition ${FOCUS_RING}`}
+            className={`w-14 h-14 rounded-md bg-[var(--ods-success)] hover:bg-[#15803d] flex items-center justify-center text-white transition ${FOCUS_RING}`}
           >
             <Check className="w-6 h-6" />
           </button>

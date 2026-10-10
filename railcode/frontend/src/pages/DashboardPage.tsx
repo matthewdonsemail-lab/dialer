@@ -79,7 +79,7 @@ export function DashboardPage() {
               { label: "Converted", count: convertedLeads, color: "bg-emerald-500" },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-3">
-                <div className={`w-1.5 h-1.5 rounded-full ${item.color}`} />
+                <div className={`w-1.5 h-1.5 rounded-md ${item.color}`} />
                 <span className="flex-1 text-[12px] text-[var(--ods-text-secondary)]">{item.label}</span>
                 <span className="text-[12px] font-semibold text-[var(--ods-text-primary)]">{item.count}</span>
               </div>

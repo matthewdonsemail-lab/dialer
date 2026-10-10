@@ -75,7 +75,7 @@ export function StatusFilterDropdown({
       >
         {current ? (
           <>
-            <span className={`w-1.5 h-1.5 rounded-full ${current.dotColor}`} />
+            <span className={`w-1.5 h-1.5 rounded-md ${current.dotColor}`} />
             <span>{current.label}</span>
           </>
         ) : (
@@ -114,7 +114,7 @@ export function StatusFilterDropdown({
               ) : (
                 filtered.map((opt) => (
                   <button key={opt.value} onClick={() => choose(opt.value)} className={rowClass(opt.value === value)}>
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dotColor}`} />
+                    <span className={`w-1.5 h-1.5 rounded-md shrink-0 ${opt.dotColor}`} />
                     <span className="flex-1 text-left truncate">{opt.label}</span>
                     {opt.value === value && <Check className="w-3.5 h-3.5 text-[var(--ods-brand-600)] shrink-0" />}
                   </button>

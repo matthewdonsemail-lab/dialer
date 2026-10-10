@@ -33,7 +33,7 @@ function StatusLabel({ status }: { status: CallCampaignStatus }) {
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--ods-text-primary)]">
-      <span className={`w-2 h-2 rounded-full ${status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
+      <span className={`w-2 h-2 rounded-md ${status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
       {status === "active" ? "Active" : "Archived"}
     </span>
   );
@@ -315,7 +315,7 @@ export function CampaignModal({
                   {selected.status === "archived" ? (
                     <button
                       onClick={() => setStatus(selected, "active")}
-                      className="w-full h-11 rounded-full border border-[var(--ods-border-strong)] text-[14px] font-semibold text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
+                      className="w-full h-11 rounded-md border border-[var(--ods-border-strong)] text-[14px] font-semibold text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
                     >
                       Reactivate campaign to dial
                     </button>
@@ -323,7 +323,7 @@ export function CampaignModal({
                     <button
                       onClick={() => onStartDialing(selected)}
                       disabled={!progress || progress.remaining === 0}
-                      className="w-full h-11 rounded-full bg-[var(--ods-brand-600)] text-white text-[15px] font-semibold flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+                      className="w-full h-11 rounded-md bg-[var(--ods-brand-600)] text-white text-[15px] font-semibold flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
                     >
                       <Phone className="w-5 h-5" />
                       {progress && progress.remaining === 0 ? "All numbers dialed" : progress && progress.dialed > 0 ? "Resume Dialing" : "Start Dialing"}
@@ -371,8 +371,8 @@ function Overview({ campaign, calls, onStats }: { campaign: CallCampaign; calls:
             {p.dialed} of {p.total} dialed · {formatPercent(p.ratio)}
           </span>
         </div>
-        <div className="h-3 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-          <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${p.ratio * 100}%` }} />
+        <div className="h-3 rounded-md bg-[var(--ods-bg-tertiary)] overflow-hidden">
+          <div className="h-full rounded-md bg-emerald-500 transition-[width]" style={{ width: `${p.ratio * 100}%` }} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -455,7 +455,7 @@ function History({ campaign, calls, contactName }: { campaign: CallCampaign; cal
               <div className="text-[12px] text-[var(--ods-text-secondary)]">{c.toNumber || "—"}</div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--ods-text-primary)]">
-              <span className={`w-2 h-2 rounded-full ${type === "positive" ? "bg-emerald-500" : type === "negative" ? "bg-red-500" : "bg-gray-400"}`} />
+              <span className={`w-2 h-2 rounded-md ${type === "positive" ? "bg-emerald-500" : type === "negative" ? "bg-red-500" : "bg-gray-400"}`} />
               {callStatusLabel(c.status)}
             </span>
             <span className="w-14 text-right text-[12px] tabular-nums text-[var(--ods-text-secondary)]">{clock(c.durationSeconds)}</span>

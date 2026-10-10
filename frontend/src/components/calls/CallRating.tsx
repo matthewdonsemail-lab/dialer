@@ -106,8 +106,8 @@ export function CallQualityScores({
                 <span className="text-[12px] font-semibold text-[var(--ods-text-tertiary)]"> / 5</span>
               </span>
             </div>
-            <div className="h-3 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${(value / 5) * 100}%`, background: tone.bar }} />
+            <div className="h-3 rounded-md bg-[var(--ods-bg-tertiary)] overflow-hidden">
+              <div className="h-full rounded-md" style={{ width: `${(value / 5) * 100}%`, background: tone.bar }} />
             </div>
           </div>
         );
@@ -262,7 +262,7 @@ export function WaveformPlayer({
       <button
         onClick={toggle}
         aria-label={playing ? "Pause recording" : "Play recording"}
-        className="shrink-0 w-10 h-10 rounded-full border border-[var(--ods-border)] bg-[var(--ods-bg-tertiary)] flex items-center justify-center text-[var(--ods-text-primary)] hover:bg-[var(--ods-border)] transition"
+        className="shrink-0 w-10 h-10 rounded-md border border-[var(--ods-border)] bg-[var(--ods-bg-tertiary)] flex items-center justify-center text-[var(--ods-text-primary)] hover:bg-[var(--ods-border)] transition"
       >
         {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
       </button>
@@ -280,7 +280,7 @@ export function WaveformPlayer({
         {bars.map((height, i) => (
           <span
             key={i}
-            className="flex-1 rounded-full"
+            className="flex-1 rounded-md"
             style={{
               height: `${height * 100}%`,
               backgroundColor: i < playedCount ? "var(--ods-success)" : "var(--ods-border)",
@@ -308,7 +308,7 @@ export function WaveformPlayer({
         download
         aria-label="Download recording"
         title="Download recording"
-        className="shrink-0 w-9 h-9 rounded-full bg-[var(--ods-bg-tertiary)] flex items-center justify-center text-[var(--ods-text-primary)] hover:bg-[var(--ods-border)] transition"
+        className="shrink-0 w-9 h-9 rounded-md bg-[var(--ods-bg-tertiary)] flex items-center justify-center text-[var(--ods-text-primary)] hover:bg-[var(--ods-border)] transition"
       >
         <Download className="w-4 h-4" />
       </a>
@@ -317,7 +317,7 @@ export function WaveformPlayer({
           href={detailHref}
           aria-label="Open call details"
           title="Open call details"
-          className="shrink-0 w-9 h-9 rounded-full bg-[var(--ods-brand-500)] flex items-center justify-center text-white hover:brightness-110 transition"
+          className="shrink-0 w-9 h-9 rounded-md bg-[var(--ods-brand-500)] flex items-center justify-center text-white hover:brightness-110 transition"
         >
           <Phone className="w-4 h-4" />
         </a>

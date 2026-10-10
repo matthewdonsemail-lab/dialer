@@ -115,7 +115,7 @@ export function ChartSummary({ items }: { items: { label: string; value: string;
     <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
       {items.map((i) => (
         <div key={i.label} className="flex items-center gap-2.5 rounded-[8px] border border-[var(--ods-border)] px-3 py-2">
-          <span className="w-1.5 self-stretch rounded-full" style={{ background: i.color }} />
+          <span className="w-1.5 self-stretch rounded-md" style={{ background: i.color }} />
           <div className="min-w-0">
             <div className="text-[18px] font-bold leading-tight tabular-nums text-[var(--ods-text-primary)]">{i.value}</div>
             <div className="text-[12px] font-medium text-[var(--ods-text-secondary)] truncate">{i.label}</div>
