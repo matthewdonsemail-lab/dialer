@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../../middleware/auth.js";
 import { setupTwentyCRM } from "../../../lib/twenty/objectService/index.js";
-import { loadSyncConfig } from "../../../lib/twenty/client/index.js";
+import { readLiveSchema, SCHEMA_MANIFEST } from "../../../lib/twenty/schema/index.js";
 import { createLogger } from "../../../lib/logger/index.js";
 import type { SetupStatusResponse } from "./types.js";
 
@@ -39,73 +39,30 @@ router.post("/", async (req: AuthRequest, res) => {
 
 /**
  * GET /api/setup/twenty/status
- * Live check against Twenty metadata: every required object plus the fields
- * the dialer depends on (claim state on agencyPhones, link/timestamp fields
- * on agencyCalls, member attribution columns). Nothing is hardcoded —
- * missing items report exists:false.
+ * Live check against Twenty metadata for every object, field and relation in
+ * the schema manifest (lib/twenty/schema). Read-only; missing items report
+ * exists:false. `bun run twenty:schema` (or POST above) creates them.
  */
 router.get("/status", async (_req, res) => {
   try {
-    const objects = await queryObjectsWithFields();
-    const byName = new Map(objects.map((o) => [o.nameSingular, o]));
-
-    const wantObjects = [
-      "agencyProspect",
-      "agencyLead",
-      "agencyCampaign",
-      "agencyScript",
-      "agencyPhone",
-      "agencyCall",
-    ];
-    // Fields the backend actually reads/writes (see routes + setup helpers).
-    const wantFields: Array<{ object: string; name: string }> = [
-      { object: "agencyProspects", name: "createdByMemberId" },
-      { object: "agencyPhones", name: "phoneNumber" },
-      { object: "agencyPhones", name: "callState" },
-      { object: "agencyPhones", name: "claimedByMemberId" },
-      { object: "agencyPhones", name: "claimedByEmail" },
-      { object: "agencyPhones", name: "claimedAt" },
-      { object: "agencyPhones", name: "lastHeartbeatAt" },
-      { object: "agencyPhones", name: "currentCallId" },
-      { object: "agencyCalls", name: "direction" },
-      { object: "agencyCalls", name: "status" },
-      { object: "agencyCalls", name: "fromNumber" },
-      { object: "agencyCalls", name: "toNumber" },
-      { object: "agencyCalls", name: "startedAt" },
-      { object: "agencyCalls", name: "endedAt" },
-      { object: "agencyCalls", name: "durationSeconds" },
-      { object: "agencyCalls", name: "telnyxCallId" },
-      { object: "agencyCalls", name: "agencyPhoneId" },
-      { object: "agencyCalls", name: "agencyLeadId" },
-      { object: "agencyCalls", name: "agencyProspectId" },
-      { object: "agencyCalls", name: "createdByMemberId" },
-      { object: "agencyCalls", name: "debugLog" },
-      // AI call analysis: written by POST/PATCH /api/calls, so they belong in
-      // the contract. A missing one makes every call write 400.
-      { object: "agencyCalls", name: "aiSummary" },
-      { object: "agencyCalls", name: "aiSentiment" },
-      { object: "agencyCalls", name: "aiScore" },
-      { object: "agencyCalls", name: "aiConfidence" },
-      { object: "agencyCalls", name: "aiKeyPoints" },
-      { object: "agencyCalls", name: "aiScores" },
-      { object: "agencyCalls", name: "aiModel" },
-      { object: "agencyCalls", name: "aiAnalyzedAt" },
+    const live = await readLiveSchema();
+    const plural = new Map(SCHEMA_MANIFEST.objects.map((o) => [o.nameSingular, o.namePlural]));
+    const wantFields = [
+      ...SCHEMA_MANIFEST.objects.flatMap((o) => o.fields.map((f) => ({ object: o.nameSingular, name: f.name }))),
+      ...SCHEMA_MANIFEST.relations.map((r) => ({ object: r.object, name: r.name })),
     ];
 
     const status: SetupStatusResponse = {
       success: true,
-      objects: wantObjects.map((nameSingular) => {
-        const found = byName.get(nameSingular);
-        return {
-          name: found ? found.namePlural : `${nameSingular}s`,
-          exists: Boolean(found),
-          id: found ? found.id : "",
-        };
+      objects: SCHEMA_MANIFEST.objects.map((o) => {
+        const found = live.get(o.nameSingular);
+        return { name: o.namePlural, exists: Boolean(found), id: found ? found.id : "" };
       }),
-      fields: wantFields.map((f) => {
-        const obj = objects.find((o) => o.namePlural === f.object);
-        return { object: f.object, name: f.name, exists: Boolean(obj?.fields.has(f.name)) };
-      }),
+      fields: wantFields.map((f) => ({
+        object: plural.get(f.object) ?? f.object,
+        name: f.name,
+        exists: Boolean(live.get(f.object)?.fields.has(f.name)),
+      })),
     };
     res.json(status);
   } catch (err: any) {
@@ -117,35 +74,5 @@ router.get("/status", async (_req, res) => {
     });
   }
 });
-
-/** Read-only metadata query: object ids/names plus their field names. */
-async function queryObjectsWithFields(): Promise<
-  Array<{ id: string; nameSingular: string; namePlural: string; fields: Set<string> }>
-> {
-  const cfg = loadSyncConfig();
-  const response = await fetch(`${cfg.twentyBaseUrl}/metadata`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${cfg.twentyApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query: `{ objects(paging: {first: 100}) { edges { node { id nameSingular namePlural fields(paging: {first: 200}) { edges { node { name } } } } } } }`,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Metadata error ${response.status}`);
-  }
-  const json = await response.json();
-  if (json.errors?.length > 0) {
-    throw new Error(`Metadata errors: ${JSON.stringify(json.errors).slice(0, 200)}`);
-  }
-  return (json.data?.objects?.edges ?? []).map((e: any) => ({
-    id: e.node.id,
-    nameSingular: e.node.nameSingular,
-    namePlural: e.node.namePlural,
-    fields: new Set((e.node.fields?.edges ?? []).map((f: any) => f.node.name as string)),
-  }));
-}
 
 export default router;

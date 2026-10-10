@@ -2,7 +2,31 @@
   "name": "dialer",
   "private": true,
   "type": "module",
-  "description": "Browser-based cold calling dialer with a native Twenty CRM integration.",
+  "description": "Open-source power dialing softphone CRM on Twenty: works the same way as the GoHighLevel dialer and the WAVV dialer, with every record kept in Twenty.",
+  "author": "Matthew (https://github.com/matthewdonsemail-lab)",
+  "license": "MIT",
+  "homepage": "https://github.com/matthewdonsemail-lab/dialer#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/matthewdonsemail-lab/dialer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/matthewdonsemail-lab/dialer/issues"
+  },
+  "keywords": [
+    "power-dialer",
+    "softphone",
+    "crm",
+    "twenty",
+    "twenty-crm",
+    "telnyx",
+    "webrtc",
+    "sip",
+    "cold-calling",
+    "wavv",
+    "gohighlevel",
+    "open-source"
+  ],
   "workspaces": [
     "backend",
     "frontend",
@@ -25,13 +49,18 @@
     "check:scope": "node scripts/check-scope.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "docs:telnyx": "node scripts/pull-telnyx-docs.mjs",
-    "docs:twenty": "node scripts/pull-twenty-docs.mjs"
+    "docs:twenty": "node scripts/pull-twenty-docs.mjs",
+    "twenty:schema": "tsx backend/src/lib/twenty/schema/cli.ts",
+    "twenty:seed": "tsx backend/src/lib/demo/seed/cli.ts",
+    "screenshots": "tsx scripts/screenshots/captureScreenshots.ts",
+    "twenty:schema:check": "tsx backend/src/lib/twenty/schema/cli.ts --dry-run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "playwright": "1.56.1"
   },
   "overrides": {
     "esbuild": "0.25.12"

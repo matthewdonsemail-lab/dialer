@@ -11,7 +11,7 @@ router.use(authMiddleware);
 const log = createLogger("call-campaigns");
 
 const NOT_SET_UP =
-  "Call campaigns are not set up in Twenty yet. Run `npx tsx --env-file=../.env.local setup-call-campaigns.ts` in backend/ (or POST /api/setup/twenty).";
+  "Call campaigns are not set up in Twenty yet. Run `bun run twenty:schema` (or POST /api/setup/twenty).";
 
 /** Twenty answers an unknown object with 400/404 mentioning the object name. */
 function isMissingObject(err: any): boolean {
