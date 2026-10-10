@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/domains/ui/button";
 import { buttonClass } from "@/domains/ui/button";
 import { inputClass } from "@/domains/ui/input";
@@ -14,6 +14,7 @@ import {
   FileText,
   Globe,
   Keyboard,
+  ListFilter,
   Mic,
   MicOff,
   Pause,
@@ -27,6 +28,7 @@ import {
   Settings,
   SkipForward,
   Square,
+  User,
   Users,
   X,
   type IconComponent,
@@ -43,6 +45,7 @@ import { usePersistedState } from "@/domains/app/persistedState";
 import { useCalls } from "@/domains/calls/data";
 import { contactsApi, contactName, useContactFacets, useProspectLookup, type ContactRow } from "@/domains/contact/list";
 import { lineCountry, lineRegion, pickCallLine } from "@/domains/dialer/route";
+import { DockContactPanel } from "@/domains/dialer/contactPanel";
 import { regionOfCountry } from "@dialer/shared";
 import { countryCode, countryName } from "@/domains/country/lookup";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disposition";
@@ -107,12 +110,27 @@ export function DialerTopButton() {
  * pages; closing it only hides it. Views follow the call: idle (tabs), in
  * call, call summary, with incoming calls and settings on top.
  */
+/** What floats beside the dock: the call script, or a contact's details. */
+type SidePanel = { kind: "script" } | { kind: "contact"; contactType: "prospect" | "lead"; contactId: string } | null;
+const SideContext = createContext<{ side: SidePanel; setSide: (s: SidePanel) => void }>({ side: null, setSide: () => {} });
+
+/** Opens (or, when it is already showing, closes) a contact beside the dock. */
+function useContactSide() {
+  const { side, setSide } = useContext(SideContext);
+  return {
+    isShown: (id: string | null | undefined) => side?.kind === "contact" && side.contactId === id,
+    toggle: (contactType: "prospect" | "lead", contactId: string) =>
+      setSide(side?.kind === "contact" && side.contactId === contactId ? null : { kind: "contact", contactType, contactId }),
+  };
+}
+
 export function DialerDock() {
   const dialer = useDialer();
   const { isOpen, close, open, pinned, setPinned, state, duration } = dialer;
   const ref = useRef<HTMLDivElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [scriptOpen, setScriptOpen] = useState(false);
+  const [side, setSide] = useState<SidePanel>(null);
+  const scriptOpen = side?.kind === "script";
 
   // Unpinned: a click outside closes it (menus portal out, so skip those).
   useEffect(() => {
@@ -126,8 +144,9 @@ export function DialerDock() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [isOpen, pinned, close]);
 
+  // The script belongs to the live call; a contact stays up through the summary.
   useEffect(() => {
-    if (!isLive(state)) setScriptOpen(false);
+    if (!isLive(state)) setSide((s) => (s?.kind === "script" ? null : s));
   }, [state]);
 
   if (!isOpen) {
@@ -146,11 +165,12 @@ export function DialerDock() {
 
   let body: ReactNode;
   if (settingsOpen) body = <SettingsSheet onClose={() => setSettingsOpen(false)} />;
-  else if (isLive(state)) body = <InCallView scriptOpen={scriptOpen} onToggleScript={() => setScriptOpen((o) => !o)} />;
+  else if (isLive(state)) body = <InCallView scriptOpen={scriptOpen} onToggleScript={() => setSide(scriptOpen ? null : { kind: "script" })} />;
   else if (state === "ended") body = <SummaryView />;
   else body = <IdleView />;
 
   return (
+    <SideContext.Provider value={{ side, setSide }}>
     <div
       ref={ref}
       role="dialog"
@@ -159,7 +179,12 @@ export function DialerDock() {
     >
       {scriptOpen && dialer.target && (
         <div className="hidden md:block absolute right-full top-0 mr-2 w-[360px]">
-          <CallScriptViewer docked campaignId={dialer.target.campaignId ?? null} onClose={() => setScriptOpen(false)} />
+          <CallScriptViewer docked campaignId={dialer.target.campaignId ?? null} onClose={() => setSide(null)} />
+        </div>
+      )}
+      {side?.kind === "contact" && (
+        <div className="hidden md:block absolute right-full top-0 mr-2 w-[360px]">
+          <DockContactPanel key={side.contactId} contactType={side.contactType} contactId={side.contactId} onClose={() => setSide(null)} />
         </div>
       )}
       <DockHeader
@@ -172,6 +197,7 @@ export function DialerDock() {
       {dialer.incoming && <IncomingBanner />}
       <div className="flex-1 min-h-0 flex flex-col">{body}</div>
     </div>
+    </SideContext.Provider>
   );
 }
 
@@ -391,8 +417,14 @@ interface DockFilters {
   status: string;
   /** "all", "__never" or a call outcome. */
   lastCall: string;
+  /** "all", "prospect" or "lead". */
+  type: string;
+  /** "all" or a raw value from Twenty (industry is the niche). */
+  industry: string;
+  state: string;
+  city: string;
 }
-const DOCK_FILTERS: DockFilters = { country: "all", status: "all", lastCall: "all" };
+const DOCK_FILTERS: DockFilters = { country: "all", status: "all", lastCall: "all", type: "all", industry: "all", state: "all", city: "all" };
 const DOCK_STATUSES: Array<[app: string, twenty: string, label: string]> = [
   ["new", "NEW", "New"],
   ["contacted", "CONTACTED", "Contacted"],
@@ -440,6 +472,9 @@ function DockFilter({ label, value, options, onChange }: { label: string; value:
 
 function ContactsTab() {
   const { dial, lines, line } = useDialer();
+  const navigate = useNavigate();
+  const contactSide = useContactSide();
+  const [more, setMore] = usePersistedState("dialer-contact-more-filters", false);
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   const [saved, setFilters] = usePersistedState<DockFilters>("dialer-contact-filters", DOCK_FILTERS);
@@ -491,12 +526,33 @@ function ContactsTab() {
     ...(facets?.lastCall ? [{ value: "__never", label: "Never called", hint: facets.lastCall.__never ?? 0 }] : []),
   ];
 
+  const valueOptions = (counts: Record<string, number> | undefined): DockFilterOption[] =>
+    Object.entries(counts ?? {})
+      .filter(([raw]) => raw !== "__blank")
+      .sort((a, b) => b[1] - a[1])
+      .map(([raw, n]) => ({ value: raw, label: raw, hint: n }));
+  const typeOptions: DockFilterOption[] = [
+    { value: "prospect", label: "Prospects", hint: facets?.type?.prospect },
+    { value: "lead", label: "Leads", hint: facets?.type?.lead },
+  ];
+  const extra: Array<[keyof DockFilters, string, DockFilterOption[]]> = [
+    ["type", "Type", typeOptions],
+    ["industry", "Industry", valueOptions(facets?.industry)],
+    ["state", "State", valueOptions(facets?.state)],
+    ["city", "City", valueOptions(facets?.city)],
+  ];
+  const extraActive = extra.filter(([key]) => f[key] !== "all").length;
+
   const countryRaws = f.country === "line" ? lineRaws : f.country !== "all" ? (countries.get(f.country)?.raws ?? [f.country]) : undefined;
   const query = {
     q: debounced || undefined,
     country: countryRaws?.length ? countryRaws : undefined,
     status: f.status !== "all" ? [f.status] : undefined,
     lastCall: f.lastCall !== "all" ? f.lastCall : undefined,
+    type: f.type !== "all" ? [f.type as "prospect" | "lead"] : undefined,
+    industry: f.industry !== "all" ? [f.industry] : undefined,
+    state: f.state !== "all" ? [f.state] : undefined,
+    city: f.city !== "all" ? [f.city] : undefined,
   };
   const { data, isFetching } = useQuery({
     queryKey: ["dialer-contact-search", query],
@@ -505,7 +561,7 @@ function ContactsTab() {
   });
   const rows: ContactRow[] = (data?.rows ?? []).slice(0, 25);
   const total = data?.totalCount ?? rows.length;
-  const filtered = f.country !== "all" || f.status !== "all" || f.lastCall !== "all";
+  const filtered = (Object.keys(DOCK_FILTERS) as (keyof DockFilters)[]).some((k) => f[k] !== "all");
   return (
     <div>
       <div className="p-3 pb-2 sticky top-0 z-[1] bg-[var(--ods-bg-primary)] space-y-2">
@@ -513,10 +569,27 @@ function ContactsTab() {
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ods-text-tertiary)]" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, company or number" className={`${INPUT} pl-8`} autoFocus />
         </div>
-        <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
           <DockFilter label="Country" value={f.country} options={countryOptions} onChange={(v) => set({ country: v })} />
           <DockFilter label="Status" value={f.status} options={statusOptions} onChange={(v) => set({ status: v })} />
           <DockFilter label="Last call" value={f.lastCall} options={lastCallOptions} onChange={(v) => set({ lastCall: v })} />
+          <button
+            onClick={() => setMore(!more)}
+            aria-expanded={more}
+            title={more ? "Hide the other filters" : "Filter by type, industry, state and city"}
+            className={`h-7 px-2 inline-flex items-center gap-1 rounded-md border text-[12px] font-medium ${
+              more || extraActive
+                ? "border-[color-mix(in_srgb,var(--ods-brand-600)_40%,transparent)] text-[var(--ods-brand-700)] dark:text-[var(--ods-brand-300)]"
+                : "border-[var(--ods-border)] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)]"
+            }`}
+          >
+            <ListFilter className="w-3 h-3" />
+            More{extraActive ? ` (${extraActive})` : ""}
+          </button>
+          {more &&
+            extra.map(([key, label, options]) => (
+              <DockFilter key={key} label={label} value={f[key]} options={options} onChange={(v) => set({ [key]: v })} />
+            ))}
           {filtered && (
             <button onClick={() => setFilters(DOCK_FILTERS)} title="Clear filters" aria-label="Clear the contact filters" className={`${BTN_ICON} ml-auto shrink-0`}>
               <X className="w-3.5 h-3.5" />
@@ -552,15 +625,37 @@ function ContactsTab() {
               }
               trailing={
                 <span className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => contactSide.toggle(r.type, r.id)}
+                    aria-pressed={contactSide.isShown(r.id)}
+                    title="Show the details beside the dialer"
+                    aria-label={`Show ${name} beside the dialer`}
+                    className={`${BTN_ICON} ${contactSide.isShown(r.id) ? "text-[var(--ods-brand-600)]" : "opacity-0 group-hover:opacity-100 focus:opacity-100"}`}
+                  >
+                    <User className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => navigate(r.type === "lead" ? `/leads/${r.id}` : `/contacts/${r.id}`)}
+                    title="Open contact"
+                    aria-label={`Open ${name}`}
+                    className={`${BTN_ICON} opacity-0 group-hover:opacity-100 focus:opacity-100`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
                   {route?.switched && route.line && (
                     <span className="text-[12px] text-[var(--ods-text-tertiary)] tabular-nums" title={`Called from your ${toName} number ${route.line.phoneNumber}, so the call stays local`}>
                       via {route.line.phoneNumber}
                     </span>
                   )}
                   {route?.abroad && (
-                    <Chip icon={Globe} iconClassName="text-amber-600" title={`In ${toName || "another country"} and you have no free number there, so this is an international call from ${line?.phoneNumber}`}>
-                      International
-                    </Chip>
+                    <span
+                      role="img"
+                      aria-label="International call"
+                      title={`In ${toName || "another country"} and you have no free number there, so this is an international call from ${line?.phoneNumber}`}
+                      className="inline-flex"
+                    >
+                      <Globe className="w-3.5 h-3.5 text-amber-600" />
+                    </span>
                   )}
                   <CountryFlag code={countryCode(r.country as string | undefined)} />
                 </span>
@@ -735,6 +830,8 @@ function ControlButton({
 
 function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onToggleScript: () => void }) {
   const d = useDialer();
+  const contactSide = useContactSide();
+  const who = d.target?.contactType && d.target.contactId ? { type: d.target.contactType, id: d.target.contactId } : null;
   const [panel, setPanel] = useState<"none" | "keypad" | "notes">("none");
   const connected = d.state === "active" || d.state === "on_hold";
   return (
@@ -763,6 +860,14 @@ function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onTog
         <ControlButton icon={Keyboard} label="Keypad" active={panel === "keypad"} disabled={d.phoneAudio} onClick={() => setPanel((p) => (p === "keypad" ? "none" : "keypad"))} />
         <ControlButton icon={FileText} label="Notes" active={panel === "notes"} onClick={() => setPanel((p) => (p === "notes" ? "none" : "notes"))} />
         <ControlButton icon={BookOpen} label="Script" active={scriptOpen} disabled={!d.target?.campaignId} title={d.target?.campaignId ? "Show the call script" : "No campaign script for this contact"} onClick={onToggleScript} />
+        <ControlButton
+          icon={User}
+          label="Contact"
+          active={contactSide.isShown(who?.id)}
+          disabled={!who}
+          title={who ? "Show the business you are calling" : "This number is not a saved contact"}
+          onClick={() => who && contactSide.toggle(who.type, who.id)}
+        />
       </div>
       {panel === "keypad" && (
         <div className="px-4 pt-3">

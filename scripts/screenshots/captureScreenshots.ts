@@ -97,6 +97,25 @@ export const SHOTS: Shot[] = [
   { name: "dialer-live", title: "Dialer: live call", path: "/contacts", act: liveCall() },
   { name: "dialer-live-notes", title: "Dialer: live call with notes", path: "/contacts", act: liveCall(dockButton(/^Notes/)) },
   { name: "dialer-live-script", title: "Dialer: live call with the script beside it", path: "/contacts", act: liveCall(dockButton(/^Script/)) },
+  { name: "dialer-live-contact", title: "Dialer: live call with the contact beside it", path: "/contacts", act: liveCall(dockButton(/^Contact/)) },
+  {
+    name: "dialer-contacts-filters",
+    title: "Dialer: contacts with every filter open",
+    path: "/contacts",
+    act: async (page) => {
+      await dock("Contacts")(page);
+      await dockButton(/^More/)(page);
+    },
+  },
+  {
+    name: "dialer-contact-details",
+    title: "Dialer: a contact's details beside the dock",
+    path: "/contacts",
+    act: async (page) => {
+      await dock("Contacts")(page);
+      await page.getByRole("dialog", { name: "Dialer" }).getByRole("button", { name: /beside the dialer$/ }).first().click();
+    },
+  },
   { name: "dialer-summary", title: "Dialer: after the call", path: "/contacts", act: liveCall(dockButton(/End call/)) },
   { name: "history", title: "Call history", path: "/history" },
   { name: "call-overview", title: "Call review: overview", path: `/history/${featuredCall.id}`, act: tab("Overview") },

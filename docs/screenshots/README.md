@@ -101,6 +101,18 @@ every API request from [apiFixtures.ts](../../scripts/screenshots/apiFixtures.ts
 
 ![Dialer: live call with the script beside it](dialer-live-script.png)
 
+**live call with the contact beside it**
+
+![Dialer: live call with the contact beside it](dialer-live-contact.png)
+
+**contacts with every filter open**
+
+![Dialer: contacts with every filter open](dialer-contacts-filters.png)
+
+**a contact's details beside the dock**
+
+![Dialer: a contact's details beside the dock](dialer-contact-details.png)
+
 **after the call**
 
 ![Dialer: after the call](dialer-summary.png)
