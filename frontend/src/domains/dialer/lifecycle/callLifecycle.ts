@@ -210,6 +210,9 @@ export class CallLifecycle {
   async wrapUp(outcome: string, notes: string) {
     const id = this.callId;
     let error: unknown = null;
+    // Free the number first: the operator may already be dialling the next
+    // contact, and that dial waits only for this.
+    await this.release();
     if (id) {
       try {
         await api.calls.update(id, { status: mapOutcomeToCallStatus(outcome), notes });
@@ -219,7 +222,6 @@ export class CallLifecycle {
       }
       api.calls.reconcile(id).catch((err) => sipLog.warn("app", `recording reconcile failed for call ${id}: ${err?.message || err}`));
     }
-    await this.release();
     if (error) throw error;
   }
 

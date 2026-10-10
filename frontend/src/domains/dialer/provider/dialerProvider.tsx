@@ -548,6 +548,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       leadId: next.contactType === "lead" ? next.contactId : null,
       simulated: SIMULATE_CALLS,
     });
+    // The previous call may still be releasing this number in the background.
+    if (pendingReleaseRef.current) await pendingReleaseRef.current;
     const claim = await lc.claim();
     if (!claim.ok) {
       toastWarning("Number in use", `${claim.message}. It frees up when the holder wraps up.`);
@@ -703,15 +705,51 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   }, [notes, notesSaved]);
 
   // ---- summary ----
+  // The last call's number release, still in flight after "Done": the next
+  // dial waits for it so it never claims a number the old call still holds.
+  const pendingReleaseRef = useRef<Promise<unknown> | null>(null);
+
+  /**
+   * "Done": the dock moves on at once and the writes finish in the
+   * background. Saving used to await the call update, recording reconcile,
+   * number release, contact status and a refetch (8+ Twenty requests in a
+   * row) before the queue advanced. Failures still toast.
+   */
   const saveSummary = useCallback(async () => {
     const lc = lifecycleRef.current;
     const t = target;
     const o = outcome;
-    setSaving(true);
-    try {
+    const n = notes;
+    const status = recordStatusForOutcome(o);
+
+    // Show the result in every loaded contact list right away.
+    if (t?.contactId) {
+      const at = new Date().toISOString();
+      const patch = (row: any) =>
+        row?.id === t.contactId ? { ...row, ...(status ? { status } : {}), lastCall: { id: lc?.callId ?? "pending", status: String(o).toUpperCase(), at } } : row;
+      queryClient.setQueriesData({ queryKey: ["contacts-page"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
+      queryClient.setQueriesData({ queryKey: ["dialer-contact-search"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
+      // A list of contacts never called no longer includes this one.
+      for (const [key, page] of queryClient.getQueriesData<any>({ queryKey: ["dialer-contact-search"] })) {
+        const q = (key as unknown[])[1] as { lastCall?: string } | undefined;
+        if (q?.lastCall === "__never" && page?.rows) {
+          queryClient.setQueryData(key, { ...page, rows: page.rows.filter((r: any) => r.id !== t.contactId), totalCount: Math.max(0, (page.totalCount ?? 1) - 1) });
+        }
+      }
+    }
+
+    const after = options.onSaved;
+    resetCall();
+    after?.(o);
+
+    // The number first, on its own: the next dial waits for this and nothing else.
+    const release = (lc?.release() ?? Promise.resolve()).catch(() => {});
+    pendingReleaseRef.current = release;
+    const work = (async () => {
+      await release;
       if (lc && !lc.ctx.simulated) {
         try {
-          await lc.wrapUp(o, notes);
+          await lc.wrapUp(o, n);
         } catch (err) {
           toastError("Disposition not saved", `${describeError(err).detail} The hangup-time result is still on the call.`);
         }
@@ -719,21 +757,16 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         await lc?.release();
       }
       // The disposition decides what the contact becomes (lib/call-outcome).
-      const status = recordStatusForOutcome(o);
       if (status && t?.contactId && !SIMULATE_CALLS) {
         const update = t.contactType === "lead" ? api.leads.update(t.contactId, { status }) : api.prospects.update(t.contactId, { status });
         // A pipeline refusal (e.g. the contact is Converted) is expected: say why.
         await update.catch((err) => toastError("Contact status not updated", `The call was saved. ${describeError(err).detail}`));
       }
-      ["calls", "twentyPhones", "contacts-page", "prospect", "lead", "leads"].forEach((key) =>
+      ["calls", "twentyPhones", "contacts-page", "prospect", "lead", "leads", "contacts-facets"].forEach((key) =>
         queryClient.invalidateQueries({ queryKey: [key] }),
       );
-      const after = options.onSaved;
-      resetCall();
-      after?.(o);
-    } finally {
-      setSaving(false);
-    }
+    })();
+    await work;
   }, [target, outcome, notes, options, queryClient, resetCall, toastError]);
 
   const discardSummary = useCallback(() => {
