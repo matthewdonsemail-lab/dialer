@@ -182,10 +182,10 @@ export function buildDemoRecords(now: Date = new Date()): DemoRecords {
   ];
 
   const agencyPhones = [
-    { id: demoId(4, 1), name: "Austin main line", phoneNumber: "+15125550100", countryCode: "US", numberType: "LONG_CODE", state: "ACTIVE", callState: "IDLE", messagingProfileId: "demo-profile", lastSyncedAt: t(2 * HOUR), createdAt: t(40 * DAY), updatedAt: t(2 * HOUR) },
-    { id: demoId(4, 2), name: "Denver line", phoneNumber: "+13035550100", countryCode: "US", numberType: "LONG_CODE", state: "ACTIVE", callState: "ACTIVE", claimedByMemberId: sam.id, claimedByEmail: sam.email, claimedAt: t(3 * MINUTE), lastHeartbeatAt: t(2_000), messagingProfileId: "demo-profile", lastSyncedAt: t(2 * HOUR), createdAt: t(40 * DAY), updatedAt: t(3 * MINUTE) },
-    { id: demoId(4, 3), name: "Portland line", phoneNumber: "+15035550100", countryCode: "US", numberType: "LONG_CODE", state: "PAUSED", callState: "IDLE", messagingProfileId: "demo-profile", lastSyncedAt: t(1 * DAY), createdAt: t(40 * DAY), updatedAt: t(1 * DAY) },
-    { id: demoId(4, 4), name: "Toll-free", phoneNumber: "+18885550100", countryCode: "US", numberType: "TOLL_FREE", state: "ACTIVE", callState: "IDLE", messagingProfileId: "demo-profile", lastSyncedAt: t(2 * HOUR), createdAt: t(40 * DAY), updatedAt: t(2 * HOUR) },
+    { id: demoId(4, 1), name: "Austin main line", phoneNumber: "+15125550100", countryCode: "US", numberType: "LONG_CODE", state: "ACTIVE", callState: "IDLE", messagingProfileId: "demo-profile", tenDlcCampaignId: "demo-10dlc", lastSyncedAt: t(2 * HOUR), createdAt: t(40 * DAY), updatedAt: t(2 * HOUR) },
+    { id: demoId(4, 2), name: "Denver line", phoneNumber: "+13035550100", countryCode: "US", numberType: "LONG_CODE", state: "ACTIVE", callState: "ACTIVE", claimedByMemberId: sam.id, claimedByEmail: sam.email, claimedAt: t(3 * MINUTE), lastHeartbeatAt: t(2_000), messagingProfileId: "demo-profile", tenDlcCampaignId: "demo-10dlc", lastSyncedAt: t(2 * HOUR), createdAt: t(40 * DAY), updatedAt: t(3 * MINUTE) },
+    { id: demoId(4, 3), name: "Portland line", phoneNumber: "+15035550100", countryCode: "US", numberType: "LONG_CODE", state: "PAUSED", callState: "IDLE", messagingProfileId: "demo-profile", tenDlcCampaignId: "demo-10dlc", lastSyncedAt: t(1 * DAY), createdAt: t(40 * DAY), updatedAt: t(1 * DAY) },
+    { id: demoId(4, 4), name: "Toll-free", phoneNumber: "+18885550100", countryCode: "US", numberType: "TOLL_FREE", state: "ACTIVE", callState: "IDLE", messagingProfileId: "demo-profile", tenDlcCampaignId: "demo-10dlc", lastSyncedAt: t(2 * HOUR), createdAt: t(40 * DAY), updatedAt: t(2 * HOUR) },
   ];
 
   const agencyProspects = PROSPECTS.map(([name, city, region, country, niche, label, phone, rating, reviewCount, status, campaign], i) => {

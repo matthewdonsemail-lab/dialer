@@ -181,6 +181,7 @@ export function respond(method: string, url: URL, pageUrl: string): FixtureRespo
         theirs("Oh nice, that was quick. Can customers pick a time slot on it?", 31),
         ours("Yes, they choose a slot and get a text reminder the day before. Want me to switch it on for Thursday?", 29, "delivered"),
         theirs("Yes please. Talk Thursday.", 12),
+        { ...ours("Booked: Thursday 10:00. I'll call the shop line.", 6, "delivery_failed"), error: "Not 10DLC registered (40010)" },
       ],
     });
   }

@@ -1,5 +1,6 @@
 import { parseNotes } from "@/domains/contact/notes";
 import { twentyDotClass, type TwentyOption } from "@/domains/twenty/options";
+import { textStatusColor, textStatusLabel } from "@/domains/messaging/textStatus";
 import type { AdminActivity, AdminActivityResponse, AdminObject } from "@/domains/admin/data";
 
 /*
@@ -258,12 +259,6 @@ const RELATED_QUIET = new Set([
   "startedAt", "endedAt", "durationSeconds", "direction", "errorCode",
 ]);
 
-/** Telnyx's status words for a text, as people say them. */
-const TEXT_STATUS: Record<string, string> = {
-  queued: "Queued", sending: "Sending", sent: "Sent", delivered: "Delivered", received: "Received",
-  delivery_unconfirmed: "Delivery unconfirmed", sending_failed: "Failed to send", delivery_failed: "Not delivered",
-};
-
 /**
  * `main`: the record whose history this is. Events on related records (its
  * calls, its texts) are named after them: "Call disposition", "Text sent",
@@ -298,9 +293,15 @@ export function historyRows(
       if (related && RELATED_QUIET.has(c.field)) continue;
       if (related) {
         const id = `${e.id}:${c.field}`;
+        // A text's status and failure reason are pills, like every other status in history.
         const isTextStatus = e.object === "message" && c.field === "status";
-        const show = (v: unknown): Display =>
-          isTextStatus && typeof v === "string" && TEXT_STATUS[v.toLowerCase()] ? { kind: "text", text: TEXT_STATUS[v.toLowerCase()] } as Display : displayValue(c.field, v, {});
+        const isTextError = e.object === "message" && c.field === "errorMessage";
+        const show = (v: unknown): Display => {
+          if (typeof v !== "string" || !v) return displayValue(c.field, v, {});
+          if (isTextStatus) return { kind: "option", text: textStatusLabel(v) ?? v, dot: twentyDotClass(textStatusColor(v)) };
+          if (isTextError) return { kind: "option", text: v, dot: twentyDotClass("red") };
+          return displayValue(c.field, v, {});
+        };
         const before = show(c.before);
         const after = show(c.after);
         if (after.kind === "blank" && before.kind === "blank") continue;

@@ -80,5 +80,6 @@ test("a contact's history names its texts and says why one failed", () => {
   );
   const labels = rows.map((r) => r.label);
   assert.deepEqual(labels, ["Text failure reason", "Text status", "Text sent"]);
-  assert.equal(rows[1].after.kind === "text" && rows[1].after.text, "Not delivered");
+  assert.equal(rows[1].after.kind === "option" && rows[1].after.text, "Not delivered");
+  assert.equal(rows[0].after.kind, "option");
 });

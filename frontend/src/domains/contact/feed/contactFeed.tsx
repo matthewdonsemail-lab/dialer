@@ -39,6 +39,8 @@ import { useContactTexts, useSendText } from "@/domains/messaging/thread";
 import type { TextMessage } from "@/domains/api/client";
 import { useToast } from "@/domains/ui/toast";
 import { describeError } from "@/domains/feedback/describeError";
+import { isTextFailed, textStatusColor, textStatusLabel } from "@/domains/messaging/textStatus";
+import { twentyDotClass } from "@/domains/twenty/options";
 
 export type ComposerMode = "sms" | "note";
 
@@ -266,24 +268,11 @@ function CallItem({ call }: { call: any }) {
   );
 }
 
-const TEXT_STATUS: Record<string, string> = {
-  sending: "Sending",
-  queued: "Queued",
-  sent: "Sent",
-  delivered: "Delivered",
-  delivery_unconfirmed: "Sent, delivery unconfirmed",
-  received: "Received",
-  sending_failed: "Failed to send",
-  delivery_failed: "Not delivered",
-  not_sent: "Not sent",
-};
-const TEXT_FAILED = new Set(["sending_failed", "delivery_failed", "not_sent", "failed"]);
-
 /** One text as a chat bubble: ours on the right in the brand tint, theirs on the left. */
 function TextItem({ text }: { text: TextMessage }) {
   const ours = text.direction === "OUTBOUND";
-  const failed = TEXT_FAILED.has(text.status ?? "");
-  const status = text.status ? (TEXT_STATUS[text.status] ?? text.status) : null;
+  const failed = isTextFailed(text.status);
+  const status = textStatusLabel(text.status);
   return (
     <div className={`flex ${ours ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[78%]">
@@ -296,11 +285,12 @@ function TextItem({ text }: { text: TextMessage }) {
         >
           {text.body}
         </div>
-        <div className={`mt-1 flex items-center gap-1.5 text-[12px] ${ours ? "justify-end" : ""} ${failed ? "text-red-600" : "text-[var(--ods-text-tertiary)]"}`}>
+        <div className={`mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--ods-text-tertiary)] ${ours ? "justify-end" : ""}`}>
           <MessageSquare className="w-3 h-3" />
-          <span>{[ours ? text.author || "You" : "Them", text.at ? time(text.at) : null, status].filter(Boolean).join(" · ")}</span>
+          <span>{[ours ? text.author || "You" : "Them", text.at ? time(text.at) : null].filter(Boolean).join(" · ")}</span>
+          {status && <Chip dot={twentyDotClass(textStatusColor(text.status))}>{status}</Chip>}
+          {failed && text.error && <Chip dot={twentyDotClass("red")}>{text.error}</Chip>}
         </div>
-        {failed && text.error && <div className={`mt-0.5 text-[12px] text-red-600 ${ours ? "text-right" : ""}`}>{text.error}</div>}
       </div>
     </div>
   );
