@@ -15,6 +15,8 @@ erDiagram
     agencyPhones ||--o{ agencyCalls : "agencyPhoneId"
     agencyProspects ||--o{ agencyCalls : "agencyProspectId"
     agencyLeads ||--o{ agencyCalls : "agencyLeadId"
+    agencyProspects ||--o{ agencyPeople : "prospectId"
+    agencyPeople ||--o{ agencyLeads : "personId"
     agencyProspects ||--o| agencyLeads : "agencyProspectId"
 
     agencyLeads ||--o{ agencyCallLogs : "leadId, legacy"
@@ -120,6 +122,17 @@ erDiagram
         text agencyPhoneId "relation to agencyPhones"
         text agencyProspectId "relation to agencyProspects"
         text agencyLeadId "relation to agencyLeads"
+    }
+
+    agencyPeople {
+        text name "the person at the business"
+        text jobTitle
+        text personRole
+        text city
+        text phones "PHONES composite"
+        text emails "EMAILS composite"
+        text linkedinLink "LINKS composite"
+        text prospectId "relation to agencyProspects"
     }
 
     agencyOffers {

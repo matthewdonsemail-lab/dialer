@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, BarChart3, BookOpen, Check, FileText, Globe, Pencil, Plus, X, type IconComponent } from "@/components/ui/icons";
 import { CallScriptViewer } from "@/components/scripts/CallScriptViewer";
-import { SendWebsiteWidget } from "@/components/website/SendWebsiteWidget";
+import { WebsitePanel } from "@/components/website/WebsitePanel";
 import { formatDuration } from "@/components/dialer/DialerDock";
 import { api } from "@/lib/api-client";
 import { dispositionTypeOfStatus, callStatusLabel } from "@/lib/call-outcome";
@@ -76,11 +76,7 @@ export function RailPanel({
           ))}
         {tab === "notes" && <NotesPanel key={contact.id} notes={contact.notes ?? ""} onSave={onSaveNotes} />}
         {tab === "website" && contact.type === "prospect" && (
-          <div className="p-3">
-            <SendWebsiteWidget
-              prospect={{ id: contact.id, first_name: contact.firstName, last_name: contact.lastName, phone: contact.phone ?? undefined, website: contact.website ?? undefined, country: contact.country ?? undefined }}
-            />
-          </div>
+          <WebsitePanel prospectId={contact.id} prospectPhone={contact.phone} prospectCountry={contact.country} />
         )}
       </div>
     </div>

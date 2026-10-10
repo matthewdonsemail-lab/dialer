@@ -95,3 +95,7 @@ export function initials(name: string): string {
       .join("") || "?"
   );
 }
+
+/** Text input in the contact workspace (house style: 8px radius, 14px text). */
+export const INPUT =
+  "w-full h-9 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] px-3 text-[14px] text-[var(--ods-text-primary)] outline-none focus:border-[var(--ods-brand-500)] placeholder:text-[var(--ods-text-tertiary)]";

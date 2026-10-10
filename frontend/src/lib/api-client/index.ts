@@ -43,6 +43,30 @@ export interface AudioSessionView {
 export type CallCampaignStatus = "active" | "completed" | "archived";
 
 /** A WAVV-style dial list (backend: /api/call-campaigns, stored in Twenty). */
+export interface Person {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+  role: string | null;
+  city: string | null;
+  avatarUrl: string | null;
+  phone: string | null;
+  email: string | null;
+  linkedin: string | null;
+  x: string | null;
+  prospectId: string | null;
+  createdAt: string | null;
+}
+
+export interface PersonInput {
+  name: string;
+  jobTitle?: string;
+  role?: string;
+  phone?: string;
+  email?: string;
+  linkedin?: string;
+}
+
 export interface CallCampaign {
   id: string;
   name: string;
@@ -246,6 +270,17 @@ export const api = {
     update: (id: string, data: { name?: string; status?: CallCampaignStatus }) =>
       request<CallCampaign>(`/api/call-campaigns/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/api/call-campaigns/${id}`, { method: "DELETE" }),
+  },
+
+  /** People at a business (agencyPerson): many per prospect, one per lead. */
+  people: {
+    list: (params: { prospectId?: string; leadId?: string }) =>
+      request<Person[]>(`/api/people?${new URLSearchParams(params as Record<string, string>).toString()}`),
+    create: (data: PersonInput & { prospectId?: string; leadId?: string }) =>
+      request<Person>("/api/people", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<PersonInput>) =>
+      request<Person>(`/api/people/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (id: string) => request<void>(`/api/people/${id}`, { method: "DELETE" }),
   },
 
   calls: {

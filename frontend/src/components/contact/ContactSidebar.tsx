@@ -28,10 +28,9 @@ import { api } from "@/lib/api-client";
 import { countryCode, countryName } from "@/lib/country";
 import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { useDialer } from "@/components/dialer/DialerProvider";
-import { initials, type Contact } from "./model";
+import { INPUT, initials, type Contact } from "./model";
+import { ContactPeople, usePeople } from "./ContactPeople";
 
-export const INPUT =
-  "w-full h-9 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] px-3 text-[14px] text-[var(--ods-text-primary)] outline-none focus:border-[var(--ods-brand-500)] placeholder:text-[var(--ods-text-tertiary)]";
 
 type Patch = Record<string, unknown>;
 
@@ -185,6 +184,8 @@ export function ContactSidebar({
   const [hideEmpty, setHideEmpty] = usePersistedState("contact-hide-empty", false);
   const [closed, setClosed] = usePersistedState<string[]>("contact-closed-folders", []);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { data: people } = usePeople(contact);
+  const primary = people?.[0] ?? null;
 
   const plural = contact.type === "lead" ? "agencyLeads" : "agencyProspects";
   const { data: meta } = useQuery<{ fields: Record<string, Array<{ label: string; value: string; color: string }>> }>({
@@ -234,7 +235,16 @@ export function ContactSidebar({
               <div className="text-[15px] font-semibold truncate" title={contact.name}>
                 {contact.name}
               </div>
-              <div className="text-[12px] text-[var(--ods-text-tertiary)] truncate">{contact.niche || contact.company || "No industry"}</div>
+              <div className="text-[12px] text-[var(--ods-text-tertiary)] truncate">
+                {primary ? (
+                  <>
+                    <span className="font-semibold text-[var(--ods-text-secondary)]">{primary.name}</span>
+                    {primary.jobTitle ? ` · ${primary.jobTitle}` : ""}
+                  </>
+                ) : (
+                  contact.niche || contact.company || "No industry"
+                )}
+              </div>
             </div>
             <button
               onClick={() => setConfirmDelete(true)}
@@ -268,6 +278,8 @@ export function ContactSidebar({
             <QuickAction icon={FileText} label="Note" tone="text-amber-600" onClick={() => onCompose("note")} />
           </div>
         </div>
+
+        <ContactPeople contact={contact} />
 
         {/* field search */}
         <div className="flex items-center gap-2">
