@@ -21,7 +21,7 @@ import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { randomUUID } from "crypto";
 import { getRequestListener } from "@hono/node-server";
-import { authMiddleware } from "./middleware/auth.js";
+import { authMiddleware, sessionKey } from "./middleware/auth.js";
 import { oauthApp } from "./routes/twenty/oauth/index.js";
 import { loadOAuthConfig } from "./lib/twenty/oauth/index.js";
 import authRoutes from "./routes/auth/index.js";
@@ -113,7 +113,19 @@ app.use((err: any, _req: express.Request, res: express.Response, next: express.N
 // Keyed on the real client (see clientIp): keyed on req.ip, every user behind
 // Cloudflare/Vercel shared one bucket and sign-in failed for all of them.
 const limiterKey = { keyGenerator: clientIp, validate: { xForwardedForHeader: false } };
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, ...limiterKey });
+// A signed-in operator gets their own, larger budget: one dialing session
+// (contacts paging, facets, polling, call rows) went past 300 requests in
+// 15 minutes and every page came back 429. Anonymous traffic keeps 300 per IP.
+// The in-call heartbeat and line state are never limited: throttling them
+// would drop the number lock mid-call.
+const IN_CALL = /^\/twenty\/phones\/[^/]+\/(heartbeat|state)$/;
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: (req) => (sessionKey(req) ? 3000 : 300),
+  keyGenerator: (req) => sessionKey(req) ?? clientIp(req),
+  skip: (req) => IN_CALL.test(req.path),
+  validate: { xForwardedForHeader: false },
+});
 const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, ...limiterKey });
 const probeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, ...limiterKey });
 app.use("/api/", generalLimiter);

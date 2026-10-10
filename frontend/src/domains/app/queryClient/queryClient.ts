@@ -1,6 +1,7 @@
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { describeError } from "@/domains/feedback/describeError";
 import { notify } from "@/domains/feedback/bus";
+import { ApiError } from "@/domains/api/error";
 
 /** Last warning time per query, so a flaky refresh warns once a minute, not on every retry. */
 const warnedAt = new Map<string, number>();
@@ -22,7 +23,9 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5,
-      retry: 1,
+      // Retry once for a dropped connection or a 5xx. A 4xx is the server's
+      // answer (a 429 especially: retrying only spends more of the budget).
+      retry: (failures, err) => failures < 1 && !(err instanceof ApiError && err.status >= 400 && err.status < 500),
     },
   },
 });

@@ -91,3 +91,20 @@ export function requireMember(
     name: req.memberName || req.userEmail || id,
   };
 }
+
+/**
+ * The signed-in member a request belongs to ("member:<id>"), or null when it
+ * carries no valid dialer JWT. Used to give each operator their own
+ * rate-limit budget instead of one shared per IP.
+ */
+export function sessionKey(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return null;
+  try {
+    const payload = jwt.verify(header.slice(7), getJwtSecret()) as TokenPayload;
+    const id = payload.workspaceMemberId || payload.userId;
+    return id ? `member:${id}` : null;
+  } catch {
+    return null;
+  }
+}
