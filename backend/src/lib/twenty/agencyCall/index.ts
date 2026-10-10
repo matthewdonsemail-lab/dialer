@@ -1,3 +1,4 @@
+import { twentyFetch } from "../throttle/index.js";
 import { createLogger } from "../../logger/index.js";
 import { loadSyncConfig } from "../client/index.js";
 
@@ -18,7 +19,7 @@ const log = createLogger('twenty-call-history-setup');
 
 export async function metadataMutation<T = any>(mutation: string): Promise<T> {
   const cfg = loadSyncConfig();
-  const response = await fetch(`${cfg.twentyBaseUrl}/metadata`, {
+  const response = await twentyFetch(`${cfg.twentyBaseUrl}/metadata`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${cfg.twentyApiKey}`,

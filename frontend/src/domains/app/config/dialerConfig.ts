@@ -12,8 +12,13 @@ export const DEFAULT_UNANSWERED_TIMEOUT_SECONDS = 30;
 export const MIN_UNANSWERED_TIMEOUT_SECONDS = 20;
 /** The choices offered in Dialer settings. */
 export const UNANSWERED_TIMEOUT_CHOICES = [20, 25, 30, 40, 50, 60];
-export const HEARTBEAT_INTERVAL_MS = 3000;
-export const STALE_TIMEOUT_MS = 15000;
+/**
+ * The claim heartbeat. Every 3s cost 40 of Twenty's 100 requests a minute;
+ * every 10s, against a 45s stale window (STALE_TIMEOUT_MS in the backend),
+ * still frees a crashed holder's number within a minute.
+ */
+export const HEARTBEAT_INTERVAL_MS = 10_000;
+export const STALE_TIMEOUT_MS = 45_000;
 
 export function getUnansweredTimeoutSeconds(): number {
   try {

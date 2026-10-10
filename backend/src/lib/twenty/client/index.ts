@@ -1,4 +1,5 @@
 import { createLogger } from "../../logger/index.js";
+import { twentyFetch } from "../throttle/index.js";
 import type { WriteActor } from "../actor/index.js";
 
 export type { WriteActor };
@@ -229,7 +230,7 @@ export async function fetchTwenty<T>(path: string, options?: TwentyQueryOptions)
 
   log.info(`Fetching ${url.toString()}`);
 
-  const response = await fetch(url.toString(), {
+  const response = await twentyFetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${cfg.twentyApiKey}`,
       "Content-Type": "application/json",
@@ -261,7 +262,7 @@ export async function createTwenty<T = TwentyRecord>(path: string, data: any, ac
 
   log.info(`Creating ${cleanPath}:`, JSON.stringify(payload).substring(0, 200));
 
-  const response = await fetch(url, {
+  const response = await twentyFetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${cfg.twentyApiKey}`,
@@ -293,7 +294,7 @@ export async function updateTwenty<T = TwentyRecord>(path: string, id: string, d
 
   log.info(`Updating ${cleanPath}/${id}:`, JSON.stringify(payload).substring(0, 200));
 
-  const response = await fetch(url, {
+  const response = await twentyFetch(url, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${cfg.twentyApiKey}`,
@@ -323,7 +324,7 @@ export async function graphqlMutation<T>(mutation: string): Promise<T> {
 
   log.info(`GraphQL mutation to ${url}`);
 
-  const response = await fetch(url, {
+  const response = await twentyFetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${cfg.twentyApiKey}`,
@@ -395,7 +396,7 @@ export async function deleteTwenty(path: string, id: string): Promise<void> {
 
   log.info(`Deleting ${cleanPath}/${id}`);
 
-  const response = await fetch(url, {
+  const response = await twentyFetch(url, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${cfg.twentyApiKey}`,
@@ -421,7 +422,7 @@ export async function getTwenty<T = TwentyRecord>(path: string, id: string): Pro
 
   log.info(`Getting ${url}`);
 
-  const response = await fetch(url, {
+  const response = await twentyFetch(url, {
     headers: {
       Authorization: `Bearer ${cfg.twentyApiKey}`,
       "Content-Type": "application/json",

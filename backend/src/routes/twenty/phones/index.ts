@@ -5,7 +5,7 @@ import { resolveActor } from "../../../lib/twenty/actor/index.js";
 import { twentyGraphqlClient } from "../../../lib/twenty/graphql/index.js";
 import { createLogger } from "../../../lib/logger/index.js";
 import type { AgencyPhone, ClaimBody, CallStateBody, ReleaseBody } from "./types.js";
-import { mapPhone, isClaimStale } from "./helpers/index.js";
+import { mapPhone, isClaimStale, STALE_TIMEOUT_MS } from "./helpers/index.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -136,6 +136,19 @@ router.get("/primary", async (_req, res) => {
  * Claim a number for the live dialer session. Fails 409 when another active member holds it (non-stale).
  * Holder is the authenticated workspaceMember; a mismatched body memberId is rejected (403).
  */
+/**
+ * Who this server last saw holding each number. A heartbeat from that holder
+ * within the stale window is written straight to Twenty without reading the
+ * row first: one request every 10s instead of two every 3s, which alone used
+ * 40 of the 100 Twenty requests a minute. Anything else (another server
+ * restarted, a different member, a stale claim) falls back to the full check.
+ */
+const claimCache = new Map<string, { holder: string; at: number }>();
+const cachedHolder = (id: string, memberId: string) => {
+  const c = claimCache.get(id);
+  return !!c && c.holder === memberId && Date.now() - c.at < STALE_TIMEOUT_MS;
+};
+
 router.post("/:id/claim", async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const holder0 = sessionHolder(req, res);
@@ -170,6 +183,7 @@ router.post("/:id/claim", async (req: AuthRequest, res) => {
       claimedAt: now,
       lastHeartbeatAt: now,
     }, await resolveActor(req));
+    claimCache.set(id, { holder: memberId, at: Date.now() });
     log.info(`Number claimed: ${id} by ${memberEmail || memberId} (stale override: ${stale})`);
     res.json(mapPhone(updated));
   } catch (err: any) {
@@ -190,6 +204,13 @@ router.post("/:id/heartbeat", async (req: AuthRequest, res) => {
     const holder0 = sessionHolder(req, res);
     if (!holder0) return;
     const memberId = holder0.id;
+    if (cachedHolder(id, memberId)) {
+      const now = new Date().toISOString();
+      await updateTwenty<AgencyPhone>('agencyPhones', id, { lastHeartbeatAt: now });
+      claimCache.set(id, { holder: memberId, at: Date.now() });
+      res.json({ ok: true, lastHeartbeatAt: now });
+      return;
+    }
     const phone = await getTwenty<AgencyPhone>('agencyPhones', id);
     const holder = phone.claimedByMemberId || null;
     const stale = isClaimStale(phone);
@@ -204,6 +225,7 @@ router.post("/:id/heartbeat", async (req: AuthRequest, res) => {
       lastHeartbeatAt: now,
       claimedByMemberId: memberId, // Re-affirm claim if stale override
     });
+    claimCache.set(id, { holder: memberId, at: Date.now() });
     res.json(mapPhone(updated));
   } catch (err: any) {
     log.error("Failed to update heartbeat:", err.message);
@@ -279,6 +301,7 @@ router.post("/:id/release", async (req: AuthRequest, res) => {
       lastHeartbeatAt: null,
       currentCallId: callId || phone.currentCallId || "",
     }, await resolveActor(req));
+    claimCache.delete(id);
     log.info(`Number released: ${id} by ${memberId}${force ? " (forced)" : ""}${stale ? " (stale)" : ""}`);
     res.json(mapPhone(updated));
   } catch (err: any) {

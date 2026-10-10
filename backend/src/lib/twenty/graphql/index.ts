@@ -1,5 +1,6 @@
 import { createClient } from "@dialer/shared/api";
 import { createLogger } from "../../logger/index.js";
+import { twentyFetch } from "../throttle/index.js";
 
 const log = createLogger("twenty-graphql");
 
@@ -17,12 +18,13 @@ export function twentyGraphqlClient() {
       "TWENTY_BASE_URL and TWENTY_API_KEY environment variables are required",
     );
   }
-  log.info("Creating typed GraphQL client");
   return createClient({
     url: `${baseUrl.replace(/\/$/, "")}/graphql`,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
+    // Paced and shared with every other Twenty request (see throttle).
+    fetch: twentyFetch as typeof fetch,
   });
 }

@@ -1,6 +1,8 @@
 import type { AgencyPhone } from "../types.js";
 
-export const STALE_TIMEOUT_MS = 15_000; // 15 seconds without a heartbeat
+// A claim with no heartbeat for this long is free to take over. Heartbeats
+// come every 10s, so three missed in a row free the number.
+export const STALE_TIMEOUT_MS = 45_000;
 
 /** A claim is stale when neither a heartbeat nor the claim itself is fresh. Pure. */
 export function isClaimStale(phone: AgencyPhone): boolean {
