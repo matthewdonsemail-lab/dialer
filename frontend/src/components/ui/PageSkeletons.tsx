@@ -351,66 +351,75 @@ export function ScriptListSkeleton({ rows = 7 }: { rows?: number }) {
 }
 
 /**
- * Lead detail: PageCanvas header (back, name, status, country, company pill,
- * edit / delete), then the dialing row (softphone, call script, details,
- * each 460px like the real widgets) and the notes / contact / calls row.
+ * Contact workspace (/contacts/:id, /leads/:id): record card and field
+ * folders on the left, the timeline with its composer in the middle, a
+ * panel and the icon rail on the right.
  */
-export function RecordPageSkeleton() {
-  const cardHeader = (
-    <div className="h-14 px-4 border-b border-[var(--ods-border)] flex items-center gap-2.5 shrink-0">
-      <Skeleton className="w-8 h-8 rounded-[8px]" />
-      <Skeleton className="h-5 w-32" />
-    </div>
-  );
-  const lines = (n: number) => (
-    <div className="p-3 md:p-4 space-y-3">
-      {Array.from({ length: n }, (_, i) => (
-        <Skeleton key={i} className={`h-3.5 ${["w-2/3", "w-1/2", "w-3/4", "w-2/5"][i % 4]}`} />
-      ))}
-    </div>
-  );
-  const card = (body: React.ReactNode, className = "") => (
-    <div className={`bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] rounded-[10px] overflow-hidden flex flex-col ${className}`}>
-      {cardHeader}
-      {body}
-    </div>
-  );
+export function ContactWorkspaceSkeleton() {
   return (
-    <div className="flex flex-col flex-1 h-full min-h-0 overflow-hidden bg-[var(--ods-bg-primary)]" role="status" aria-label="Loading">
-      <div className="h-14 px-4 border-b border-[var(--ods-border)] flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <Skeleton className="h-4 w-4" />
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-6 w-24 rounded-md" />
+    <div className="flex flex-1 min-h-0 overflow-hidden" role="status" aria-label="Loading">
+      <div className="hidden md:flex w-80 shrink-0 border-r border-[var(--ods-border)] flex-col bg-[var(--ods-bg-secondary)]">
+        <div className="h-12 px-3 border-b border-[var(--ods-border)] flex items-center justify-between">
+          <Skeleton className="h-4 w-24" />
           <Skeleton className="h-6 w-20 rounded-md" />
-          <Skeleton className="h-6 w-28 rounded-md" />
         </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-8 w-8 rounded-[6px]" />
-          <Skeleton className="h-8 w-8 rounded-[6px]" />
+        <div className="p-3 space-y-3">
+          <div className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-3 space-y-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="w-10 h-10 rounded-md" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-3/5" />
+                <Skeleton className="h-3 w-2/5" />
+              </div>
+            </div>
+            <Skeleton className="h-6 w-28 rounded-md" />
+            <div className="grid grid-cols-4 gap-1.5">
+              {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-14 rounded-md" />)}
+            </div>
+          </div>
+          <Skeleton className="h-9 w-full rounded-[8px]" />
+          {[5, 4, 3].map((rows, i) => (
+            <div key={i} className="rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)]">
+              <div className="h-10 px-3 flex items-center"><Skeleton className="h-4 w-24" /></div>
+              <div className="px-3 pb-2 border-t border-[var(--ods-border)]">
+                {Array.from({ length: rows }, (_, r) => (
+                  <div key={r} className="py-2 space-y-1.5">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className={`h-4 ${["w-3/4", "w-1/2", "w-2/3"][r % 3]}`} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-      <div className="flex-1 overflow-hidden p-4 md:p-6 space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {card(
-            <div className="flex-1 p-4 flex flex-col items-center gap-4">
-              <Skeleton className="h-5 w-40 mt-4" />
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-14 w-14 rounded-md" />
-              <Skeleton className="h-8 w-8 rounded-[6px]" />
-              <Skeleton className="h-10 w-full rounded-[8px] mt-auto" />
-              <Skeleton className="h-20 w-full rounded-[8px]" />
-            </div>,
-            "h-[460px]",
-          )}
-          {card(lines(9), "h-[460px]")}
-          {card(lines(8), "h-[460px]")}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div className="h-12 px-4 border-b border-[var(--ods-border)] flex items-center justify-between">
+          <div className="flex items-center gap-2"><Skeleton className="w-7 h-7 rounded-md" /><Skeleton className="h-4 w-40" /></div>
+          <div className="flex gap-1.5"><Skeleton className="h-9 w-28 rounded-[8px]" /><Skeleton className="h-9 w-20 rounded-[8px]" /></div>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {card(lines(3))}
-          {card(lines(4))}
-          {card(lines(4))}
+        <div className="flex-1 bg-[var(--ods-bg-secondary)] p-4 space-y-3">
+          <div className="flex justify-center"><Skeleton className="h-6 w-24 rounded-md" /></div>
+          <div className="flex justify-center"><Skeleton className="h-8 w-72 rounded-md" /></div>
+          <Skeleton className="h-28 w-full max-w-[560px] ml-auto rounded-[10px]" />
+          <Skeleton className="h-20 w-full max-w-[560px] ml-auto rounded-[10px]" />
+          <div className="flex justify-center"><Skeleton className="h-6 w-20 rounded-md" /></div>
+          <Skeleton className="h-28 w-full max-w-[560px] ml-auto rounded-[10px]" />
         </div>
+        <div className="border-t border-[var(--ods-border)] p-3 space-y-2">
+          <Skeleton className="h-8 w-44 rounded-[8px]" />
+          <Skeleton className="h-[74px] w-full rounded-[8px]" />
+          <div className="flex justify-between"><Skeleton className="h-3 w-32" /><Skeleton className="h-9 w-40 rounded-[8px]" /></div>
+        </div>
+      </div>
+      <div className="hidden xl:flex w-80 shrink-0 border-l border-[var(--ods-border)] flex-col">
+        <div className="h-12 px-4 border-b border-[var(--ods-border)] flex items-center"><Skeleton className="h-4 w-28" /></div>
+        <div className="p-3 grid grid-cols-2 gap-2">
+          {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[68px] rounded-[10px]" />)}
+        </div>
+      </div>
+      <div className="hidden md:flex w-12 shrink-0 border-l border-[var(--ods-border)] flex-col items-center gap-1 py-2">
+        {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="w-9 h-9 rounded-[8px]" />)}
       </div>
     </div>
   );

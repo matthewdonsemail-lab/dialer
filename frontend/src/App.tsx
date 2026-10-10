@@ -4,12 +4,11 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Layout } from "@/components/common/Layout";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ToastProvider } from "@/components/ui/Toast";
-import { DetailPageSkeleton } from "@/components/ui/Skeleton";
 import {
   AppShellSkeleton,
   AuthCardSkeleton,
   CallReviewSkeleton,
-  RecordPageSkeleton,
+  ContactWorkspaceSkeleton,
   ReportStylePageSkeleton,
   ScriptsPageSkeleton,
   TablePageSkeleton,
@@ -20,8 +19,7 @@ const CallbackPage = React.lazy(() => import("@/pages/CallbackPage").then((m) =>
 const SignupPage = React.lazy(() => import("@/pages/SignupPage").then((m) => ({ default: m.SignupPage })));
 const ReportsPage = React.lazy(() => import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
 const ProspectPage = React.lazy(() => import("@/pages/ProspectPage").then((m) => ({ default: m.ProspectPage })));
-const ProspectDetailPage = React.lazy(() => import("@/pages/ProspectDetailPage").then((m) => ({ default: m.ProspectDetailPage })));
-const LeadDetailPage = React.lazy(() => import("@/pages/LeadDetailPage").then((m) => ({ default: m.LeadDetailPage })));
+const ContactPage = React.lazy(() => import("@/pages/ContactPage").then((m) => ({ default: m.ContactPage })));
 const CallHistoryPage = React.lazy(() => import("@/pages/CallHistoryPage").then((m) => ({ default: m.CallHistoryPage })));
 const PhoneNumbersPage = React.lazy(() => import("@/pages/PhoneNumbersPage").then((m) => ({ default: m.PhoneNumbersPage })));
 const CallDetailPage = React.lazy(() => import("@/pages/CallDetailPage").then((m) => ({ default: m.CallDetailPage })));
@@ -70,8 +68,8 @@ function AppRoutes() {
                   <Route path="leads" element={<Navigate to="/contacts" replace />} />
                   <Route path="contacts" element={<Lazy fallback={<TablePageSkeleton columns={10} filters={3} />}><ProspectPage /></Lazy>} />
                   <Route path="prospects" element={<Navigate to="/contacts" replace />} />
-                  <Route path="leads/:leadId" element={<Lazy fallback={<RecordPageSkeleton />}><LeadDetailPage /></Lazy>} />
-                  <Route path="contacts/:prospectId" element={<Lazy fallback={<DetailPageSkeleton />}><ProspectDetailPage /></Lazy>} />
+                  <Route path="leads/:leadId" element={<Lazy fallback={<ContactWorkspaceSkeleton />}><ContactPage key="lead" type="lead" /></Lazy>} />
+                  <Route path="contacts/:prospectId" element={<Lazy fallback={<ContactWorkspaceSkeleton />}><ContactPage key="prospect" type="prospect" /></Lazy>} />
                   <Route path="prospects/:prospectId" element={<ProspectRedirect />} />
                   <Route path="campaigns" element={<Navigate to="/contacts" replace />} />
                   <Route path="scripts" element={<Lazy fallback={<ScriptsPageSkeleton />}><ScriptsPage /></Lazy>} />

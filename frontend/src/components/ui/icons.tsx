@@ -60,6 +60,7 @@ import {
   faPause,
   faPencil,
   faPenToSquare,
+  faPaperPlane,
   faPhone,
   faPhoneSlash,
   faPhoneVolume,
@@ -172,6 +173,7 @@ export const Pause = solid(faPause, "Pause");
 export const Pencil = solid(faPencil, "Pencil");
 export const Phone = solid(faPhone, "Phone");
 export const Pin = solid(faThumbtack, "Pin");
+export const Send = solid(faPaperPlane, "Send");
 export const Backspace = solid(faDeleteLeft, "Backspace");
 export const PhoneCall = solid(faPhoneVolume, "PhoneCall");
 export const PhoneIncoming = solid(faSquarePhoneFlip, "PhoneIncoming");
