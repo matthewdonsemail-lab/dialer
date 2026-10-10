@@ -1,3 +1,4 @@
+import { toContactStatus, toLegacyStatus } from "@dialer/shared";
 import type { StatusOption } from "@/domains/ui/status";
 
 const COLOR_MAP: Record<string, { dotColor: string; bgTint: string; textColor: string; iconColor: string }> = {
@@ -46,33 +47,25 @@ export function mapTwentyOptions(twentyOptions: TwentyOption[]): StatusOption[] 
 }
 
 /**
- * Apply the same field-name mapping as the backend for leads/prospects.
- * Backend maps: QUALIFIED→interested, BOOKED→callback, LOST→not_interested, etc.
+ * Twenty coldCallStatus options -> the list's status options, through the
+ * shared contact-status pipeline (INTERESTED -> "interested", CALLBACK ->
+ * "callback", older QUALIFIED/BOOKED/LOST aliases included). Options the
+ * pipeline does not know are dropped rather than read as the first option.
  */
 export function mapLeadProspectStatusOptions(twentyOptions: TwentyOption[]): StatusOption[] {
-  const STATUS_MAP: Record<string, string> = {
-    "NEW": "new",
-    "CONTACTED": "contacted",
-    "QUALIFIED": "interested",
-    "BOOKED": "callback",
-    "CONVERTED": "converted",
-    "LOST": "not_interested",
-    "DO_NOT_CONTACT": "not_interested",
-  };
-
-  return twentyOptions
-    .filter((opt) => STATUS_MAP[opt.value.toUpperCase()] !== undefined)
-    .map((opt) => {
-      const color = COLOR_MAP[opt.color?.toLowerCase() ?? ""] ?? COLOR_MAP.gray;
-      return {
-        value: STATUS_MAP[opt.value.toUpperCase()],
-        label: opt.label,
-        dotColor: color.dotColor,
-        bgTint: color.bgTint,
-        textColor: color.textColor,
-        iconColor: color.iconColor,
-      };
-    });
+  return twentyOptions.flatMap((opt) => {
+    const status = toContactStatus(opt.value);
+    if (!status) return [];
+    const color = COLOR_MAP[opt.color?.toLowerCase() ?? ""] ?? COLOR_MAP.gray;
+    return [{
+      value: toLegacyStatus(status),
+      label: opt.label,
+      dotColor: color.dotColor,
+      bgTint: color.bgTint,
+      textColor: color.textColor,
+      iconColor: color.iconColor,
+    }];
+  });
 }
 
 /**
