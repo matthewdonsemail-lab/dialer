@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { BarChart } from "@/components/reports/BarChart";
 import { useToast } from "@/components/ui/Toast";
+import { useProspectLookup } from "@/lib/contacts";
 
 interface ContactLite {
   id: string;
@@ -68,7 +69,8 @@ export function CampaignModal({
   open: boolean;
   onClose: () => void;
   initialCampaignId?: string | null;
-  contacts: ContactLite[];
+  /** Optional preloaded contacts; otherwise the selected campaign's contacts are looked up. */
+  contacts?: ContactLite[];
   onStartDialing: (campaign: CallCampaign) => void;
 }) {
   const { data: campaigns, isLoading, error } = useCallCampaigns();
@@ -102,6 +104,8 @@ export function CampaignModal({
   );
   const selected = (campaigns ?? []).find((c) => c.id === selectedId) ?? sorted[0] ?? null;
   const allCalls = (calls ?? []) as unknown as CampaignCall[];
+  // Only the selected campaign's contacts, fetched by id (never the whole contact list).
+  const { data: lookedUp } = useProspectLookup(contacts ? [] : selected?.contactIds ?? []);
 
   const setStatus = async (campaign: CallCampaign, status: CallCampaignStatus) => {
     try {
@@ -135,7 +139,7 @@ export function CampaignModal({
   };
 
   const contactName = (id: string | null) => {
-    const c = contacts.find((x) => x.id === id);
+    const c = contacts ? contacts.find((x) => x.id === id) : id ? lookedUp?.get(id) : undefined;
     return c ? `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || c.phone || "Unknown" : "Unknown contact";
   };
 
@@ -448,7 +452,7 @@ function History({ campaign, calls, contactName }: { campaign: CallCampaign; cal
           >
             <div className="flex-1 min-w-0">
               <div className="text-[14px] font-medium text-[var(--ods-text-primary)] truncate">{contactName(c.agencyProspectId)}</div>
-              <div className="text-[12px] font-mono text-[var(--ods-text-secondary)]">{c.toNumber || "—"}</div>
+              <div className="text-[12px] text-[var(--ods-text-secondary)]">{c.toNumber || "—"}</div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--ods-text-primary)]">
               <span className={`w-2 h-2 rounded-full ${type === "positive" ? "bg-emerald-500" : type === "negative" ? "bg-red-500" : "bg-gray-400"}`} />

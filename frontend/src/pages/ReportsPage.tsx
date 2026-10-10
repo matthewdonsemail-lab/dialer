@@ -1,31 +1,50 @@
+import { Chip } from "@/components/ui/Chip";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
+  AlertTriangle,
+  Ban,
+  BarChart3 as BarChartIcon,
   CalendarDays,
+  CheckCircle,
   Clock,
   MessageSquare,
+  Phone,
   PhoneIncoming,
+  PhoneOff,
   PhoneOutgoing,
   Settings,
+  Star,
   ThumbsUp,
   Timer,
+  TrendingUp,
   Users,
+  XCircle,
+  type IconComponent,
 } from "@/components/ui/icons";
 import { useCalls } from "@/hooks/use-call-logs";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useReportSettings } from "@/hooks/use-report-settings";
 import { SelectMenu } from "@/components/ui/Menu";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { SectionTitle } from "@/components/ui/SectionTitle";
 import { BarChart } from "@/components/reports/BarChart";
 import {
+  ChartSummary,
+  EmptyState,
+  HeadCell,
   Heatmap,
   PivotTable,
   ReportCard,
+  ReportTable,
   StatTiles,
+  TD,
+  TR,
   TWO_LINE_TRIGGER_CLASS,
   TwoLineTrigger,
 } from "@/components/reports/ReportParts";
 import { DISPOSITIONS, dispositionTypeOfStatus } from "@/lib/call-outcome";
+import { DispositionBadge, DispositionIcon } from "@/components/calls/DispositionBadge";
 import {
   RANGE_LABELS,
   agentOf,
@@ -52,11 +71,11 @@ import {
 const COLORS = { outbound: "#2563eb", conversations: "#22c55e", inbound: "#60a5fa", positive: "#22c55e", negative: "#ef4444" };
 
 type Tab = "overview" | "numbers" | "team" | "dispositions";
-const TABS: { key: Tab; label: string }[] = [
-  { key: "overview", label: "Overview" },
-  { key: "numbers", label: "Number Health" },
-  { key: "team", label: "Team Performance" },
-  { key: "dispositions", label: "Disposition Report" },
+const TABS: { key: Tab; label: string; icon: IconComponent }[] = [
+  { key: "overview", label: "Overview", icon: BarChartIcon },
+  { key: "numbers", label: "Number Health", icon: Phone },
+  { key: "team", label: "Team Performance", icon: Users },
+  { key: "dispositions", label: "Disposition Report", icon: ThumbsUp },
 ];
 
 const ENTIRE_TEAM = "__team";
@@ -64,8 +83,8 @@ const ENTIRE_TEAM = "__team";
 /**
  * Call reporting modelled on WAVV's Reports: pick a date range and a team
  * member, then read Overview, Number Health, Team Performance or the
- * Disposition Report. Every chart sits next to the exact numbers behind it.
- * Replaces the old Dashboard.
+ * Disposition Report. Every chart sits next to the exact numbers behind it,
+ * and every explanation lives behind an eye tooltip.
  */
 export function ReportsPage() {
   const { data: calls, isLoading } = useCalls();
@@ -83,12 +102,18 @@ export function ReportsPage() {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-y-auto bg-[var(--ods-bg-secondary)]">
       <div className="px-5 pt-5 pb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold text-[var(--ods-text-primary)]">Reports</h1>
-          <p className="text-[12px] text-[var(--ods-text-secondary)]">
-            {formatRange(range)} · {selectedMember ?? "Entire team"} · conversations are calls of {conversationSeconds}s or more
-          </p>
-        </div>
+        <SectionTitle
+          as="h1"
+          title="Reports"
+          pill={selectedMember ?? "Entire team"}
+          info={{
+            title: "Reports",
+            icon: BarChartIcon,
+            what: `Everything dialed in ${formatRange(range)} for ${selectedMember ?? "the entire team"}.`,
+            formula: ["Connected call", "≥", `${conversationSeconds}s`, "=", "Conversation"],
+            use: "Change the date range or team member on the right; every tab updates.",
+          }}
+        />
         <div className="flex flex-wrap items-center gap-2">
           <SelectMenu
             value={preset}
@@ -115,19 +140,20 @@ export function ReportsPage() {
 
       <div className="px-5">
         <div role="tablist" className="grid grid-cols-2 md:grid-cols-4 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-1 gap-1">
-          {TABS.map((t) => (
+          {TABS.map(({ key, label, icon: Icon }) => (
             <button
-              key={t.key}
+              key={key}
               role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              className={`h-9 rounded-[8px] text-[13px] font-medium transition-colors ${
-                tab === t.key
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              className={`h-10 rounded-[8px] inline-flex items-center justify-center gap-2 text-[14px] font-semibold transition-colors ${
+                tab === key
                   ? "bg-[var(--ods-brand-600)] text-white"
                   : "text-[var(--ods-text-secondary)] hover:bg-[var(--ods-hover)] hover:text-[var(--ods-text-primary)]"
               }`}
             >
-              {t.label}
+              <Icon className="w-4 h-4" />
+              {label}
             </button>
           ))}
         </div>
@@ -155,7 +181,7 @@ function ReportsSkeleton() {
     <div className="space-y-4" role="status" aria-label="Loading reports">
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {Array.from({ length: 6 }, (_, i) => (
-          <Skeleton key={i} className="h-[86px] rounded-[10px]" />
+          <Skeleton key={i} className="h-[112px] rounded-[10px]" />
         ))}
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -172,14 +198,20 @@ function GoalLink({ goal }: { goal: number }) {
     <Link
       to="/settings"
       title="Change the goal in Settings → Reports"
-      className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)]"
+      className="inline-flex items-center gap-2 h-8 px-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-500/20"
     >
-      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-      Goal: {goal}/day
-      <Settings className="w-3 h-3 opacity-60" />
+      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+      Goal {goal}/day
+      <Settings className="w-3.5 h-3.5 opacity-70" />
     </Link>
   );
 }
+
+const SERIES_KEY = {
+  outbound: { color: COLORS.outbound, label: "Outbound", note: "calls you made" },
+  convos: { color: COLORS.conversations, label: "Convos", note: "real conversations" },
+  inbound: { color: COLORS.inbound, label: "Inbound", note: "calls received" },
+};
 
 function Overview({ calls, range, goal, threshold }: { calls: ReportCall[]; range: ReturnType<typeof rangeFor>; goal: number; threshold: number }) {
   const buckets = useMemo(() => bucketsFor(range), [range]);
@@ -192,31 +224,69 @@ function Overview({ calls, range, goal, threshold }: { calls: ReportCall[]; rang
     .map((m, i) => ({ m: m + series.inboundMinutes[i], label: labels[i] }))
     .sort((a, b) => b.m - a.m)[0];
   const weekly = buckets.length > 0 && buckets[0].label.startsWith("Wk");
+  const period = weekly ? "week" : "day";
+  const target = weekly ? goal * 5 : goal;
 
   return (
     <>
       <StatTiles
         stats={[
-          { label: "Calls", value: String(t.outbound), detail: "Outbound attempts", icon: PhoneOutgoing },
-          { label: "Conversations", value: String(t.conversations), detail: `Connected ≥ ${threshold}s`, icon: MessageSquare },
+          {
+            label: "Calls",
+            value: String(t.outbound),
+            icon: PhoneOutgoing,
+            tip: { title: "Calls", what: "Every outbound dial attempt, answered or not.", formula: ["Outbound dials", "=", "Calls"], use: "Check activity against the daily goal." },
+          },
+          {
+            label: "Conversations",
+            value: String(t.conversations),
+            icon: MessageSquare,
+            tone: "positive",
+            tip: {
+              title: "Conversations",
+              what: "Calls long enough to count as a real conversation.",
+              formula: ["Connected call", "≥", `${threshold}s`, "=", "Conversation"],
+              use: "Measure real contact, not just dials.",
+            },
+          },
           {
             label: "Convo rate",
             value: t.outbound ? formatPercent(t.conversations / t.outbound) : "—",
-            detail: "Conversations ÷ calls",
             icon: ThumbsUp,
+            tip: {
+              title: "Convo rate",
+              what: "The share of dials that turned into a conversation.",
+              formula: ["Conversations", "÷", "Calls", "=", "Convo rate"],
+              use: "Spot bad lists or numbers when it drops.",
+            },
           },
-          { label: "Inbound", value: String(t.inbound), detail: "Calls received", icon: PhoneIncoming },
+          {
+            label: "Inbound",
+            value: String(t.inbound),
+            icon: PhoneIncoming,
+            tip: { title: "Inbound", what: "Calls prospects made to you.", formula: ["Calls received", "=", "Inbound"], use: "See how many people call back." },
+          },
           {
             label: "Talk time",
             value: formatMinutes(t.outboundMinutes + t.inboundMinutes),
-            detail: `${formatMinutes(t.outboundMinutes)} out · ${formatMinutes(t.inboundMinutes)} in`,
             icon: Clock,
+            tip: {
+              title: "Talk time",
+              what: "Total minutes spent connected on calls.",
+              formula: [formatMinutes(t.outboundMinutes) + " out", "+", formatMinutes(t.inboundMinutes) + " in", "=", "Talk time"],
+              key: [SERIES_KEY.outbound, SERIES_KEY.inbound],
+            },
           },
           {
             label: "Avg call",
             value: t.connected ? formatMinutes(t.avgConnectedSeconds / 60) : "—",
-            detail: `Over ${t.connected} connected call${t.connected === 1 ? "" : "s"}`,
             icon: Timer,
+            tip: {
+              title: "Average call",
+              what: `How long a connected call lasts on average (${t.connected} connected call${t.connected === 1 ? "" : "s"}).`,
+              formula: ["Talk time", "÷", "Connected calls", "=", "Avg call"],
+              use: "Longer calls usually mean more engaged prospects.",
+            },
           },
         ]}
       />
@@ -224,8 +294,15 @@ function Overview({ calls, range, goal, threshold }: { calls: ReportCall[]; rang
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ReportCard
           title="Calls & Conversations"
-          unit="Count"
-          description={`How many calls were made and how many became real conversations (connected ${threshold}s or more). Hover a ${weekly ? "week" : "day"} for exact numbers.`}
+          unit={`Count per ${period}`}
+          tip={{
+            title: "Calls & Conversations",
+            icon: BarChartIcon,
+            what: `Calls made and how many became real conversations, per ${period}.`,
+            formula: ["Connected call", "≥", `${threshold}s`, "=", "Convo"],
+            key: [SERIES_KEY.outbound, SERIES_KEY.convos, SERIES_KEY.inbound],
+            use: `Hover a bar to see the exact numbers for that ${period}.`,
+          }}
         >
           <BarChart
             labels={labels}
@@ -235,17 +312,25 @@ function Overview({ calls, range, goal, threshold }: { calls: ReportCall[]; rang
               { label: "Inbound", color: COLORS.inbound, values: series.inbound },
             ]}
           />
-          <p className="mt-2 text-[12px] text-[var(--ods-text-secondary)]">
-            <b className="text-[var(--ods-text-primary)]">{t.outbound}</b> outbound ·{" "}
-            <b className="text-[var(--ods-text-primary)]">{t.conversations}</b> conversations ·{" "}
-            <b className="text-[var(--ods-text-primary)]">{t.inbound}</b> inbound in this range.
-          </p>
+          <ChartSummary
+            items={[
+              { label: "Outbound", value: String(t.outbound), color: COLORS.outbound },
+              { label: "Conversations", value: String(t.conversations), color: COLORS.conversations },
+              { label: "Inbound", value: String(t.inbound), color: COLORS.inbound },
+            ]}
+          />
         </ReportCard>
 
         <ReportCard
           title="Time Spent"
           unit="Minutes"
-          description="Total connected call minutes, so you can see where talk time goes (inbound vs outbound) and spot trends or lulls."
+          tip={{
+            title: "Time Spent",
+            icon: Clock,
+            what: `Connected minutes per ${period}, split by direction.`,
+            key: [SERIES_KEY.outbound, SERIES_KEY.inbound],
+            use: "Spot trends, lulls and your busiest days.",
+          }}
         >
           <BarChart
             labels={labels}
@@ -255,31 +340,45 @@ function Overview({ calls, range, goal, threshold }: { calls: ReportCall[]; rang
               { label: "Inbound", color: COLORS.inbound, values: series.inboundMinutes },
             ]}
           />
-          <p className="mt-2 text-[12px] text-[var(--ods-text-secondary)]">
-            <b className="text-[var(--ods-text-primary)]">{formatMinutes(t.outboundMinutes)}</b> outbound ·{" "}
-            <b className="text-[var(--ods-text-primary)]">{formatMinutes(t.inboundMinutes)}</b> inbound
-            {busiest && busiest.m > 0 && (
-              <>
-                {" "}· busiest: <b className="text-[var(--ods-text-primary)]">{busiest.label}</b> ({formatMinutes(busiest.m)})
-              </>
-            )}
-          </p>
+          <ChartSummary
+            items={[
+              { label: "Outbound", value: formatMinutes(t.outboundMinutes), color: COLORS.outbound },
+              { label: "Inbound", value: formatMinutes(t.inboundMinutes), color: COLORS.inbound },
+              ...(busiest && busiest.m > 0 ? [{ label: `Busiest · ${busiest.label}`, value: formatMinutes(busiest.m), color: "#f59e0b" }] : []),
+            ]}
+          />
         </ReportCard>
       </div>
 
       <ReportCard
         title="Calls Made"
-        unit="Outbound"
-        description={`Outbound calls per team member per ${weekly ? "week" : "day"}. A ${weekly ? "week" : "day"} turns green when it reaches the goal.`}
+        unit={`Outbound per ${period}`}
+        tip={{
+          title: "Calls Made",
+          icon: PhoneOutgoing,
+          what: `Outbound calls by each team member, per ${period}.`,
+          formula: [`Calls in a ${period}`, "≥", String(target), "=", "Goal hit"],
+          key: [
+            { color: "rgba(16,185,129,0.35)", label: "Green cell", note: `reached ${target}` },
+            { color: "var(--ods-bg-tertiary)", label: "Plain cell", note: "under goal" },
+          ],
+          use: "Change the goal in Settings → Reports.",
+        }}
         aside={<GoalLink goal={goal} />}
       >
-        <PivotTable columns={labels} rows={outboundGrid} goal={weekly ? goal * 5 : goal} emptyText="No outbound calls in this range." />
+        <PivotTable columns={labels} rows={outboundGrid} goal={target} emptyText="No outbound calls in this range." />
       </ReportCard>
 
       <ReportCard
         title="Outbound Conversations"
-        unit={`Calls lasting ${threshold}s or more`}
-        description="Connected outbound calls long enough to be a real conversation, per team member."
+        unit={`≥ ${threshold}s`}
+        tip={{
+          title: "Outbound Conversations",
+          icon: MessageSquare,
+          what: "Outbound calls long enough to be a real conversation, by team member.",
+          formula: ["Connected call", "≥", `${threshold}s`, "=", "Conversation"],
+          use: "Compare against Calls Made to see who turns dials into talks.",
+        }}
       >
         <PivotTable columns={labels} rows={convoGrid} emptyText="No conversations in this range yet." />
       </ReportCard>
@@ -287,92 +386,196 @@ function Overview({ calls, range, goal, threshold }: { calls: ReportCall[]; rang
   );
 }
 
-const HEALTH_STYLE: Record<HealthLevel, { label: string; className: string }> = {
-  good: { label: "Healthy", className: "bg-emerald-500/15 text-emerald-700" },
-  watch: { label: "Watch", className: "bg-amber-500/15 text-amber-700" },
-  risk: { label: "At risk", className: "bg-red-500/15 text-red-700" },
-  "low-data": { label: "Not enough calls", className: "bg-[var(--ods-bg-tertiary)] text-[var(--ods-text-secondary)]" },
+const HEALTH_STYLE: Record<HealthLevel, { label: string; className: string; color: string; note: string }> = {
+  good: { label: "Healthy", className: "bg-emerald-500/15 text-emerald-700", color: "#10b981", note: "connect ≥ 20%" },
+  watch: { label: "Watch", className: "bg-amber-500/15 text-amber-700", color: "#f59e0b", note: "connect 10–20%" },
+  risk: { label: "At risk", className: "bg-red-500/15 text-red-700", color: "#ef4444", note: "connect < 10%" },
+  "low-data": { label: "Not enough calls", className: "bg-[var(--ods-bg-tertiary)] text-[var(--ods-text-secondary)]", color: "#9ca3af", note: "under 10 calls" },
 };
+
+const HEALTH_KEY = (Object.keys(HEALTH_STYLE) as HealthLevel[]).map((h) => ({
+  color: HEALTH_STYLE[h].color,
+  label: HEALTH_STYLE[h].label,
+  note: HEALTH_STYLE[h].note,
+}));
+
+const CONNECT_RATE_FORMULA = ["Connected", "÷", "Calls", "=", "Connect rate"];
 
 function NumberHealthTab({ calls, threshold }: { calls: ReportCall[]; threshold: number }) {
   const rows = numberHealth(calls, threshold);
-  const atRisk = rows.filter((r) => r.health === "risk").length;
+  const count = (h: HealthLevel) => rows.filter((r) => r.health === h).length;
+  const band = (h: HealthLevel) => ({
+    title: HEALTH_STYLE[h].label,
+    what: `Numbers with ${HEALTH_STYLE[h].note}.`,
+    formula: CONNECT_RATE_FORMULA,
+    key: HEALTH_KEY,
+  });
   return (
     <>
       <StatTiles
         stats={[
-          { label: "Numbers used", value: String(rows.length), detail: "Caller IDs that dialed out" },
-          { label: "Healthy", value: String(rows.filter((r) => r.health === "good").length), detail: "Connect rate ≥ 20%", tone: "positive" },
-          { label: "Watch", value: String(rows.filter((r) => r.health === "watch").length), detail: "Connect rate 10–20%" },
-          { label: "At risk", value: String(atRisk), detail: "Connect rate under 10%", tone: atRisk ? "negative" : "default" },
-          { label: "Bad / wrong", value: String(rows.reduce((s, r) => s + r.badOrWrong, 0)), detail: "Calls marked bad or wrong number" },
-          { label: "No answer", value: String(rows.reduce((s, r) => s + r.noAnswer, 0)), detail: "Calls nobody picked up" },
+          {
+            label: "Numbers used",
+            value: String(rows.length),
+            icon: Phone,
+            tip: { title: "Numbers used", what: "Caller IDs that dialed out in this range.", formula: ["Unique caller IDs", "=", "Numbers used"] },
+          },
+          { label: "Healthy", value: String(count("good")), icon: CheckCircle, tone: "positive", tip: { ...band("good"), use: "Keep dialing on these." } },
+          { label: "Watch", value: String(count("watch")), icon: AlertTriangle, tone: "warning", tip: { ...band("watch"), use: "Reduce volume and keep an eye on them." } },
+          {
+            label: "At risk",
+            value: String(count("risk")),
+            icon: XCircle,
+            tone: count("risk") ? "negative" : "default",
+            tip: { ...band("risk"), use: "Rest or replace them: carriers may be flagging them as spam." },
+          },
+          {
+            label: "Bad / wrong",
+            value: String(rows.reduce((s, r) => s + r.badOrWrong, 0)),
+            icon: Ban,
+            tip: { title: "Bad / wrong", what: "Calls marked as a bad or wrong number.", formula: ["Bad number", "+", "Wrong number"], use: "Clean these leads out of your lists." },
+          },
+          {
+            label: "No answer",
+            value: String(rows.reduce((s, r) => s + r.noAnswer, 0)),
+            icon: PhoneOff,
+            tip: { title: "No answer", what: "Calls nobody picked up.", use: "Try other times; see the Disposition heatmap." },
+          },
         ]}
       />
       <ReportCard
         title="Number Health"
         unit="By caller ID"
-        description="How each of your numbers performs. A falling connect rate often means carriers are flagging the number as spam; rest or replace numbers marked At risk. Judged after 10 calls."
+        tip={{
+          title: "Number Health",
+          icon: Phone,
+          what: "How each of your numbers performs. Judged after 10 calls.",
+          formula: CONNECT_RATE_FORMULA,
+          key: HEALTH_KEY,
+          use: "A falling connect rate often means the number is flagged as spam.",
+        }}
       >
         {rows.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-[var(--ods-text-secondary)]">No outbound calls in this range.</p>
+          <EmptyState>No outbound calls in this range.</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px] tabular-nums">
-              <thead>
-                <tr className="text-left text-[12px] text-[var(--ods-text-secondary)] border-b border-[var(--ods-border)]">
-                  {["Number", "Calls", "Connected", "Connect rate", "Conversations", "No answer", "Bad / wrong", "Last used", "Health"].map((h) => (
-                    <th key={h} className="py-2 pr-3 font-semibold whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
+          <ReportTable>
+            <thead>
+              <tr>
+                <HeadCell>Number</HeadCell>
+                <HeadCell>Calls</HeadCell>
+                <HeadCell tip={{ title: "Connected", icon: PhoneIncoming, what: "Calls that were answered." }}>Connected</HeadCell>
+                <HeadCell tip={{ title: "Connect rate", what: "Share of calls that were answered.", formula: CONNECT_RATE_FORMULA, key: HEALTH_KEY }}>Connect rate</HeadCell>
+                <HeadCell tip={{ title: "Conversations", icon: MessageSquare, what: "Answered calls that lasted long enough.", formula: ["Connected", "≥", `${threshold}s`] }}>
+                  Conversations
+                </HeadCell>
+                <HeadCell>No answer</HeadCell>
+                <HeadCell>Bad / wrong</HeadCell>
+                <HeadCell>Last used</HeadCell>
+                <HeadCell tip={{ title: "Health", what: "Verdict based on the connect rate.", key: HEALTH_KEY }}>Health</HeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.number} className={TR}>
+                  <td className={`${TD} font-medium`}>{r.number}</td>
+                  <td className={`${TD} font-semibold`}>{r.calls}</td>
+                  <td className={TD}>{r.connected}</td>
+                  <td className={TD}>
+                    <Meter value={r.connectRate} color={HEALTH_STYLE[r.health].color} label={formatPercent(r.connectRate)} />
+                  </td>
+                  <td className={TD}>{r.conversations}</td>
+                  <td className={TD}>{r.noAnswer}</td>
+                  <td className={TD}>{r.badOrWrong}</td>
+                  <td className={`${TD} text-[var(--ods-text-secondary)]`}>{r.lastUsed ? r.lastUsed.toLocaleDateString() : "—"}</td>
+                  <td className={TD}>
+                    <Chip dot={HEALTH_STYLE[r.health].color}>{HEALTH_STYLE[r.health].label}</Chip>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--ods-border)]">
-                {rows.map((r) => (
-                  <tr key={r.number}>
-                    <td className="py-2 pr-3 font-mono text-[var(--ods-text-primary)]">{r.number}</td>
-                    <td className="py-2 pr-3">{r.calls}</td>
-                    <td className="py-2 pr-3">{r.connected}</td>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-                          <div className="h-full bg-[var(--ods-brand-600)]" style={{ width: formatPercent(r.connectRate) }} />
-                        </div>
-                        {formatPercent(r.connectRate)}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3">{r.conversations}</td>
-                    <td className="py-2 pr-3">{r.noAnswer}</td>
-                    <td className="py-2 pr-3">{r.badOrWrong}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap text-[var(--ods-text-secondary)]">
-                      {r.lastUsed ? r.lastUsed.toLocaleDateString() : "—"}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[12px] font-medium whitespace-nowrap ${HEALTH_STYLE[r.health].className}`}>
-                        {HEALTH_STYLE[r.health].label}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </ReportTable>
         )}
       </ReportCard>
     </>
   );
 }
 
+/** Thick inline bar plus value, for rates and relative volume in tables. */
+function Meter({ value, color = COLORS.outbound, label }: { value: number; color?: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-20 h-2.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(1, Math.max(0, value)) * 100}%`, background: color }} />
+      </div>
+      <span className="font-semibold">{label}</span>
+    </div>
+  );
+}
+
+const POSITIVE_LIST = "Interested, Appointment Set, Callback, Good Number, Left Callback or Left Voicemail";
+const POSITIVE_RATE_FORMULA = ["Positive", "÷", "Positive + Negative", "=", "Rate"];
+
 function TeamTab({ calls, threshold }: { calls: ReportCall[]; threshold: number }) {
   const rows = teamStats(calls, threshold);
   const maxCalls = Math.max(1, ...rows.map((r) => r.outbound));
+  const sum = (f: (r: (typeof rows)[number]) => number) => rows.reduce((s, r) => s + f(r), 0);
+  const outbound = sum((r) => r.outbound);
+  const convos = sum((r) => r.conversations);
+  const positive = sum((r) => r.positive);
+  const decided = positive + sum((r) => r.negative);
+  const top = [...rows].sort((a, b) => b.conversations - a.conversations)[0];
   return (
     <>
+      <StatTiles
+        stats={[
+          { label: "Members", value: String(rows.length), icon: Users, tip: { title: "Members", what: "Team members who made or took a call in this range." } },
+          { label: "Calls", value: String(outbound), icon: PhoneOutgoing, tip: { title: "Calls", what: "Outbound dials across the team.", formula: ["Outbound dials", "=", "Calls"] } },
+          {
+            label: "Conversations",
+            value: String(convos),
+            icon: MessageSquare,
+            tone: "positive",
+            tip: { title: "Conversations", what: "Calls long enough to be a real conversation.", formula: ["Connected call", "≥", `${threshold}s`] },
+          },
+          {
+            label: "Convo rate",
+            value: outbound ? formatPercent(convos / outbound) : "—",
+            icon: ThumbsUp,
+            tip: { title: "Convo rate", what: "Share of dials that became conversations.", formula: ["Conversations", "÷", "Calls", "=", "Convo rate"] },
+          },
+          {
+            label: "Positive rate",
+            value: decided ? formatPercent(positive / decided) : "—",
+            icon: TrendingUp,
+            tone: "positive",
+            tip: {
+              title: "Positive rate",
+              what: "Of the calls with an outcome, how many ended well.",
+              formula: POSITIVE_RATE_FORMULA,
+              key: [
+                { color: COLORS.positive, label: "Positive", note: "good outcome" },
+                { color: COLORS.negative, label: "Negative", note: "bad outcome" },
+              ],
+            },
+          },
+          {
+            label: "Top talker",
+            value: top && top.conversations > 0 ? top.member : "—",
+            icon: Star,
+            tip: { title: "Top talker", what: `Most conversations in this range${top ? ` (${top.conversations})` : ""}.`, use: "Listen to their calls for coaching." },
+          },
+        ]}
+      />
       <ReportCard
         title="Calls by Team Member"
         unit="Count"
-        description="Outbound calls and conversations per person. Hover a bar for exact numbers."
+        tip={{
+          title: "Calls by Team Member",
+          icon: BarChartIcon,
+          what: "Outbound calls and conversations for each person.",
+          key: [SERIES_KEY.outbound, SERIES_KEY.convos],
+          use: "Hover a bar for exact numbers.",
+        }}
       >
         <BarChart
           labels={rows.map((r) => r.member)}
@@ -385,50 +588,59 @@ function TeamTab({ calls, threshold }: { calls: ReportCall[]; threshold: number 
       <ReportCard
         title="Team Performance"
         unit="By member"
-        description="Who is dialing, how often calls turn into conversations, and how many end positively. Positive = Interested, Appointment Set, Callback, Good Number, Left Callback or Left Voicemail."
+        tip={{
+          title: "Team Performance",
+          icon: Users,
+          what: "Who is dialing, how often calls become conversations, and how many end positively.",
+          key: [
+            { color: COLORS.positive, label: "Positive", note: "good outcomes" },
+            { color: COLORS.negative, label: "Negative", note: "bad outcomes" },
+          ],
+          use: "Hover the eye on any column to see how it is worked out.",
+        }}
       >
         {rows.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-[var(--ods-text-secondary)]">No calls in this range.</p>
+          <EmptyState>No calls in this range.</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px] tabular-nums">
-              <thead>
-                <tr className="text-left text-[12px] text-[var(--ods-text-secondary)] border-b border-[var(--ods-border)]">
-                  {["Team member", "Calls", "Conversations", "Convo rate", "Talk time", "Avg call", "Positive", "Negative", "Positive rate", "Appointments"].map((h) => (
-                    <th key={h} className="py-2 pr-3 font-semibold whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--ods-border)]">
-                {rows.map((r) => {
-                  const decided = r.positive + r.negative;
-                  return (
-                    <tr key={r.member}>
-                      <td className="py-2 pr-3 font-medium text-[var(--ods-text-primary)] whitespace-nowrap">{r.member}</td>
-                      <td className="py-2 pr-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 h-1.5 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-                            <div className="h-full bg-[var(--ods-brand-600)]" style={{ width: `${(r.outbound / maxCalls) * 100}%` }} />
-                          </div>
-                          {r.outbound}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3">{r.conversations}</td>
-                      <td className="py-2 pr-3">{r.outbound ? formatPercent(r.conversations / r.outbound) : "—"}</td>
-                      <td className="py-2 pr-3 whitespace-nowrap">{formatMinutes(r.outboundMinutes + r.inboundMinutes)}</td>
-                      <td className="py-2 pr-3 whitespace-nowrap">{r.connected ? formatMinutes(r.avgConnectedSeconds / 60) : "—"}</td>
-                      <td className="py-2 pr-3 text-emerald-600">{r.positive}</td>
-                      <td className="py-2 pr-3 text-red-600">{r.negative}</td>
-                      <td className="py-2 pr-3">{decided ? formatPercent(r.positive / decided) : "—"}</td>
-                      <td className="py-2 pr-3">{r.appointments}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ReportTable>
+            <thead>
+              <tr>
+                <HeadCell>Team member</HeadCell>
+                <HeadCell tip={{ title: "Calls", what: "Outbound dials. The bar compares each member with the busiest one." }}>Calls</HeadCell>
+                <HeadCell tip={{ title: "Conversations", what: "Calls long enough to count.", formula: ["Connected call", "≥", `${threshold}s`] }}>Conversations</HeadCell>
+                <HeadCell tip={{ title: "Convo rate", what: "Share of dials that became conversations.", formula: ["Conversations", "÷", "Calls", "=", "Rate"] }}>Convo rate</HeadCell>
+                <HeadCell tip={{ title: "Talk time", what: "Total connected minutes, inbound and outbound.", key: [SERIES_KEY.outbound, SERIES_KEY.inbound] }}>Talk time</HeadCell>
+                <HeadCell tip={{ title: "Avg call", what: "Average length of a connected call.", formula: ["Talk time", "÷", "Connected calls"] }}>Avg call</HeadCell>
+                <HeadCell tip={{ title: "Positive", what: `${POSITIVE_LIST}.`, key: [{ color: COLORS.positive, label: "Positive outcome" }] }}>Positive</HeadCell>
+                <HeadCell tip={{ title: "Negative", what: "Any other outcome, e.g. Not Interested, DNC or Bad Number.", key: [{ color: COLORS.negative, label: "Negative outcome" }] }}>
+                  Negative
+                </HeadCell>
+                <HeadCell tip={{ title: "Positive rate", what: "Of the calls with an outcome, how many ended well.", formula: POSITIVE_RATE_FORMULA }}>Positive rate</HeadCell>
+                <HeadCell tip={{ title: "Appointments", what: "Calls marked Appointment Set." }}>Appointments</HeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const d = r.positive + r.negative;
+                return (
+                  <tr key={r.member} className={TR}>
+                    <td className={`${TD} font-semibold`}>{r.member}</td>
+                    <td className={TD}>
+                      <Meter value={r.outbound / maxCalls} label={String(r.outbound)} />
+                    </td>
+                    <td className={`${TD} font-semibold`}>{r.conversations}</td>
+                    <td className={TD}>{r.outbound ? formatPercent(r.conversations / r.outbound) : "—"}</td>
+                    <td className={TD}>{formatMinutes(r.outboundMinutes + r.inboundMinutes)}</td>
+                    <td className={TD}>{r.connected ? formatMinutes(r.avgConnectedSeconds / 60) : "—"}</td>
+                    <td className={`${TD} font-semibold text-emerald-600`}>{r.positive}</td>
+                    <td className={`${TD} font-semibold text-red-600`}>{r.negative}</td>
+                    <td className={TD}>{d ? <Meter value={r.positive / d} color={COLORS.positive} label={formatPercent(r.positive / d)} /> : "—"}</td>
+                    <td className={`${TD} font-semibold`}>{r.appointments}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </ReportTable>
         )}
       </ReportCard>
     </>
@@ -436,6 +648,11 @@ function TeamTab({ calls, threshold }: { calls: ReportCall[]; threshold: number 
 }
 
 const ALL_CALLS = "__all";
+
+const OUTCOME_KEY = [
+  { color: COLORS.positive, label: "Positive", note: "good outcome" },
+  { color: COLORS.negative, label: "Negative / other", note: "everything else" },
+];
 
 function DispositionTab({ calls }: { calls: ReportCall[] }) {
   const [selected, setSelected] = usePersistedState<string>("reports-disposition", ALL_CALLS);
@@ -457,6 +674,7 @@ function DispositionTab({ calls }: { calls: ReportCall[] }) {
           : DISPOSITIONS.find((d) => d.status === selected)?.label ?? selected;
   const positive = calls.filter((c) => dispositionTypeOfStatus(c.status) === "positive").length;
   const negative = calls.filter((c) => dispositionTypeOfStatus(c.status) === "negative").length;
+  const share = (n: number) => (calls.length ? formatPercent(n / calls.length) : "—");
 
   const picker = (
     <SelectMenu
@@ -478,7 +696,7 @@ function DispositionTab({ calls }: { calls: ReportCall[] }) {
           options: DISPOSITIONS.map((d) => ({
             value: d.status,
             label: d.label,
-            dot: d.type === "positive" ? "bg-emerald-500" : "bg-red-500",
+            icon: <DispositionIcon status={d.status} className="w-4 h-4" />,
           })),
         },
       ]}
@@ -491,17 +709,50 @@ function DispositionTab({ calls }: { calls: ReportCall[] }) {
     <>
       <StatTiles
         stats={[
-          { label: "Calls", value: String(calls.length), detail: "All calls in range" },
-          { label: "Positive", value: String(positive), detail: calls.length ? `${formatPercent(positive / calls.length)} of calls` : undefined, tone: "positive" },
-          { label: "Negative", value: String(negative), detail: calls.length ? `${formatPercent(negative / calls.length)} of calls` : undefined, tone: "negative" },
-          { label: "Appointments", value: String(calls.filter((c) => String(c.status).toUpperCase() === "APPOINTMENT_SET").length), detail: "Appointment Set" },
-          { label: "Do not contact", value: String(calls.filter((c) => String(c.status).toUpperCase() === "DNC").length), detail: "Asked not to be called" },
-          { label: selectedLabel, value: String(focus.length), detail: "Matching the picker below" },
+          { label: "Calls", value: String(calls.length), icon: Phone, tip: { title: "Calls", what: "All calls in this range, inbound and outbound." } },
+          {
+            label: "Positive",
+            value: String(positive),
+            icon: CheckCircle,
+            tone: "positive",
+            tip: { title: "Positive", what: `${POSITIVE_LIST}.`, formula: [String(positive), "÷", String(calls.length), "=", share(positive)] },
+          },
+          {
+            label: "Negative",
+            value: String(negative),
+            icon: XCircle,
+            tone: "negative",
+            tip: { title: "Negative", what: "Every other outcome.", formula: [String(negative), "÷", String(calls.length), "=", share(negative)] },
+          },
+          {
+            label: "Appointments",
+            value: String(calls.filter((c) => String(c.status).toUpperCase() === "APPOINTMENT_SET").length),
+            icon: CalendarDays,
+            tone: "positive",
+            tip: { title: "Appointments", what: "Calls marked Appointment Set." },
+          },
+          {
+            label: "Do not contact",
+            value: String(calls.filter((c) => String(c.status).toUpperCase() === "DNC").length),
+            icon: Ban,
+            tone: "negative",
+            tip: { title: "Do not contact", what: "Prospects who asked not to be called again." },
+          },
+          {
+            label: selectedLabel,
+            value: String(focus.length),
+            icon: ThumbsUp,
+            tip: { title: selectedLabel, what: "Calls matching the disposition picked on the heatmap below." },
+          },
         ]}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ReportCard title="Disposition Distribution" unit="Count" description="How calls ended. Green = positive, red = negative. Hover a bar for the count.">
+        <ReportCard
+          title="Disposition Distribution"
+          unit="Count"
+          tip={{ title: "Disposition Distribution", icon: BarChartIcon, what: "How calls ended, one bar per disposition.", key: OUTCOME_KEY, use: "Hover a bar for the count." }}
+        >
           <BarChart
             labels={breakdown.map((r) => r.label)}
             series={[
@@ -510,7 +761,17 @@ function DispositionTab({ calls }: { calls: ReportCall[] }) {
             ]}
           />
         </ReportCard>
-        <ReportCard title="Average Call Length by Disposition" unit="Minutes" description="Longer calls usually mean more engaged prospects.">
+        <ReportCard
+          title="Average Call Length"
+          unit="Minutes"
+          tip={{
+            title: "Average Call Length by Disposition",
+            icon: Timer,
+            what: "How long calls with each outcome last on average.",
+            formula: ["Talk time", "÷", "Calls", "per", "Disposition"],
+            use: "Longer calls usually mean more engaged prospects.",
+          }}
+        >
           <BarChart
             labels={breakdown.map((r) => r.label)}
             valueFormat={(v) => formatMinutes(v)}
@@ -519,44 +780,60 @@ function DispositionTab({ calls }: { calls: ReportCall[] }) {
         </ReportCard>
       </div>
 
-      <ReportCard title="Disposition Breakdown" unit="Numbers" description="Every disposition with its count, share of calls and average length.">
+      <ReportCard
+        title="Disposition Breakdown"
+        unit="Numbers"
+        tip={{ title: "Disposition Breakdown", icon: ThumbsUp, what: "Every disposition with its count, share of calls and average length.", key: OUTCOME_KEY }}
+      >
         {breakdown.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-[var(--ods-text-secondary)]">No calls in this range.</p>
+          <EmptyState>No calls in this range.</EmptyState>
         ) : (
-          <table className="w-full text-[13px] tabular-nums">
+          <ReportTable>
             <thead>
-              <tr className="text-left text-[12px] text-[var(--ods-text-secondary)] border-b border-[var(--ods-border)]">
-                <th className="py-2 pr-3 font-semibold">Disposition</th>
-                <th className="py-2 pr-3 font-semibold">Type</th>
-                <th className="py-2 pr-3 font-semibold">Calls</th>
-                <th className="py-2 pr-3 font-semibold">Share</th>
-                <th className="py-2 pr-3 font-semibold">Avg length</th>
+              <tr>
+                <HeadCell>Disposition</HeadCell>
+                <HeadCell tip={{ title: "Type", what: "Whether the outcome counts as positive or negative.", key: OUTCOME_KEY }}>Type</HeadCell>
+                <HeadCell>Calls</HeadCell>
+                <HeadCell tip={{ title: "Share", what: "This disposition's slice of all calls.", formula: ["Disposition calls", "÷", "All calls", "=", "Share"] }}>Share</HeadCell>
+                <HeadCell tip={{ title: "Avg length", what: "Average talk time for this outcome." }}>Avg length</HeadCell>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--ods-border)]">
-              {breakdown.map((r) => (
-                <tr key={r.status}>
-                  <td className="py-2 pr-3 text-[var(--ods-text-primary)]">
-                    <span className="inline-flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${r.type === "positive" ? "bg-emerald-500" : r.type === "negative" ? "bg-red-500" : "bg-gray-400"}`} />
-                      {r.label}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3 text-[var(--ods-text-secondary)] capitalize">{r.type ?? "—"}</td>
-                  <td className="py-2 pr-3">{r.count}</td>
-                  <td className="py-2 pr-3">{formatPercent(r.share)}</td>
-                  <td className="py-2 pr-3">{formatMinutes(r.avgSeconds / 60)}</td>
-                </tr>
-              ))}
+            <tbody>
+              {breakdown.map((r) => {
+                const color = r.type === "positive" ? COLORS.positive : r.type === "negative" ? COLORS.negative : "#9ca3af";
+                return (
+                  <tr key={r.status} className={TR}>
+                    <td className={TD}>
+                      <DispositionBadge status={r.status} />
+                    </td>
+                    <td className={`${TD} capitalize text-[var(--ods-text-secondary)]`}>{r.type ?? "—"}</td>
+                    <td className={`${TD} font-semibold`}>{r.count}</td>
+                    <td className={TD}>
+                      <Meter value={r.share} color={color} label={formatPercent(r.share)} />
+                    </td>
+                    <td className={TD}>{formatMinutes(r.avgSeconds / 60)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
-          </table>
+          </ReportTable>
         )}
       </ReportCard>
 
       <ReportCard
         title="Disposition Heatmap"
-        unit="Count"
-        description={`When "${selectedLabel}" calls happen, by weekday and hour. Use it to find the best times to dial.`}
+        unit="Weekday × hour"
+        tip={{
+          title: "Disposition Heatmap",
+          icon: CalendarDays,
+          what: `When "${selectedLabel}" calls happen, by weekday and hour.`,
+          key: [
+            { color: "var(--ods-bg-tertiary)", label: "Empty", note: "no calls" },
+            { color: "rgba(37,99,235,0.35)", label: "Light blue", note: "a few" },
+            { color: "rgba(37,99,235,1)", label: "Dark blue", note: "the most" },
+          ],
+          use: "Find the best times to dial. Pick a disposition on the right.",
+        }}
         aside={picker}
       >
         <Heatmap grid={heatmap(focus)} />
@@ -564,4 +841,3 @@ function DispositionTab({ calls }: { calls: ReportCall[] }) {
     </>
   );
 }
-

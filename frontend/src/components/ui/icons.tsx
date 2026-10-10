@@ -29,7 +29,9 @@ import {
   faCircleQuestion,
   faCircleXmark,
   faClock,
+  faClockRotateLeft,
   faCopy,
+  faDatabase,
   faDesktop,
   faDownload,
   faEllipsis,
@@ -74,12 +76,14 @@ import {
   faStopwatch,
   faSun,
   faTableColumns,
+  faThumbsDown,
   faThumbsUp,
   faTrashCan,
   faTriangleExclamation,
   faUser,
   faUsers,
   faVideo,
+  faVoicemail,
   faVolumeHigh,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
@@ -129,9 +133,11 @@ export const CheckSquare = solid(faSquareCheck, "CheckSquare");
 export const ChevronDown = solid(faChevronDown, "ChevronDown");
 export const ChevronLeft = solid(faChevronLeft, "ChevronLeft");
 export const ChevronRight = solid(faChevronRight, "ChevronRight");
+export const Activity = solid(faClockRotateLeft, "Activity");
 export const Clock = solid(faClock, "Clock");
 export const Columns3 = solid(faTableColumns, "Columns3");
 export const Copy = solid(faCopy, "Copy");
+export const Database = solid(faDatabase, "Database");
 export const Download = solid(faDownload, "Download");
 export const Edit3 = solid(faPenToSquare, "Edit3");
 export const ExternalLink = solid(faArrowUpRightFromSquare, "ExternalLink");
@@ -179,12 +185,14 @@ export const SkipForward = solid(faForwardStep, "SkipForward");
 export const Square = solid(faStop, "Square");
 export const Star = solid(faStar, "Star");
 export const Sun = solid(faSun, "Sun");
+export const ThumbsDown = solid(faThumbsDown, "ThumbsDown");
 export const ThumbsUp = solid(faThumbsUp, "ThumbsUp");
 export const Timer = solid(faStopwatch, "Timer");
 export const Trash2 = solid(faTrashCan, "Trash2");
 export const TrendingUp = solid(faArrowTrendUp, "TrendingUp");
 export const User = solid(faUser, "User");
 export const Users = solid(faUsers, "Users");
+export const Voicemail = solid(faVoicemail, "Voicemail");
 export const Video = solid(faVideo, "Video");
 export const X = solid(faXmark, "X");
 export const XCircle = solid(faCircleXmark, "XCircle");

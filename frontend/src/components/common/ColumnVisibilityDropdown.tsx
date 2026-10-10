@@ -30,7 +30,7 @@ interface ColumnVisibilityDropdownProps {
  */
 export const ColumnVisibilityDropdown: React.FC<ColumnVisibilityDropdownProps> = ({ columns, onChange }) => {
   const [open, setOpen] = useState(false);
-  const { refs, floatingStyles, context } = useFloating({
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
     open,
     onOpenChange: setOpen,
     placement: "bottom-end",
@@ -59,11 +59,12 @@ export const ColumnVisibilityDropdown: React.FC<ColumnVisibilityDropdownProps> =
         <FloatingPortal>
           <div
             ref={refs.setFloating}
-            style={floatingStyles}
+            style={{ ...floatingStyles, visibility: isPositioned ? undefined : "hidden" }}
+            data-ready={isPositioned || undefined}
             {...getFloatingProps()}
-            className="z-[70] w-56 py-1 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] shadow-[0_12px_32px_rgba(0,0,0,0.18)] select-none"
+            className="ods-menu w-60"
           >
-            <div className="px-3 py-1.5 bg-[var(--ods-bg-secondary)] text-[11px] font-semibold uppercase tracking-wider text-[var(--ods-text-tertiary)]">
+            <div className="ods-menu-group-label">
               Visible columns
             </div>
             {columns.map((col) => (
@@ -72,10 +73,10 @@ export const ColumnVisibilityDropdown: React.FC<ColumnVisibilityDropdownProps> =
                 role="menuitemcheckbox"
                 aria-checked={col.visible}
                 onClick={() => onChange(col.key, !col.visible)}
-                className="mx-1 w-[calc(100%-8px)] h-9 px-2.5 flex items-center gap-2.5 rounded-[6px] text-[13px] text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
+                className="ods-menu-item"
               >
                 <span
-                  className={`w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 ${
+                  className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center shrink-0 ${
                     col.visible
                       ? "bg-[var(--ods-brand-600)] border-[var(--ods-brand-600)] text-white"
                       : "border-[var(--ods-border-strong)]"
@@ -86,10 +87,11 @@ export const ColumnVisibilityDropdown: React.FC<ColumnVisibilityDropdownProps> =
                 <span className="flex-1 text-left truncate">{col.label}</span>
               </button>
             ))}
+            {someHidden && <div className="ods-menu-separator" />}
             {someHidden && (
               <button
                 onClick={() => columns.forEach((c) => !c.visible && onChange(c.key, true))}
-                className="mt-1 w-full h-8 border-t border-[var(--ods-border)] text-[12px] font-medium text-[var(--ods-brand-600)] hover:bg-[var(--ods-hover)]"
+                className="ods-menu-item justify-center mt-1 !text-[var(--ods-brand-600)] font-semibold"
               >
                 Show all columns
               </button>

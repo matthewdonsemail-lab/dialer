@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { useProspectLookup } from "@/lib/contacts";
 import { useQuery } from "@tanstack/react-query";
 import { MoreVertical, SkipForward, Square } from "@/components/ui/icons";
 import { api, type CallCampaign } from "@/lib/api-client";
@@ -94,13 +95,11 @@ function DialerCard({ session, onChange }: { session: Session; onChange: (s: Ses
   const { data: calls } = useCalls();
   const updateProspect = useUpdateProspect();
   const updateCampaign = useUpdateCallCampaign();
-  const { data: contacts } = useQuery<Contact[]>({ queryKey: ["prospects"], queryFn: () => api.prospects.list(), staleTime: Infinity });
   const { data: phones } = useQuery<PhoneRow[]>({ queryKey: ["twentyPhones"], queryFn: () => api.twentyPhones.list(), staleTime: 10_000 });
   const { data: primary } = useQuery({ queryKey: ["primaryPhone"], queryFn: () => api.twentyPhones.primary(), staleTime: 60_000 });
 
   const { campaign, currentId, done } = session;
   const member = user?.memberId ? { id: user.memberId, email: user.email } : null;
-  const contact = contacts?.find((c) => c.id === currentId) ?? null;
 
   // Single line: the agency's primary number, unless a teammate holds it.
   const line = useMemo(() => {
@@ -116,7 +115,10 @@ function DialerCard({ session, onChange }: { session: Session; onChange: (s: Ses
   const pending = progress.remainingIds.filter((id) => !done.includes(id) && id !== currentId);
   const order = campaign.contactIds;
   const nextId = pending.find((id) => order.indexOf(id) > order.indexOf(currentId)) ?? pending[0] ?? null;
-  const next = contacts?.find((c) => c.id === nextId) ?? null;
+  // Just the two contacts on screen, looked up by id (never the whole list).
+  const { data: lookedUp } = useProspectLookup([currentId, nextId]);
+  const contact = (lookedUp?.get(currentId) as Contact | undefined) ?? null;
+  const next = nextId ? ((lookedUp?.get(nextId) as Contact | undefined) ?? null) : null;
   const finished = new Set([...done, ...campaign.contactIds.filter((id) => !progress.remainingIds.includes(id))]);
   const position = Math.min(finished.size + 1, order.length);
 
@@ -169,7 +171,7 @@ function DialerCard({ session, onChange }: { session: Session; onChange: (s: Ses
         {next ? (
           <>
             Next: <b className="text-white">{nameOf(next)}</b>
-            {next.phone && <span className="font-mono"> · {next.phone}</span>}
+            {next.phone && <span className=""> · {next.phone}</span>}
           </>
         ) : (
           "Last contact in this campaign"

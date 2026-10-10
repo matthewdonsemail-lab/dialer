@@ -34,6 +34,8 @@ export function useCreateLead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts-page"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts-facets"] });
     },
   });
 }
@@ -41,7 +43,7 @@ export function useCreateLead() {
 /** Instant edits: the row changes in the table and detail page before the save finishes. */
 export function useUpdateLead() {
   const mutation = useOptimisticUpdate<Lead>(
-    { listKey: ["leads"], detailKey: (id) => ["leads", id] },
+    { listKey: ["contacts-page"], detailKey: (id) => ["leads", id] },
     (id, patch) => api.leads.update(id, patch),
   );
   return {
@@ -53,5 +55,5 @@ export function useUpdateLead() {
 
 /** Instant removal; pass one id or several. */
 export function useDeleteLead() {
-  return useOptimisticDelete<Lead>({ listKey: ["leads"] }, (id) => api.leads.delete(id));
+  return useOptimisticDelete<Lead>({ listKey: ["contacts-page"] }, (id) => api.leads.delete(id));
 }

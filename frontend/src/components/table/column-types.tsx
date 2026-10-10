@@ -1,3 +1,4 @@
+import { Chip } from "@/components/ui/Chip";
 import type { ReactNode } from "react";
 import { StatusBadge } from "@/components/common/StatusBadge";
 
@@ -39,7 +40,7 @@ export const DEFAULT_COLUMN_WIDTH: Record<ColumnType, number> = {
 export const CELL_TYPE_CLASS: Record<ColumnType, string> = {
   title: "font-medium text-[var(--ods-text-primary)]",
   text: "text-[var(--ods-text-secondary)]",
-  phone: "font-mono tabular-nums text-[var(--ods-text-secondary)]",
+  phone: "tabular-nums text-[var(--ods-text-secondary)]",
   email: "text-[var(--ods-text-secondary)]",
   number: "tabular-nums text-[var(--ods-text-secondary)]",
   duration: "tabular-nums text-[var(--ods-text-secondary)]",
@@ -50,17 +51,6 @@ export const CELL_TYPE_CLASS: Record<ColumnType, string> = {
   custom: "text-[var(--ods-text-secondary)]",
 };
 
-const TONE_CLASS: Record<BadgeTone, string> = {
-  neutral: "bg-[var(--ods-bg-secondary)] text-[var(--ods-text-secondary)] border-[var(--ods-border)]",
-  blue: "bg-blue-500/10 text-blue-700 border-blue-500/20",
-  green: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
-  red: "bg-red-500/10 text-red-700 border-red-500/20",
-  amber: "bg-amber-500/10 text-amber-700 border-amber-500/20",
-  purple: "bg-purple-500/10 text-purple-700 border-purple-500/20",
-  rose: "bg-rose-500/10 text-rose-700 border-rose-500/20",
-  cyan: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
-  slate: "bg-slate-500/10 text-slate-700 border-slate-500/20",
-};
 
 export function isBlank(value: unknown): boolean {
   return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
@@ -109,14 +99,21 @@ export function sortValueFor(type: ColumnType, value: unknown): string | number 
   }
 }
 
+const TONE_DOT: Record<BadgeTone, string> = {
+  neutral: "#9ca3af",
+  blue: "#3b82f6",
+  green: "#22c55e",
+  red: "#ef4444",
+  amber: "#f59e0b",
+  purple: "#8b5cf6",
+  rose: "#f43f5e",
+  cyan: "#06b6d4",
+  slate: "#64748b",
+};
+
+/** Value badge in the standard chip style: gray chip, tone shown as a dot. */
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: BadgeTone }) {
-  return (
-    <span
-      className={`inline-flex max-w-full items-center px-1.5 py-0.5 rounded-[4px] border text-[11px] font-medium truncate ${TONE_CLASS[tone]}`}
-    >
-      {children}
-    </span>
-  );
+  return <Chip dot={TONE_DOT[tone]}>{children}</Chip>;
 }
 
 export const EMPTY_CELL = <span className="text-[var(--ods-text-tertiary)]">—</span>;

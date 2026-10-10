@@ -75,6 +75,9 @@ export default {
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
+        // Brand rule: no fixed-width type anywhere. Tailwind's base styles give
+        // <pre>, <code> and <kbd> the "mono" stack, so point it at Inter too.
+        mono: ["Inter", "system-ui", "sans-serif"],
       },
       spacing: {
         "sp-1": "var(--ods-sp-1)",

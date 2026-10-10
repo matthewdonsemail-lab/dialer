@@ -6,6 +6,8 @@ export interface HeaderFilterOption {
   value: string;
   label: string;
   count?: number;
+  /** Leading visual, e.g. a country flag. */
+  icon?: React.ReactNode;
 }
 
 interface HeaderFilterProps {
@@ -93,7 +95,7 @@ export function HeaderFilter({ label, value = ALL, options = [], onChange, sort 
         options.length > 0
           ? [
               { title: `Filter ${label}`, options: [{ value: ALL, label: "All", hint: total }] },
-              { options: options.map((o) => ({ value: o.value, label: o.label, hint: o.count })) },
+              { options: options.map((o) => ({ value: o.value, label: o.label, hint: o.count, icon: o.icon })) },
             ]
           : []
       }

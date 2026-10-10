@@ -325,7 +325,7 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
               <span className="text-[12px] text-[var(--ods-text-secondary)]">{status.prospect.niche}</span>
             )}
             {status.prospect.slug && (
-              <span className="text-[11px] text-[var(--ods-text-tertiary)] font-mono">{status.prospect.slug}</span>
+              <span className="text-[11px] text-[var(--ods-text-tertiary)]">{status.prospect.slug}</span>
             )}
           </div>
 
@@ -370,7 +370,7 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
               <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-1">A · Website we built</p>
               {status.urls.templateUrl ? (
                 <>
-                  <p className="text-[12px] font-mono text-[var(--ods-text-secondary)] truncate mb-2">{status.urls.templateUrl}</p>
+                  <p className="text-[12px] text-[var(--ods-text-secondary)] truncate mb-2">{status.urls.templateUrl}</p>
                   <div className="flex gap-1.5">
                     <Button variant="secondary" size="sm" onClick={() => handleCopy(status.urls.templateUrl as string, "Website link copied")}>
                       <Copy className="w-3.5 h-3.5" />
@@ -390,7 +390,7 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
               <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] mb-1">B · Offer funnel</p>
               {status.offer && status.urls.funnelSrc ? (
                 <>
-                  <p className="text-[12px] font-mono text-[var(--ods-text-secondary)] truncate mb-2">{status.urls.funnelSrc}</p>
+                  <p className="text-[12px] text-[var(--ods-text-secondary)] truncate mb-2">{status.urls.funnelSrc}</p>
                   <div className="flex gap-1.5">
                     <Button variant="secondary" size="sm" onClick={() => handleCopy(status.urls.funnelSrc as string, "Offer link copied")}>
                       <Copy className="w-3.5 h-3.5" />
@@ -431,7 +431,7 @@ export function SendWebsiteWidget({ prospect, fromNumber, onFromChange }: SendWe
                 Generate walkthrough (coming soon)
               </Button>
             </div>
-            <p className="text-[11px] font-mono text-[var(--ods-text-tertiary)] break-all">{expectedPipelineCmd}</p>
+            <p className="text-[11px] text-[var(--ods-text-tertiary)] break-all">{expectedPipelineCmd}</p>
           </div>
 
           {/* Message composer */}

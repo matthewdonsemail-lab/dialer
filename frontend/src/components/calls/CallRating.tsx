@@ -1,4 +1,6 @@
-import React, { useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { api } from "@/lib/api-client";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { Play, Pause, Download, Phone } from "@/components/ui/icons";
 
 /** 1-5 quality dimensions stored as JSON in call.aiScores. */
@@ -61,7 +63,14 @@ const SCORE_ROWS: Array<{ key: keyof QualityScores; label: string; hint: string 
   { key: "sentiment", label: "Sentiment", hint: "The prospect's overall feeling about the call." },
 ];
 
-/** "Call Quality Scores" panel (5 green bars, n/5 each). Empty state when not analyzed. */
+const SCORE_TONE = (v: number) =>
+  v >= 4 ? { bar: "#22c55e", text: "text-emerald-600" } : v >= 3 ? { bar: "#f59e0b", text: "text-amber-600" } : { bar: "#ef4444", text: "text-red-600" };
+
+/**
+ * The five 1-5 call quality ratings as thick bars, coloured by score, each
+ * with an eye tooltip saying what it measures. Renders bare so it can sit in
+ * any report card. Shows `fallback` when the call has not been analyzed.
+ */
 export function CallQualityScores({
   scores,
   fallback,
@@ -69,37 +78,36 @@ export function CallQualityScores({
   scores: QualityScores | null;
   fallback?: React.ReactNode;
 }) {
-  if (!scores) {
-    return (
-      <div className="rounded-[8px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] p-4 flex flex-col gap-2">
-        <p className="text-[15px] font-semibold text-[var(--ods-text-primary)]">Call Quality Scores</p>
-        {fallback ?? <p className="text-[13px] text-[var(--ods-text-secondary)]">Not analyzed yet.</p>}
-      </div>
-    );
-  }
+  if (!scores) return <>{fallback ?? <p className="py-6 text-center text-[14px] text-[var(--ods-text-secondary)]">Not analyzed yet.</p>}</>;
   return (
-    <div className="rounded-[8px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] p-4 flex flex-col gap-2.5">
-      <p className="text-[15px] font-semibold text-[var(--ods-text-primary)]">Call Quality Scores</p>
+    <div className="space-y-3.5">
       {SCORE_ROWS.map((row) => {
         const value = scores[row.key] || 0;
+        const tone = SCORE_TONE(value);
         return (
-          <div key={row.key} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1">
-            <span className="text-[13px] text-[var(--ods-text-primary)] inline-flex items-center gap-1.5">
-              {row.label}
-              <span
-                title={row.hint}
-                aria-label={row.hint}
-                className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-[var(--ods-text-tertiary)] text-[10px] text-[var(--ods-text-tertiary)] cursor-help"
-              >
-                ?
-              </span>
-            </span>
-            <span className="text-[13px] font-medium text-[var(--ods-text-primary)] tabular-nums">{value}/5</span>
-            <div className="col-span-2 h-2 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
-              <div
-                className="h-full rounded-full bg-[var(--ods-success)]"
-                style={{ width: `${(value / 5) * 100}%` }}
+          <div key={row.key}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="text-[14px] font-semibold text-[var(--ods-text-primary)]">{row.label}</span>
+              <InfoTip
+                className="w-5 h-5"
+                tip={{
+                  title: row.label,
+                  what: row.hint,
+                  formula: ["Transcript", "→", "AI", "=", `${value} / 5`],
+                  key: [
+                    { color: "#22c55e", label: "4-5", note: "strong" },
+                    { color: "#f59e0b", label: "3", note: "okay" },
+                    { color: "#ef4444", label: "1-2", note: "weak" },
+                  ],
+                }}
               />
+              <span className={`ml-auto text-[15px] font-bold tabular-nums ${tone.text}`}>
+                {value}
+                <span className="text-[12px] font-semibold text-[var(--ods-text-tertiary)]"> / 5</span>
+              </span>
+            </div>
+            <div className="h-3 rounded-full bg-[var(--ods-bg-tertiary)] overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${(value / 5) * 100}%`, background: tone.bar }} />
             </div>
           </div>
         );
@@ -138,13 +146,22 @@ function waveformBars(seed: string, count = 96): number[] {
  * the bars are a deterministic visual (no peak data is stored) that fills
  * with progress and supports click-to-seek.
  */
+/**
+ * Recording player. Plays `src` (the call's permanent recordingUrl copy) and,
+ * when that is missing or fails, asks the backend for a fresh Telnyx link for
+ * `callId`. The backend route needs the Bearer token, which an <audio> element
+ * cannot send, so the link is fetched first and then played directly.
+ */
 export function WaveformPlayer({
   src,
+  callId,
   seed,
   detailHref,
   onErrorMessage,
 }: {
-  src: string;
+  src?: string | null;
+  /** Call with a Telnyx recording, used as the fallback source. */
+  callId?: string | null;
   seed: string;
   detailHref?: string;
   onErrorMessage?: string;
@@ -156,7 +173,42 @@ export function WaveformPlayer({
   const [duration, setDuration] = useState(0);
   const [rate, setRate] = useState(1);
   const [failed, setFailed] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
+  const [audioSrc, setAudioSrc] = useState<string | null>(src || null);
+  const [triedTelnyx, setTriedTelnyx] = useState(false);
   const bars = useMemo(() => waveformBars(seed), [seed]);
+
+  const fromTelnyx = useCallback(() => {
+    if (!callId) {
+      setFailed(true);
+      return;
+    }
+    setTriedTelnyx(true);
+    api.calls
+      .audioUrl(callId)
+      .then(({ url }) => setAudioSrc(url))
+      .catch((err: Error) => {
+        setReason(err.message);
+        setFailed(true);
+      });
+  }, [callId]);
+
+  // New call: start again from the stored copy, else go straight to Telnyx.
+  useEffect(() => {
+    setFailed(false);
+    setReason(null);
+    setTriedTelnyx(false);
+    setPlaying(false);
+    setCurrent(0);
+    setDuration(0);
+    setAudioSrc(src || null);
+    if (!src) fromTelnyx();
+  }, [src, fromTelnyx]);
+
+  const onAudioError = () => {
+    if (!triedTelnyx && callId) fromTelnyx();
+    else setFailed(true);
+  };
 
   const toggle = useCallback(() => {
     const el = audioRef.current;
@@ -186,7 +238,9 @@ export function WaveformPlayer({
     return (
       <div className="rounded-[8px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] p-4">
         <p className="text-[12px] text-amber-700">
-          {onErrorMessage ?? "Audio failed to load (0:00) — the Telnyx recording isn't attached yet. Reconcile the call, or check the webhook setup."}
+          {reason
+            ? `Recording could not be loaded: ${reason}.`
+            : onErrorMessage ?? "Recording could not be loaded. Reconcile the call with Telnyx, or check the webhook setup."}
         </p>
       </div>
     );
@@ -196,14 +250,14 @@ export function WaveformPlayer({
     <div className="rounded-[8px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] px-4 py-3 flex items-center gap-3">
       <audio
         ref={audioRef}
-        src={src}
+        src={audioSrc ?? undefined}
         preload="metadata"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        onError={() => setFailed(true)}
+        onError={onAudioError}
       />
       <button
         onClick={toggle}
@@ -250,7 +304,7 @@ export function WaveformPlayer({
         ))}
       </select>
       <a
-        href={src}
+        href={audioSrc ?? undefined}
         download
         aria-label="Download recording"
         title="Download recording"

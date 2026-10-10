@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Mail, PhoneCall, RefreshCw } from "@/components/ui/icons";
+import { BookOpen, Mail, PhoneCall, RefreshCw, User, Users } from "@/components/ui/icons";
 import { api } from "@/lib/api-client";
-import { StatusSelect } from "@/components/common/StatusSelect";
+import { StatusSelect, type StatusOption } from "@/components/common/StatusSelect";
 import { StatusFilterDropdown } from "@/components/common/StatusFilterDropdown";
 import { mapLeadProspectStatusOptions } from "@/lib/twenty/options";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -11,20 +11,30 @@ import { LeadForm } from "@/components/leads/LeadForm";
 import { useToast } from "@/components/ui/Toast";
 import { ActionsMenu } from "@/components/common/ActionsMenu";
 import { TwentyFieldLink } from "@/components/common/TwentyFieldLink";
-import { usePersistedState } from "@/hooks/use-persisted-state";
-import { useDeleteProspect, useUpdateProspect } from "@/hooks/use-prospects";
-import { isBottomStatus } from "@/lib/list-sort";
+import { Chip } from "@/components/ui/Chip";
 import { DataTable, ToolbarButton, useDataTable, type DataColumn } from "@/components/table";
+import type { HeaderFilterOption } from "@/components/common/HeaderFilter";
 import { CampaignModal } from "@/components/campaigns/CampaignModal";
+import { ScriptsModal } from "@/components/scripts/ScriptsWorkspace";
+import { DispositionBadge } from "@/components/calls/DispositionBadge";
 import { defaultCampaignName, useCreateCallCampaign } from "@/hooks/use-call-campaigns";
 import { usePowerDialer } from "@/components/campaigns/PowerDialer";
 import type { CallCampaign } from "@/lib/api-client";
+import { CountryBadge, CountryFlag } from "@/components/common/CountryBadge";
+import { countryCode, countryName } from "@/lib/country";
+import { timeAgo } from "@/lib/admin";
+import {
+  contactName,
+  useContactFacets,
+  useContactWindow,
+  useUpdateContact,
+  type ContactQuery,
+  type ContactRow,
+  type ContactType,
+} from "@/lib/contacts";
 
-/** Display country for a prospect; blanks group under "Unknown". */
-function countryOf(p: { country?: string }): string {
-  const c = (p.country ?? "").trim();
-  return c || "Unknown";
-}
+const ALL = "all";
+const BLANK = "__blank";
 
 /** Table column key -> ACTUAL Twenty agencyProspects field (null = object page). */
 const PROSPECT_FIELD_FOR_KEY: Record<string, string | null> = {
@@ -34,44 +44,53 @@ const PROSPECT_FIELD_FOR_KEY: Record<string, string | null> = {
   status: "coldCallStatus",
   state: "region",
   city: "city",
-  qualification: null,
-  type: "niche",
+  industry: "niche",
 };
 
-interface Prospect {
-  id: string;
-  first_name?: string;
-  last_name?: string;
-  company?: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  status?: string;
-  country?: string;
-  source?: string;
-  campaign_id?: string | null;
-  campaign_type?: string;
-  notes?: string;
-  dnc?: boolean;
-  sync_id?: string;
-  created_at?: string;
-  updated_at?: string;
+/** Columns the server can sort by (see backend prospects/helpers/query.ts). */
+const SERVER_SORTABLE = new Set(["name", "company", "phone", "status", "state", "city", "country", "industry", "contact_type"]);
+
+/** Twenty coldCallStatus -> app status (a blank status reads as New). */
+const TWENTY_STATUS: Record<string, string> = {
+  [BLANK]: "new",
+  NEW: "new",
+  CONTACTED: "contacted",
+  INTERESTED: "interested",
+  NOT_INTERESTED: "not_interested",
+  CALLBACK: "callback",
+  CONVERTED: "converted",
+  DO_NOT_CONTACT: "do_not_contact",
+};
+
+const TYPE_META: Record<ContactType, { label: string; icon: typeof Users; color: string }> = {
+  prospect: { label: "Prospect", icon: Users, color: "text-blue-600" },
+  lead: { label: "Lead", icon: User, color: "text-violet-600" },
+};
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
 }
 
+function option(value: string, label: string, icon: React.ReactNode, count?: number): StatusOption {
+  return { value, label, icon, hint: count, dotColor: "", bgTint: "", textColor: "" };
+}
+
+/**
+ * All Contacts: prospects and leads from Twenty, loaded a page at a time.
+ * Search, filters and sorting run in Twenty, so the browser only holds the
+ * rows scrolled through, never the whole list.
+ */
 export function ProspectPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { success, error: toastError } = useToast();
-
-  const { data: prospects, isLoading } = useQuery<Prospect[]>({
-    queryKey: ["prospects"],
-    queryFn: async () => api.prospects.list(),
-    staleTime: Infinity,
-  });
+  const table = useDataTable("prospects");
+  const { columnFilters, setColumnFilter } = table;
 
   // Status options come from Twenty CRM
   const { data: meta } = useQuery<{ fields: Record<string, Array<{ label: string; value: string; color: string }>> }>({
@@ -79,76 +98,126 @@ export function ProspectPage() {
     queryFn: async () => api.twentyMeta.fields("agencyProspects"),
     staleTime: Infinity,
   });
-  const statusOptions = meta?.fields["coldCallStatus"]
-    ? mapLeadProspectStatusOptions(meta.fields["coldCallStatus"])
-    : [];
+  const statusOptions = meta?.fields["coldCallStatus"] ? mapLeadProspectStatusOptions(meta.fields["coldCallStatus"]) : [];
+  const { data: facets } = useContactFacets();
 
+  // ---- filter options with server counts (shared by toolbar and column headers) ----
+  const statusCounts = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const [raw, n] of Object.entries(facets?.status ?? {})) {
+      const app = TWENTY_STATUS[raw] ?? raw.toLowerCase();
+      out.set(app, (out.get(app) ?? 0) + n);
+    }
+    return out;
+  }, [facets]);
+  const statusFilterOptions: StatusOption[] = statusOptions.map((o) => ({ ...o, hint: statusCounts.get(o.value) ?? 0 }));
 
-  const updateProspect = useUpdateProspect();
-  const deleteProspect = useDeleteProspect();
-  const table = useDataTable("prospects");
-  const [statusFilter, setStatusFilter] = usePersistedState<string>("prospects-filter-status", "all");
-  const [countryFilter, setCountryFilter] = usePersistedState<string>("prospects-filter-country", "all");
+  // Countries grouped by ISO code: "CA" and "Canada" are one option holding both spellings.
+  const countryGroups = useMemo(() => {
+    const groups = new Map<string, { raws: string[]; count: number }>();
+    for (const [raw, n] of Object.entries(facets?.country ?? {})) {
+      const key = raw === BLANK ? BLANK : countryCode(raw) ?? raw;
+      const g = groups.get(key) ?? { raws: [], count: 0 };
+      g.raws.push(raw);
+      g.count += n;
+      groups.set(key, g);
+    }
+    return groups;
+  }, [facets]);
+  const countryOptions = [...countryGroups.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([key, g]) => option(key, key === BLANK ? "Unknown" : countryName(key), <CountryFlag code={key === BLANK ? null : countryCode(key)} />, g.count));
+
+  const typeOptions = (Object.keys(TYPE_META) as ContactType[]).map((t) => {
+    const Icon = TYPE_META[t].icon;
+    return option(t, TYPE_META[t].label, <Icon className={`w-4 h-4 ${TYPE_META[t].color}`} />, facets?.type?.[t] ?? 0);
+  });
+
+  const industryOptions = Object.entries(facets?.industry ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([raw, n]) => option(raw, raw === BLANK ? "No industry" : raw, null, n));
+
+  // Toolbar dropdowns and column-header filters share one state (table.columnFilters).
+  const pick = (key: string, options: StatusOption[]) => {
+    const v = columnFilters[key];
+    return v && options.some((o) => o.value === v) ? v : ALL;
+  };
+  const active = {
+    status: pick("status", statusFilterOptions),
+    country: pick("country", countryOptions),
+    contact_type: pick("contact_type", typeOptions),
+    industry: pick("industry", industryOptions),
+  };
+
+  const search = useDebounced(table.search, 300);
+  const sort = table.sort && SERVER_SORTABLE.has(table.sort.key) ? table.sort : null;
+  const query: ContactQuery = {
+    q: search || undefined,
+    status: active.status !== ALL ? [active.status] : undefined,
+    country: active.country !== ALL ? countryGroups.get(active.country)?.raws : undefined,
+    type: active.contact_type !== ALL ? [active.contact_type as ContactType] : undefined,
+    industry: active.industry !== ALL ? [active.industry] : undefined,
+    sort: sort?.key,
+    dir: sort?.direction,
+  };
+  // Rows on screen, reported by the table; only those windows are fetched.
+  const [range, setRange] = useState<[number, number]>([0, 60]);
+  const onRangeChange = useCallback((first: number, last: number) => setRange([first, last]), []);
+  const contacts = useContactWindow(query, range);
+  const rows = contacts.loaded;
+  const total = contacts.total;
+
+  const updateProspect = useUpdateContact("prospect");
+  const updateLead = useUpdateContact("lead");
   const [showForm, setShowForm] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; type: ContactType } | null>(null);
   const [syncing, setSyncing] = useState(false);
   // Call campaigns (WAVV-style): the phone button opens them; with contacts
   // selected it first creates a campaign from the selection.
   const [campaignModal, setCampaignModal] = useState<{ open: boolean; campaignId?: string | null }>({ open: false });
+  const [scriptsOpen, setScriptsOpen] = useState(false);
   const createCampaign = useCreateCallCampaign();
   const powerDialer = usePowerDialer();
 
-  // Status-style options for the country dropdown (label shows the count).
-  const countryOptions = useMemo(() => {
-    const country = new Map<string, number>();
-    for (const p of prospects ?? []) country.set(countryOf(p), (country.get(countryOf(p)) ?? 0) + 1);
-    return [...country.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([value, count]) => ({
-        value,
-        label: `${value} (${count})`,
-        dotColor: "bg-[var(--ods-text-tertiary)]",
-        bgTint: "",
-        textColor: "",
-      }));
-  }, [prospects]);
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["contacts-page"] }),
+      queryClient.invalidateQueries({ queryKey: ["contacts-facets"] }),
+    ]);
 
-  const clearPageFilters = () => {
-    setStatusFilter("all");
-    setCountryFilter("all");
-  };
+  const typeOf = useMemo(() => new Map(rows.map((r) => [r.id, r.type])), [rows]);
 
-  const pageFilter = (p: Prospect) => {
-    if (statusFilter !== "all" && p.status !== statusFilter) return false;
-    if (countryFilter !== "all" && countryOf(p) !== countryFilter) return false;
-    return true;
-  };
+  async function removeContacts(ids: string[]) {
+    await Promise.all(ids.map((id) => (typeOf.get(id) === "lead" ? api.leads.delete(id) : api.prospects.delete(id))));
+    await refresh();
+  }
 
   async function handleDelete() {
     if (!deleteConfirm) return;
+    const { id, name } = deleteConfirm;
+    setDeleteConfirm(null);
     try {
-      setDeleteConfirm(null);
-      await deleteProspect.mutateAsync(deleteConfirm.id);
-      success("Contact deleted", `${deleteConfirm.name} has been removed from the list`);
+      await removeContacts([id]);
+      success("Contact deleted", `${name} has been removed from the list`);
     } catch {
       toastError("Error", "Failed to delete the contact");
     }
   }
 
-  async function handleStatusChange(prospectId: string, newStatus: string) {
+  async function handleStatusChange(row: ContactRow, newStatus: string) {
     try {
-      await updateProspect.mutateAsync({ id: prospectId, patch: { status: newStatus } });
+      await (row.type === "lead" ? updateLead : updateProspect).mutateAsync({ id: row.id, patch: { status: newStatus } });
+      queryClient.invalidateQueries({ queryKey: ["contacts-facets"] });
     } catch {
       toastError("Status not saved", "The change was undone. Try again.");
     }
   }
 
-
   async function handleSyncFromTwenty() {
     // No sync endpoint exists (reads are live from Twenty) — refetch instead.
     setSyncing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: ["prospects"] });
+      await refresh();
       success("Sync complete", "Contacts refreshed from Twenty");
     } catch (err: any) {
       toastError("Sync error", err.message || "Failed to sync");
@@ -159,19 +228,25 @@ export function ProspectPage() {
 
   async function handleBulkDelete(ids: string[]) {
     try {
-      await deleteProspect.mutateAsync(ids);
+      await removeContacts(ids);
       success("Deleted", `${ids.length} contact(s) deleted`);
     } catch {
       toastError("Error", "Failed to delete contacts");
     }
   }
 
-  /** Selected contacts -> new campaign named after the current date and time, shown in the campaign window. */
+  /** Selected prospects -> new campaign named after the current date and time, shown in the campaign window. */
   async function startCampaignFrom(ids: string[], clearSelection: () => void) {
+    const prospectIds = ids.filter((id) => typeOf.get(id) !== "lead");
+    if (prospectIds.length === 0) {
+      toastError("No prospects selected", "Call campaigns dial prospects; leads can be called from their own page.");
+      return;
+    }
     try {
-      const created = await createCampaign.mutateAsync({ contactIds: ids, name: defaultCampaignName() });
+      const created = await createCampaign.mutateAsync({ contactIds: prospectIds, name: defaultCampaignName() });
       clearSelection();
       setCampaignModal({ open: true, campaignId: created.id });
+      if (prospectIds.length < ids.length) success("Campaign created", `${ids.length - prospectIds.length} lead(s) were left out; campaigns dial prospects.`);
     } catch (err: any) {
       toastError("Campaign not created", err?.message || "Try again.");
     }
@@ -183,51 +258,78 @@ export function ProspectPage() {
     powerDialer.start(campaign);
   }
 
-  const open = (p: Prospect) => navigate(`/contacts/${p.id}`);
-  const fieldLink = (key: string) => (
-    <TwentyFieldLink objectName="agencyProspects" fieldName={PROSPECT_FIELD_FOR_KEY[key] ?? null} />
-  );
+  const open = (r: ContactRow) => navigate(r.type === "lead" ? `/leads/${r.id}` : `/contacts/${r.id}`);
+  const fieldLink = (key: string) => <TwentyFieldLink objectName="agencyProspects" fieldName={PROSPECT_FIELD_FOR_KEY[key] ?? null} />;
   const statusLabel = (value?: string) => statusOptions.find((o) => o.value === value)?.label ?? value;
 
-  const columns: DataColumn<Prospect>[] = [
+  const asHeaderOptions = (opts: StatusOption[]): HeaderFilterOption[] =>
+    opts.map((o) => ({ value: o.value, label: o.label, count: typeof o.hint === "number" ? o.hint : undefined, icon: o.icon }));
+
+  const columns: DataColumn<ContactRow>[] = [
+    { key: "name", label: "Name", type: "title", width: 210, value: (r) => contactName(r) ?? "", onClick: open, headerExtra: fieldLink("name") },
     {
-      key: "name",
-      label: "Name",
-      type: "title",
-      width: 210,
-      value: (p) => `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
-      onClick: open,
-      headerExtra: fieldLink("name"),
+      key: "contact_type",
+      label: "Type",
+      type: "custom",
+      width: 120,
+      value: (r) => r.type,
+      text: (r) => TYPE_META[r.type].label,
+      render: (r) => (
+        <Chip icon={TYPE_META[r.type].icon} iconClassName={TYPE_META[r.type].color}>
+          {TYPE_META[r.type].label}
+        </Chip>
+      ),
+      filterable: true,
     },
-    { key: "company", label: "Company", type: "text", width: 150, value: (p) => p.company, onClick: open, headerExtra: fieldLink("company") },
-    { key: "phone", label: "Phone", type: "phone", width: 175, value: (p) => p.phone, onClick: open, headerExtra: fieldLink("phone") },
+    { key: "company", label: "Company", type: "text", width: 150, value: (r) => r.company, onClick: open, headerExtra: fieldLink("company") },
+    { key: "phone", label: "Phone", type: "phone", width: 175, value: (r) => r.phone, onClick: open, headerExtra: fieldLink("phone") },
     {
       key: "status",
       label: "Status",
       type: "status",
-      value: (p) => p.status,
-      text: (p) => statusLabel(p.status),
-      render: (p) => (
-        <StatusSelect value={p.status} options={statusOptions} onChange={(s) => handleStatusChange(p.id, s)} />
-      ),
+      value: (r) => r.status,
+      text: (r) => statusLabel(r.status),
+      render: (r) => <StatusSelect value={r.status} options={statusOptions} onChange={(s) => handleStatusChange(r, s)} />,
+      filterable: true,
       headerExtra: fieldLink("status"),
     },
-    { key: "state", label: "State", type: "text", width: 110, value: (p) => p.state, headerExtra: fieldLink("state") },
-    { key: "city", label: "City", type: "text", width: 120, value: (p) => p.city, headerExtra: fieldLink("city") },
     {
-      key: "qualification",
-      label: "Qualification",
-      type: "badge",
-      width: 105,
-      value: (p) => (p as any).qualificationStatus,
-      tone: (p) => {
-        const q = (p as any).qualificationStatus;
-        return q === "QUALIFIED" ? "green" : q === "DISQUALIFIED" ? "red" : "neutral";
-      },
-      filterable: true,
-      headerExtra: fieldLink("qualification"),
+      key: "last_call",
+      label: "Last call",
+      type: "custom",
+      width: 190,
+      sortable: false,
+      value: (r) => r.lastCall?.status ?? null,
+      render: (r) =>
+        r.lastCall ? (
+          <span className="inline-flex items-center gap-2 min-w-0">
+            <DispositionBadge status={r.lastCall.status} />
+            {r.lastCall.at && <span className="text-[12px] text-[var(--ods-text-tertiary)] shrink-0">{timeAgo(r.lastCall.at)}</span>}
+          </span>
+        ) : (
+          <span className="text-[12px] text-[var(--ods-text-tertiary)]">Never called</span>
+        ),
     },
-    { key: "type", label: "Industry", type: "badge", width: 130, value: (p) => p.source, filterable: true, headerExtra: fieldLink("type") },
+    { key: "state", label: "State", type: "text", width: 110, value: (r) => r.state, headerExtra: fieldLink("state") },
+    { key: "city", label: "City", type: "text", width: 120, value: (r) => r.city, headerExtra: fieldLink("city") },
+    {
+      key: "country",
+      label: "Country",
+      type: "text",
+      width: 150,
+      value: (r) => countryName(r.country),
+      render: (r) => <CountryBadge country={r.country} />,
+      filterable: true,
+    },
+    {
+      key: "industry",
+      label: "Industry",
+      type: "badge",
+      width: 140,
+      value: (r) => (r.type === "prospect" ? (r.niche as string | undefined) ?? r.source : r.source),
+      filterable: true,
+      headerExtra: fieldLink("industry"),
+    },
   ];
 
   return (
@@ -235,14 +337,34 @@ export function ProspectPage() {
       <DataTable
         state={table}
         title="All Contacts"
+        info={{
+          title: "All Contacts",
+          icon: Users,
+          what: "Every prospect and lead in Twenty. Rows load as you scroll; search and filters run in Twenty, so even huge lists stay fast.",
+          key: [
+            { color: "#2563eb", label: "Prospect", note: "from lead lists / scraping" },
+            { color: "#7c3aed", label: "Lead", note: "came in to you" },
+          ],
+          use: "Status is where a contact is in your pipeline; Last call shows how the most recent call ended.",
+        }}
         columns={columns}
-        rows={prospects}
-        loading={isLoading}
-        getRowId={(p) => p.id}
-        filter={pageFilter}
-        searchText={(p) => `${p.email ?? ""} ${countryOf(p)}`}
-        isBottom={(p) => isBottomStatus(p.status, statusOptions)}
-        onClearFilters={clearPageFilters}
+        rows={rows}
+        loading={contacts.initialLoading}
+        getRowId={(r) => r.id}
+        server={{
+          total,
+          rowAt: contacts.rowAt,
+          onRangeChange,
+          facets: {
+            status: asHeaderOptions(statusFilterOptions),
+            country: asHeaderOptions(countryOptions),
+            contact_type: asHeaderOptions(typeOptions),
+            industry: asHeaderOptions(industryOptions),
+          },
+        }}
+        onClearFilters={() => {
+          for (const key of ["status", "country", "contact_type", "industry"]) setColumnFilter(key, ALL);
+        }}
         selection={{
           onDelete: handleBulkDelete,
           actions: (ids, clear) => (
@@ -255,18 +377,17 @@ export function ProspectPage() {
         emptyMessage='No contacts yet. Click "Sync" to import from Twenty.'
         filters={
           <>
-            <StatusFilterDropdown value={statusFilter} options={statusOptions} onChange={setStatusFilter} />
-            <StatusFilterDropdown
-              value={countryFilter}
-              options={countryOptions}
-              onChange={setCountryFilter}
-              label="Country"
-              allLabel="All countries"
-            />
+            <StatusFilterDropdown label="Type" allLabel="All types" value={active.contact_type} options={typeOptions} onChange={(v) => setColumnFilter("contact_type", v)} />
+            <StatusFilterDropdown value={active.status} options={statusFilterOptions} onChange={(v) => setColumnFilter("status", v)} />
+            <StatusFilterDropdown label="Country" allLabel="All countries" value={active.country} options={countryOptions} onChange={(v) => setColumnFilter("country", v)} />
           </>
         }
         actions={
           <>
+            <ToolbarButton onClick={() => setScriptsOpen(true)}>
+              <BookOpen className="w-3.5 h-3.5" />
+              Scripts
+            </ToolbarButton>
             <ToolbarButton onClick={() => setCampaignModal({ open: true })}>
               <PhoneCall className="w-3.5 h-3.5" />
               Campaigns
@@ -280,28 +401,28 @@ export function ProspectPage() {
             </ToolbarButton>
           </>
         }
-        rowActions={(p) => (
+        rowActions={(r) => (
           <>
-            {p.email && (
-              <a href={`mailto:${p.email}`} className="p-1 text-[var(--ods-text-secondary)] hover:text-[var(--ods-brand-600)]" title="Email">
+            {r.email && (
+              <a href={`mailto:${r.email}`} className="p-1 text-[var(--ods-text-secondary)] hover:text-[var(--ods-brand-600)]" title="Email">
                 <Mail className="w-3.5 h-3.5" />
               </a>
             )}
             <ActionsMenu
-              leadId={p.id}
-              leadName={`${p.first_name} ${p.last_name}`}
-              onView={(id) => navigate(`/contacts/${id}`)}
-              onDelete={(id, name) => setDeleteConfirm({ id, name })}
-              data={p}
+              leadId={r.id}
+              leadName={contactName(r) ?? "this contact"}
+              onView={() => open(r)}
+              onDelete={(id, name) => setDeleteConfirm({ id, name, type: r.type })}
+              data={r}
             />
           </>
         )}
       />
 
+      <ScriptsModal open={scriptsOpen} onClose={() => setScriptsOpen(false)} />
       <CampaignModal
         open={campaignModal.open}
         initialCampaignId={campaignModal.campaignId}
-        contacts={prospects ?? []}
         onClose={() => setCampaignModal({ open: false })}
         onStartDialing={startDialing}
       />
@@ -311,7 +432,7 @@ export function ProspectPage() {
           onClose={() => setShowForm(false)}
           onSubmit={async (data) => {
             await api.prospects.create(data as any);
-            queryClient.invalidateQueries({ queryKey: ["prospects"] });
+            await refresh();
             setShowForm(false);
             success("Contact created", `${data.first_name} ${data.last_name} has been added`);
           }}

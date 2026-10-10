@@ -1,8 +1,13 @@
 import React from "react";
+import { SectionTitle } from "@/components/ui/SectionTitle";
+import type { TipSpec } from "@/components/ui/InfoTip";
 
 interface PageCanvasProps {
   title: React.ReactNode;
+  /** Qualifier shown in a pill beside the title. */
   subtitle?: string;
+  /** Eye tooltip beside the title explaining the page. */
+  info?: TipSpec;
   actions?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: "full" | "6xl" | "4xl";
@@ -11,6 +16,7 @@ interface PageCanvasProps {
 export function PageCanvas({
   title,
   subtitle,
+  info,
   actions,
   children,
   maxWidth = "full",
@@ -24,18 +30,9 @@ export function PageCanvas({
   return (
     <div className="flex flex-col flex-1 h-full min-h-0 overflow-hidden bg-[var(--ods-bg-primary)]">
       {/* Twenty 40px Sub-Header */}
-      <header className="h-10 min-h-[40px] px-4 border-b border-[var(--ods-border)] flex items-center justify-between bg-[var(--ods-bg-primary)]">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-[var(--ods-text-primary)]">
-            {title}
-          </span>
-          {subtitle && (
-            <span className="text-[12px] text-[var(--ods-text-tertiary)]">
-              · {subtitle}
-            </span>
-          )}
-        </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+      <header className="h-14 min-h-[56px] px-4 border-b border-[var(--ods-border)] flex items-center justify-between gap-3 bg-[var(--ods-bg-primary)]">
+        <SectionTitle as="h1" title={title} pill={subtitle} info={info} />
+        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
       </header>
 
       {/* Scrollable Canvas Area */}

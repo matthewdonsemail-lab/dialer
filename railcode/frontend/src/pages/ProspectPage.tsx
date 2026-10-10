@@ -234,7 +234,7 @@ export function ProspectPage() {
         );
       case 'phone':
         return (
-          <td className={`${cellBorder} px-3 text-[13px] text-[var(--ods-text-secondary)] font-mono`}>{prospect.phone ?? "—"}</td>
+          <td className={`${cellBorder} px-3 text-[13px] text-[var(--ods-text-secondary)]`}>{prospect.phone ?? "—"}</td>
         );
       case 'status':
         return (

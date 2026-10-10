@@ -2,8 +2,22 @@ import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-quer
 
 type WithId = { id: string };
 
+/**
+ * Apply `fn` to the rows in a cached value, whether it is a plain list or an
+ * infinite query of pages ({ pages: [{ rows }] }, as the paged Contacts table uses).
+ */
+function mapRows<T>(data: unknown, fn: (rows: T[]) => T[]): unknown {
+  if (Array.isArray(data)) return fn(data as T[]);
+  const d = data as { pages?: { rows?: T[] }[] } | undefined;
+  if (d?.pages) return { ...d, pages: d.pages.map((p) => (p?.rows ? { ...p, rows: fn(p.rows) } : p)) };
+  return data;
+}
+
 interface RecordKeys {
-  /** The cached list the tables read, e.g. ["prospects"]. */
+  /**
+   * The cached list the tables read, e.g. ["prospects"]. Every cached query
+   * starting with this key is patched, so paged variants stay in sync.
+   */
   listKey: QueryKey;
   /** The cached single record a detail page reads, e.g. (id) => ["prospect", id]. */
   detailKey?: (id: string) => QueryKey;
@@ -30,14 +44,14 @@ export function useOptimisticUpdate<T extends WithId>(
       await queryClient.cancelQueries({ queryKey: listKey });
       if (dKey) await queryClient.cancelQueries({ queryKey: dKey });
 
-      const prevList = queryClient.getQueryData<T[]>(listKey);
+      const prevList = queryClient.getQueriesData({ queryKey: listKey });
       const prevDetail = dKey ? queryClient.getQueryData<T>(dKey) : undefined;
-      queryClient.setQueryData<T[]>(listKey, (old) => old?.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+      queryClient.setQueriesData({ queryKey: listKey }, (old) => mapRows<T>(old, (rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r))));
       if (dKey && prevDetail) queryClient.setQueryData<T>(dKey, { ...prevDetail, ...patch });
       return { prevList, prevDetail, dKey };
     },
     onError: (_error, _vars, ctx) => {
-      if (ctx?.prevList) queryClient.setQueryData(listKey, ctx.prevList);
+      for (const [key, value] of ctx?.prevList ?? []) queryClient.setQueryData(key, value);
       if (ctx?.dKey && ctx.prevDetail) queryClient.setQueryData(ctx.dKey, ctx.prevDetail);
     },
     onSuccess: (_data, { id }) => {
@@ -61,13 +75,13 @@ export function useOptimisticDelete<T extends WithId>(
     onMutate: async (ids) => {
       const gone = new Set(Array.isArray(ids) ? ids : [ids]);
       await queryClient.cancelQueries({ queryKey: listKey });
-      const prevList = queryClient.getQueryData<T[]>(listKey);
-      queryClient.setQueryData<T[]>(listKey, (old) => old?.filter((r) => !gone.has(r.id)));
+      const prevList = queryClient.getQueriesData({ queryKey: listKey });
+      queryClient.setQueriesData({ queryKey: listKey }, (old) => mapRows<T>(old, (rows) => rows.filter((r) => !gone.has(r.id))));
       return { prevList };
     },
     onError: (_error, _ids, ctx) => {
       // Some deletes in a batch may have succeeded; reload to show the truth.
-      if (ctx?.prevList) queryClient.setQueryData(listKey, ctx.prevList);
+      for (const [key, value] of ctx?.prevList ?? []) queryClient.setQueryData(key, value);
       queryClient.invalidateQueries({ queryKey: listKey });
     },
     onSuccess: () => {

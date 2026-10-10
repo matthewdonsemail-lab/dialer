@@ -31,7 +31,7 @@ export function TableSkeletonRows({
   trailingActions?: boolean;
   bordered?: boolean;
 }) {
-  const cell = cn("h-9 px-3", bordered && "border border-[var(--ods-border)]");
+  const cell = cn("h-9 px-3", bordered && "border-b border-r first:border-l border-[var(--ods-border)]");
   return (
     <>
       {Array.from({ length: rows }, (_, r) => (

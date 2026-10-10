@@ -6,20 +6,21 @@ import {
   offset,
   shift,
   size,
-  useClick,
   useDismiss,
   useFloating,
   useInteractions,
   useRole,
   type Placement,
 } from "@floating-ui/react";
-import { Check, Search } from "@/components/ui/icons";
+import { Check, ChevronDown, Search } from "@/components/ui/icons";
 
 export interface MenuOption {
   value: string;
   label: string;
   /** Tailwind background class for a colour dot, e.g. "bg-emerald-500". */
   dot?: string;
+  /** Leading visual such as a country flag; shown instead of the dot. */
+  icon?: ReactNode;
   /** Right-aligned hint such as a count. */
   hint?: ReactNode;
 }
@@ -34,7 +35,7 @@ export interface MenuSection {
  * The one dropdown panel used across the app (filters, status pickers,
  * dispositions, column menus). Grouped sections with headers, a colour dot
  * per option, a check on the selected row, and a clear outline — modelled on
- * WAVV's disposition menu so it reads at a glance.
+ * WAVV's disposition menu, styled like the YouSpot chat menus (.ods-menu).
  */
 export function SelectMenu({
   value,
@@ -45,7 +46,7 @@ export function SelectMenu({
   triggerTitle,
   searchable = false,
   placement = "bottom-start",
-  width = 224,
+  width = 248,
   disabled = false,
   header,
 }: {
@@ -63,34 +64,91 @@ export function SelectMenu({
   /** Extra content above the sections, e.g. sort controls. */
   header?: (close: () => void) => ReactNode;
 }) {
+  // The trigger is a plain button; Floating UI only mounts while the menu is
+  // open. Tables render one of these per row, so closed menus must cost
+  // nothing (no positioning hooks), or reordering columns re-renders slowly.
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={setAnchor}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!disabled) setOpen((o) => !o);
+        }}
+        disabled={disabled}
+        title={triggerTitle}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`ods-menu-trigger ${triggerClassName}`}
+      >
+        {trigger}
+      </button>
+
+      {open && anchor && (
+        <SelectMenuPanel
+          anchor={anchor}
+          onClose={() => setOpen(false)}
+          value={value}
+          sections={sections}
+          onChange={onChange}
+          searchable={searchable}
+          placement={placement}
+          width={width}
+          header={header}
+        />
+      )}
+    </>
+  );
+}
+
+function SelectMenuPanel({
+  anchor,
+  onClose,
+  value,
+  sections,
+  onChange,
+  searchable,
+  placement,
+  width,
+  header,
+}: {
+  anchor: HTMLElement;
+  onClose: () => void;
+  value: string | null | undefined;
+  sections: MenuSection[];
+  onChange: (value: string) => void;
+  searchable: boolean;
+  placement: Placement;
+  width: number;
+  header?: (close: () => void) => ReactNode;
+}) {
   const [query, setQuery] = useState("");
 
-  const { refs, floatingStyles, context } = useFloating({
-    open,
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
+    open: true,
     onOpenChange: (next) => {
-      setOpen(next);
-      if (!next) setQuery("");
+      if (!next) onClose();
     },
+    elements: { reference: anchor },
     placement,
     whileElementsMounted: autoUpdate,
     middleware: [
-      offset(6),
+      offset(8),
       flip({ padding: 8 }),
       shift({ padding: 8 }),
       size({
         padding: 8,
         apply({ availableHeight, elements }) {
-          elements.floating.style.maxHeight = `${Math.max(160, Math.min(availableHeight, 420))}px`;
+          elements.floating.style.maxHeight = `${Math.max(160, Math.min(availableHeight, 460))}px`;
         },
       }),
     ],
   });
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    useClick(context, { enabled: !disabled }),
-    useDismiss(context),
-    useRole(context, { role: "listbox" }),
-  ]);
+  const { getFloatingProps } = useInteractions([useDismiss(context), useRole(context, { role: "listbox" })]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -100,79 +158,87 @@ export function SelectMenu({
       .filter((s) => s.options.length > 0);
   }, [sections, query]);
 
-  const close = () => {
-    setOpen(false);
-    setQuery("");
-  };
   const choose = (v: string) => {
-    close();
+    onClose();
     onChange(v);
   };
 
   return (
-    <>
-      <button
-        type="button"
-        ref={refs.setReference}
-        {...getReferenceProps({ onClick: (e) => e.stopPropagation() })}
-        disabled={disabled}
-        title={triggerTitle}
-        aria-expanded={open}
-        className={triggerClassName}
+    <FloatingPortal>
+      <div
+        ref={refs.setFloating}
+        style={{ ...floatingStyles, width, visibility: isPositioned ? undefined : "hidden" }}
+        data-ready={isPositioned || undefined}
+        {...getFloatingProps({ onClick: (e) => e.stopPropagation() })}
+        className="ods-menu"
       >
-        {trigger}
-      </button>
-
-      {open && (
-        <FloatingPortal>
-          <div
-            ref={refs.setFloating}
-            style={{ ...floatingStyles, width }}
-            {...getFloatingProps({ onClick: (e) => e.stopPropagation() })}
-            className="z-[70] flex flex-col overflow-hidden rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] shadow-[0_12px_32px_rgba(0,0,0,0.18)] select-none"
-          >
-            {searchable && (
-              <div className="p-2 border-b border-[var(--ods-border)]">
-                <div className="flex items-center gap-2 h-8 px-2 rounded-[6px] bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] focus-within:border-[var(--ods-brand-500)]">
-                  <Search className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)] shrink-0" />
-                  <input
-                    autoFocus
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search"
-                    className="flex-1 bg-transparent text-[13px] text-[var(--ods-text-primary)] outline-none placeholder:text-[var(--ods-text-tertiary)]"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="overflow-y-auto py-1">
-              {header?.(close)}
-              {shown.length === 0 && query ? (
-                <div className="px-3 py-4 text-center text-[12px] text-[var(--ods-text-tertiary)]">No matches</div>
-              ) : (
-                shown.map((section, i) => (
-                  <div key={section.title ?? i} role="group" aria-label={section.title}>
-                    {section.title && (
-                      <div className="mt-1 first:mt-0 px-3 py-1.5 bg-[var(--ods-bg-secondary)] text-[11px] font-semibold uppercase tracking-wider text-[var(--ods-text-tertiary)]">
-                        {section.title}
-                      </div>
-                    )}
-                    {section.options.map((option) => (
-                      <MenuRow
-                        key={option.value}
-                        option={option}
-                        selected={option.value === value}
-                        onSelect={() => choose(option.value)}
-                      />
-                    ))}
-                  </div>
-                ))
-              )}
-            </div>
+        {searchable && (
+          <div className="ods-menu-search">
+            <Search className="ods-menu-icon" />
+            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" />
           </div>
-        </FloatingPortal>
-      )}
-    </>
+        )}
+        <div className="overflow-y-auto min-h-0 space-y-0.5">
+          {header?.(onClose)}
+          {shown.length === 0 && query ? (
+            <div className="ods-menu-empty">No matches</div>
+          ) : (
+            shown.map((section, i) => (
+              <div key={section.title ?? i} role="group" aria-label={section.title}>
+                {section.title && <div className="ods-menu-group-label">{section.title}</div>}
+                {section.options.map((option) => (
+                  <MenuRow key={option.value} option={option} selected={option.value === value} onSelect={() => choose(option.value)} />
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </FloatingPortal>
+  );
+}
+
+/**
+ * A floating .ods-menu card pinned to an existing element. Mount it only while
+ * open; it positions below the anchor on the first frame and closes on an
+ * outside click or Escape.
+ */
+export function AnchoredMenu({
+  anchor,
+  onClose,
+  placement = "bottom-start",
+  className = "",
+  children,
+}: {
+  anchor: HTMLElement;
+  onClose: () => void;
+  placement?: Placement;
+  className?: string;
+  children: ReactNode;
+}) {
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
+    open: true,
+    onOpenChange: (next) => {
+      if (!next) onClose();
+    },
+    elements: { reference: anchor },
+    placement,
+    whileElementsMounted: autoUpdate,
+    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+  });
+  const { getFloatingProps } = useInteractions([useDismiss(context), useRole(context, { role: "menu" })]);
+  return (
+    <FloatingPortal>
+      <div
+        ref={refs.setFloating}
+        style={{ ...floatingStyles, visibility: isPositioned ? undefined : "hidden" }}
+        data-ready={isPositioned || undefined}
+        {...getFloatingProps({ onClick: (e) => e.stopPropagation() })}
+        className={`ods-menu ${className}`}
+      >
+        {children}
+      </div>
+    </FloatingPortal>
   );
 }
 
@@ -191,18 +257,13 @@ export function MenuRow({
       role="option"
       aria-selected={selected}
       onClick={onSelect}
-      className={`mx-1 h-9 px-2.5 flex items-center gap-2.5 rounded-[6px] text-[13px] cursor-pointer transition-colors ${
-        selected
-          ? "bg-[var(--ods-active)] font-medium text-[var(--ods-text-primary)]"
-          : "text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
-      }`}
+      tabIndex={-1}
+      className="ods-menu-item"
     >
-      {option.dot && <span className={`w-2 h-2 rounded-full shrink-0 ${option.dot}`} />}
+      {option.icon ?? (option.dot && <span className={`ods-menu-dot ${option.dot}`} />)}
       <span className="flex-1 truncate">{option.label}</span>
-      {option.hint !== undefined && (
-        <span className="text-[12px] tabular-nums text-[var(--ods-text-tertiary)]">{option.hint}</span>
-      )}
-      {selected && <Check className="w-4 h-4 shrink-0 text-[var(--ods-brand-600)]" />}
+      {option.hint !== undefined && <span className="ods-menu-hint">{option.hint}</span>}
+      {selected && <Check className="ods-menu-icon" />}
     </div>
   );
 }
@@ -212,28 +273,20 @@ export function MenuRow({
  * filter is applied, so it is obvious which filters are shaping the list.
  */
 export function filterTriggerClass(active: boolean): string {
-  return `h-7 px-2.5 shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 rounded-[6px] border text-[12px] transition-colors ${
+  return `h-8 px-3 shrink-0 whitespace-nowrap inline-flex items-center gap-2 rounded-[7px] border text-[13px] font-medium transition-colors ${
     active
       ? "border-[var(--ods-brand-500)] bg-[var(--ods-brand-50)] text-[var(--ods-brand-700)] dark:bg-[var(--ods-brand-900)]/40 dark:text-[var(--ods-brand-300)]"
       : "border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
   }`;
 }
 
-export function FilterTriggerContent({ label, value, dot }: { label: string; value: string; dot?: string }) {
+export function FilterTriggerContent({ label, value, dot, icon }: { label: string; value: string; dot?: string; icon?: ReactNode }) {
   return (
     <>
       <span className="text-[var(--ods-text-secondary)]">{label}:</span>
-      {dot && <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />}
-      <span className="font-medium">{value}</span>
-      <ChevronDownIcon />
+      {icon ?? (dot && <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />)}
+      <span className="font-semibold">{value}</span>
+      <ChevronDown className="w-3 h-3 opacity-60" />
     </>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden="true">
-      <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

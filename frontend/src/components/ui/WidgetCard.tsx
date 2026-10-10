@@ -1,5 +1,6 @@
 import React from "react";
-import { Badge } from "./Badge";
+import { SectionTitle } from "./SectionTitle";
+import type { TipSpec } from "./InfoTip";
 
 interface WidgetCardProps {
   title?: string;
@@ -7,7 +8,10 @@ interface WidgetCardProps {
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  /** Qualifier beside the title; strings render in the standard title pill. */
   subtitle?: React.ReactNode;
+  /** Eye tooltip beside the title explaining the widget. */
+  info?: TipSpec;
 }
 
 export function WidgetCard({
@@ -17,19 +21,28 @@ export function WidgetCard({
   children,
   className = "",
   subtitle,
+  info,
 }: WidgetCardProps) {
   return (
     <div
-      className={`bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] rounded-[6px] flex flex-col overflow-hidden ${className}`}
+      className={`bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] rounded-[10px] flex flex-col overflow-hidden ${className}`}
     >
       {title && (
-        <div className="h-8 min-h-[32px] px-3 border-b border-[var(--ods-border)] flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            {Icon && <Icon className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)] flex-shrink-0" />}
-            <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)] truncate">
-              {title}
-            </span>
-            {subtitle && <span className="flex-shrink-0">{subtitle}</span>}
+        <div className="h-14 min-h-[56px] px-4 border-b border-[var(--ods-border)] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            {Icon && (
+              <span className="w-8 h-8 shrink-0 rounded-[8px] flex items-center justify-center bg-blue-500/15 text-blue-600">
+                <Icon className="w-4 h-4" />
+              </span>
+            )}
+            {typeof subtitle === "string" || subtitle === undefined ? (
+              <SectionTitle title={title} pill={subtitle} info={info} />
+            ) : (
+              <>
+                <SectionTitle title={title} info={info} />
+                <span className="flex-shrink-0">{subtitle}</span>
+              </>
+            )}
           </div>
           {action && <div className="flex-shrink-0 ml-2">{action}</div>}
         </div>

@@ -98,7 +98,7 @@ export function CallDetailPage() {
             </div>
             <div>
               <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">From ΓåÆ To</dt>
-              <dd className="mt-1 text-[13px] text-[var(--ods-text-primary)] font-mono">
+              <dd className="mt-1 text-[13px] text-[var(--ods-text-primary)]">
                 {call.fromNumber || "ΓÇö"} ΓåÆ {call.toNumber || "ΓÇö"}
               </dd>
             </div>
@@ -136,7 +136,7 @@ export function CallDetailPage() {
                 </div>
                 <div>
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Phone</dt>
-                  <dd className="mt-1 text-[13px] text-[var(--ods-text-secondary)] font-mono">{record.phone || "ΓÇö"}</dd>
+                  <dd className="mt-1 text-[13px] text-[var(--ods-text-secondary)]">{record.phone || "ΓÇö"}</dd>
                 </div>
                 <div>
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Email</dt>
@@ -206,7 +206,7 @@ export function CallDetailPage() {
         {/* Diagnostics (SIP event trail for post-mortem) */}
         {call.debugLog && (
           <WidgetCard title="Diagnostics" icon={FileText}>
-            <pre className="text-[11px] text-[var(--ods-text-secondary)] whitespace-pre-wrap max-h-64 overflow-y-auto font-mono">
+            <pre className="text-[11px] text-[var(--ods-text-secondary)] whitespace-pre-wrap max-h-64 overflow-y-auto">
               {call.debugLog.slice(0, 4000)}
             </pre>
           </WidgetCard>
@@ -217,11 +217,11 @@ export function CallDetailPage() {
           <dl className="flex flex-col gap-[var(--ods-sp-3)]">
             <div>
               <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Telnyx Call ID</dt>
-              <dd className="mt-1 text-[12px] text-[var(--ods-text-secondary)] font-mono break-all">{call.telnyxCallId || "ΓÇö"}</dd>
+              <dd className="mt-1 text-[12px] text-[var(--ods-text-secondary)] break-all">{call.telnyxCallId || "ΓÇö"}</dd>
             </div>
             <div>
               <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Telnyx Recording ID</dt>
-              <dd className="mt-1 text-[12px] text-[var(--ods-text-secondary)] font-mono break-all">{call.telnyxRecordingId || "ΓÇö"}</dd>
+              <dd className="mt-1 text-[12px] text-[var(--ods-text-secondary)] break-all">{call.telnyxRecordingId || "ΓÇö"}</dd>
             </div>
             <div>
               <dt className="text-[11px] font-medium uppercase tracking-wider text-[var(--ods-text-tertiary)]">Created At</dt>

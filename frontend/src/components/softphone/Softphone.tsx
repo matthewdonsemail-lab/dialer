@@ -1110,7 +1110,7 @@ export function Softphone({
           <div className="text-[16px] font-semibold truncate">
             {`${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Unknown contact"}
           </div>
-          <div className="text-[13px] font-mono tabular-nums text-white/60">{phoneNumber || "No phone number"}</div>
+          <div className="text-[13px] tabular-nums text-white/60">{phoneNumber || "No phone number"}</div>
 
           {cooldownNotice && (
             <div className="mt-2 rounded-[6px] bg-amber-500/15 px-2 py-1.5 text-[11px] text-amber-200 text-left">

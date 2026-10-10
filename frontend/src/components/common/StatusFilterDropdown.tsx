@@ -1,4 +1,4 @@
-import type { StatusOption } from "./StatusSelect";
+import { StatusOptionIcon, type StatusOption } from "./StatusSelect";
 import { FilterTriggerContent, SelectMenu, filterTriggerClass } from "@/components/ui/Menu";
 
 interface StatusFilterDropdownProps {
@@ -33,12 +33,19 @@ export function StatusFilterDropdown({
       searchable={options.length > 6}
       sections={[
         { options: [{ value: ALL, label: allLabel }] },
-        { title: label, options: options.map((o) => ({ value: o.value, label: o.label, dot: o.dotColor })) },
+        { title: label, options: options.map((o) => ({ value: o.value, label: o.label, dot: o.dotColor, icon: o.icon ?? <StatusOptionIcon option={o} />, hint: o.hint })) },
       ]}
       onChange={onChange}
       triggerTitle={`Filter by ${label.toLowerCase()}`}
       triggerClassName={filterTriggerClass(active)}
-      trigger={<FilterTriggerContent label={label} value={active ? current!.label : "All"} dot={active ? current!.dotColor : undefined} />}
+      trigger={
+        <FilterTriggerContent
+          label={label}
+          value={active ? current!.label : "All"}
+          dot={active ? current!.dotColor : undefined}
+          icon={active ? current!.icon ?? <StatusOptionIcon option={current!} /> : undefined}
+        />
+      }
     />
   );
 }

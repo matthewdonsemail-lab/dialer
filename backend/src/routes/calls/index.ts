@@ -37,6 +37,9 @@ router.get("/:id", async (req, res) => {
 // GET /api/calls/:id/audio — redirect to a fresh Telnyx mp3.
 // Telnyx download URLs expire (~10 min), so playback always re-resolves here.
 // The API key never leaves the server.
+// ?format=json returns { url } instead of redirecting: an <audio> element
+// cannot send the Bearer token this router requires, so the player asks for
+// the URL with fetch and then plays it directly.
 router.get("/:id/audio", async (req, res) => {
   try {
     const call = await getTwenty<AgencyCall>('agencyCalls', req.params.id as string);
@@ -55,13 +58,23 @@ router.get("/:id/audio", async (req, res) => {
     try {
       retrieved = await tx.recordings.retrieve(call.telnyxRecordingId);
     } catch (err: any) {
-      log.info(`Telnyx recording lookup failed: ${telnyxErrorMessage(err)}`);
-      res.status(502).json({ error: "Telnyx recording lookup failed" });
+      const message = telnyxErrorMessage(err);
+      log.info(`Telnyx recording lookup failed: ${message}`);
+      const authFailed = /401|authentication failed/i.test(message);
+      res.status(502).json({
+        error: authFailed
+          ? "Telnyx rejected the server's API key (check TELNYX_API_KEY)"
+          : "Telnyx could not find this recording",
+      });
       return;
     }
     const url = retrieved?.data?.download_urls?.mp3 || retrieved?.data?.download_urls?.wav;
     if (!url) {
       res.status(404).json({ error: "Recording has no download URL yet" });
+      return;
+    }
+    if (req.query.format === "json") {
+      res.json({ url });
       return;
     }
     res.redirect(url);

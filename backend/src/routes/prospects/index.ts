@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
-import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty } from "../../lib/twenty/client/index.js";
+import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty, fetchTwenty } from "../../lib/twenty/client/index.js";
+import { twentyGraphqlClient } from "../../lib/twenty/graphql/index.js";
+import { contactTypes, idList } from "./helpers/query.js";
+import { leadGqlQuery, pageWindow, prospectGqlQuery } from "./helpers/query-gql.js";
+import { mapLeadToFrontend } from "../leads/helpers/index.js";
 import { createLogger } from "../../lib/logger/index.js";
 import { resolveActor } from "../../lib/twenty/actor/index.js";
 import type { AgencyProspect, AgencyCampaign, IndustryRouting } from "./types.js";
@@ -73,6 +77,165 @@ router.get("/", async (_req, res) => {
   } catch (err: any) {
     log.error("Failed to list prospects:", err.message);
     res.status(500).json({ error: "Failed to fetch prospects from Twenty", details: err.message });
+  }
+});
+
+/**
+ * GET /api/prospects/page?offset=0&limit=50&q=&status=&country=&type=&sort=&dir=
+ *
+ * One window of contacts (prospects then leads, or leads first when the Type
+ * column is sorted descending) with search, filters and sort applied by
+ * Twenty, plus the total. Paged by offset through Twenty's GraphQL API, so the
+ * table can fetch whatever slice is on screen, the way Twenty's own record
+ * table virtualizes, instead of walking every page before it.
+ */
+router.get("/page", async (req, res) => {
+  try {
+    const params = req.query as Record<string, unknown>;
+    const types = contactTypes(params.type);
+    const { offset, limit } = pageWindow(params);
+    const client: any = twentyGraphqlClient();
+
+    const PROSPECT_NODE = { __scalar: true, phoneNumber: { __scalar: true }, primaryPhone: { __scalar: true }, videoUrl: { __scalar: true } };
+    const LEAD_NODE = { __scalar: true, email: { __scalar: true }, phone: { __scalar: true } };
+    const pq = types.prospects ? prospectGqlQuery(params) : null;
+    const lq = types.leads ? leadGqlQuery(params) : null;
+
+    const fetchSlice = async (object: "agencyProspects" | "agencyLeads", q: { filter?: unknown; orderBy: unknown }, node: object, first: number, skip: number) => {
+      const r: any = await client.query({
+        [object]: { __args: { first: Math.max(1, first), offset: skip, orderBy: q.orderBy, ...(q.filter ? { filter: q.filter } : {}) }, totalCount: true, edges: { node } },
+      });
+      return { rows: (r?.[object]?.edges ?? []).map((e: any) => e.node), total: r?.[object]?.totalCount ?? 0 };
+    };
+
+    // Totals first (1-row queries), so the table can size its scroll area.
+    const [pTotal, lTotal] = await Promise.all([
+      pq ? fetchSlice("agencyProspects", pq, { id: true }, 1, 0).then((r) => r.total) : Promise.resolve(0),
+      // Leads are a bonus to the prospect list: if Twenty rejects the lead query, show prospects alone.
+      lq
+        ? fetchSlice("agencyLeads", lq, { id: true }, 1, 0)
+            .then((r) => r.total)
+            .catch((err) => {
+              log.info(`Lead query skipped: ${err.message}`);
+              return 0;
+            })
+        : Promise.resolve(0),
+    ]);
+
+    const sources = [
+      pq && pTotal > 0 ? { object: "agencyProspects" as const, q: pq, node: PROSPECT_NODE, total: pTotal, type: "prospect", map: mapProspectListItem } : null,
+      lq && lTotal > 0 ? { object: "agencyLeads" as const, q: lq, node: LEAD_NODE, total: lTotal, type: "lead", map: (r: any) => mapLeadToFrontend(r) } : null,
+    ].filter((x): x is NonNullable<typeof x> => !!x);
+    if (params.sort === "contact_type" && params.dir === "desc") sources.reverse();
+
+    // Walk the window [offset, offset + limit) across the sources in order.
+    let rows: any[] = [];
+    let skip = offset;
+    for (const src of sources) {
+      if (rows.length >= limit) break;
+      if (skip >= src.total) {
+        skip -= src.total;
+        continue;
+      }
+      const slice = await fetchSlice(src.object, src.q, src.node, limit - rows.length, skip);
+      rows = rows.concat(slice.rows.map((r: any) => ({ ...src.map(r), type: src.type })));
+      skip = 0;
+    }
+
+    // Last call per contact in this window: one request, not per row.
+    const prospectIds = rows.filter((r) => r.type === "prospect").map((r) => r.id);
+    const leadIds = rows.filter((r) => r.type === "lead").map((r) => r.id);
+    const last = new Map<string, { id: string; status: string | null; at: string | null }>();
+    const clauses = [
+      prospectIds.length ? `agencyProspectId[in]:[${prospectIds.join(",")}]` : null,
+      leadIds.length ? `agencyLeadId[in]:[${leadIds.join(",")}]` : null,
+    ].filter(Boolean) as string[];
+    if (clauses.length) {
+      try {
+        const calls: any = await fetchTwenty("agencyCalls", {
+          limit: 200,
+          query: { filter: clauses.length > 1 ? `or(${clauses.join(",")})` : clauses[0], order_by: "createdAt[DescNullsLast]" },
+        });
+        for (const c of calls?.data?.agencyCalls ?? []) {
+          const owner = c.agencyProspectId || c.agencyLeadId;
+          if (owner && !last.has(owner)) last.set(owner, { id: c.id, status: c.status ?? null, at: c.startedAt ?? c.createdAt ?? null });
+        }
+      } catch (err: any) {
+        log.info(`Last-call lookup skipped: ${err.message}`);
+      }
+    }
+
+    res.json({
+      offset,
+      rows: rows.map((r) => ({ ...r, lastCall: last.get(r.id) ?? null })),
+      totalCount: pTotal + lTotal,
+      counts: { prospect: pTotal, lead: lTotal },
+    });
+  } catch (err: any) {
+    log.error("Failed to page contacts:", err.message);
+    res.status(500).json({ error: "Failed to fetch contacts from Twenty", details: err.message });
+  }
+});
+
+/**
+ * GET /api/prospects/facets — how many contacts have each status, country,
+ * industry and campaign, counted by Twenty (groupBy), so filter menus show
+ * counts without the browser loading the records.
+ */
+router.get("/facets", async (_req, res) => {
+  try {
+    const client: any = twentyGraphqlClient();
+    const group = async (field: string) => {
+      const r: any = await client.query({
+        agencyProspectsGroupBy: { __args: { groupBy: [{ [field]: true }], limit: 500 }, groupByDimensionValues: true, totalCount: true },
+      });
+      const out: Record<string, number> = {};
+      for (const g of r?.agencyProspectsGroupBy ?? []) {
+        const key = g?.groupByDimensionValues?.[0];
+        out[key === null || key === undefined || key === "" ? "__blank" : String(key)] = g.totalCount ?? 0;
+      }
+      return out;
+    };
+    const [status, country, industry, campaign, creators] = await Promise.all([
+      group("coldCallStatus"),
+      group("country"),
+      group("niche"),
+      group("campaignIdId"),
+      group("createdByMemberId").catch(() => ({}) as Record<string, number>),
+    ]);
+    const creator = Object.entries(creators).reduce((sum, [k, n]) => (k === "__blank" ? sum : sum + n), 0);
+    const total = Object.values(country).reduce((a, b) => a + b, 0);
+    const leadsBody: any = await fetchTwenty("agencyLeads", { limit: 1 });
+    const leads = typeof leadsBody?.totalCount === "number" ? leadsBody.totalCount : 0;
+    res.json({ total: total + leads, type: { prospect: total, lead: leads }, status, country, industry, campaign, creator });
+  } catch (err: any) {
+    log.error("Failed to count prospect facets:", err.message);
+    res.status(500).json({ error: "Failed to count contacts in Twenty", details: err.message });
+  }
+});
+
+/**
+ * GET /api/prospects/lookup?ids=a,b — just the contacts a page needs (names
+ * for call history, a campaign's numbers), prospects or leads, at most 200
+ * ids per request.
+ */
+router.get("/lookup", async (req, res) => {
+  try {
+    const ids = idList(req.query.ids);
+    if (ids.length === 0) return res.json([]);
+    // An id may be a prospect or a lead (calls point at either); ask both.
+    const filter = `id[in]:[${ids.join(",")}]`;
+    const [prospects, leads]: any[] = await Promise.all([
+      fetchTwenty("agencyProspects", { limit: 200, query: { filter } }),
+      fetchTwenty("agencyLeads", { limit: 200, query: { filter } }).catch(() => null),
+    ]);
+    res.json([
+      ...((prospects?.data?.agencyProspects ?? []) as AgencyProspect[]).map((r) => ({ ...mapProspectListItem(r), type: "prospect" })),
+      ...((leads?.data?.agencyLeads ?? []) as any[]).map((r) => ({ ...mapLeadToFrontend(r), type: "lead" })),
+    ]);
+  } catch (err: any) {
+    log.error("Failed to look up prospects:", err.message);
+    res.status(500).json({ error: "Failed to fetch contacts from Twenty", details: err.message });
   }
 });
 

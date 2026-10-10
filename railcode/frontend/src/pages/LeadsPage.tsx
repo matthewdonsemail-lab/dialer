@@ -350,7 +350,7 @@ export function LeadsPage() {
         );
       case 'phone':
         return (
-          <td className={`${cellBorder} px-3 text-[13px] text-[var(--ods-text-secondary)] font-mono`}>{lead.phone ?? "—"}</td>
+          <td className={`${cellBorder} px-3 text-[13px] text-[var(--ods-text-secondary)]`}>{lead.phone ?? "—"}</td>
         );
       case 'status':
         return (

@@ -52,7 +52,7 @@ export function SortableHeaderCell({
             ? { boxShadow: "inset -2px 0 0 var(--ods-brand-600)" }
             : undefined),
       }}
-      className={`group/th relative px-3 whitespace-nowrap text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] ${
+      className={`group/th relative px-3 whitespace-nowrap text-[13px] font-medium text-[var(--ods-text-primary)] border-y border-r first:border-l border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] ${
         isDragging ? "opacity-40" : ""
       }`}
     >

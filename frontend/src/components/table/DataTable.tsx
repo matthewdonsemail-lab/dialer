@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState, type ReactNode } from "react";
+import React, { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -11,12 +12,14 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { Search, X } from "@/components/ui/icons";
+import { GripVertical, Search, X } from "@/components/ui/icons";
 import { ColumnVisibilityDropdown } from "@/components/common/ColumnVisibilityDropdown";
 import { HeaderFilter, type HeaderFilterOption } from "@/components/common/HeaderFilter";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";
 import { ColumnResizeHandle, SortableHeaderCell } from "@/components/common/SortableHeaderCell";
 import { TableSkeletonRows } from "@/components/ui/Skeleton";
+import { SectionTitle } from "@/components/ui/SectionTitle";
+import type { TipSpec } from "@/components/ui/InfoTip";
 import { useColumnOrder } from "@/hooks/use-column-order";
 import { useColumnWidths } from "@/hooks/use-column-widths";
 import { sortRows, type SortDirection } from "@/lib/list-sort";
@@ -49,15 +52,47 @@ export interface DataColumn<T> {
   sortable?: boolean;
   /** Offer the column's values as a filter in its header menu. */
   filterable?: boolean;
+  /**
+   * The value the header filter groups by, when it should differ from the
+   * displayed text (e.g. duration buckets, "Has recording"). Display and
+   * sorting are unaffected. Return null to leave a row out of every option.
+   */
+  filterValue?: (row: T) => string | null | undefined;
+  /** Fixed order for the header filter options (default: most common first). */
+  filterOrder?: string[];
+  /** Leading visual for each value in the header filter menu, e.g. a country flag. */
+  filterIcon?: (value: string) => ReactNode;
   /** Clicking the cell runs this (typically opens the record). */
   onClick?: (row: T) => void;
   /** Extra header content after the label, e.g. a Twenty settings link. */
   headerExtra?: ReactNode;
 }
 
+/**
+ * Server mode, modelled on Twenty's virtualized record table: the page knows
+ * the total and serves rows by index (fetched in windows by offset). The
+ * table sizes its body to the full list, renders only the rows in view plus
+ * an overscan, shows skeleton rows for any not loaded yet, and reports the
+ * visible range so the page can fetch it. Search, filters and sort run on the
+ * server (from `state`).
+ */
+export interface ServerPaging<T = unknown> {
+  total: number | null;
+  /** The row at an index, or undefined while it is loading. */
+  rowAt: (index: number) => T | undefined;
+  /** Called (debounced) with the first and last row index in view, overscan included. */
+  onRangeChange: (first: number, last: number) => void;
+  /** Header-filter options per column key (values + counts from the server). */
+  facets?: Record<string, HeaderFilterOption[]>;
+}
+
 interface DataTableProps<T> {
   state: DataTableState;
+  /** Rows come from the server by index; see ServerPaging. */
+  server?: ServerPaging<T>;
   title: string;
+  /** Eye tooltip beside the title explaining what this list is. */
+  info?: TipSpec;
   columns: DataColumn<T>[];
   rows: T[] | undefined;
   loading?: boolean;
@@ -93,12 +128,16 @@ interface DataTableProps<T> {
   onClearFilters?: () => void;
 }
 
-const CELL = "h-9 px-3 border border-[var(--ods-border)] whitespace-nowrap overflow-hidden text-ellipsis text-[13px]";
-const HEAD = "group/th relative px-3 whitespace-nowrap text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]";
+const CELL = "h-9 px-3 border-b border-r first:border-l border-[var(--ods-border)] whitespace-nowrap overflow-hidden text-ellipsis text-[13px]";
+const HEAD = "group/th relative px-3 whitespace-nowrap text-[13px] font-medium text-[var(--ods-text-primary)] border-y border-r first:border-l border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]";
 
 /** Plain text for a cell: what search matches, filters list, and text columns sort by. */
 function cellText<T>(col: DataColumn<T>, row: T): string {
   return col.text ? (col.text(row) ?? "") : textFor(col.type, col.value(row));
+}
+
+function filterText<T>(col: DataColumn<T>, row: T): string {
+  return col.filterValue ? (col.filterValue(row) ?? "") : cellText(col, row);
 }
 
 function cellSortValue<T>(col: DataColumn<T>, row: T): string | number | null {
@@ -118,6 +157,7 @@ function cellSortValue<T>(col: DataColumn<T>, row: T): string | number | null {
 export function DataTable<T>({
   state,
   title,
+  info,
   columns,
   rows,
   loading = false,
@@ -135,6 +175,7 @@ export function DataTable<T>({
   selection,
   emptyMessage,
   onClearFilters,
+  server,
 }: DataTableProps<T>) {
   const { tableId, search, setSearch, sort, setSort, columnFilters, setColumnFilter } = state;
   const pinnedKey = columns[0]?.key;
@@ -168,9 +209,20 @@ export function DataTable<T>({
     minWidth: `${visible.length * 90 + fixedPx}px`,
   } as React.CSSProperties;
 
+  // While a column is dragged nothing in the body changes, so reuse the last
+  // rendered <tbody> element: React skips identical elements, which keeps
+  // dragging smooth on long lists instead of re-rendering every row per move.
+  const bodyCache = useRef<ReactNode>(null);
+  const frozenBody = (dragging: boolean, render: () => ReactNode) => {
+    if (!dragging || bodyCache.current === null) bodyCache.current = render();
+    return bodyCache.current;
+  };
+
   // ---- header drag (x-axis, first column pinned) with blue insertion edge ----
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 3 } }));
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Size of the grabbed header, so the drag preview is an exact copy of it.
+  const [activeSize, setActiveSize] = useState<{ width: number; height: number } | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [edge, setEdge] = useState<"left" | "right" | null>(null);
   const pointerX = useRef(0);
@@ -182,6 +234,7 @@ export function DataTable<T>({
   };
   const clearDnD = () => {
     setActiveId(null);
+    setActiveSize(null);
     setOverId(null);
     setEdge(null);
   };
@@ -217,27 +270,38 @@ export function DataTable<T>({
 
   const facets = useMemo(() => {
     const out = new Map<string, HeaderFilterOption[]>();
+    if (server) {
+      for (const col of columns) {
+        const opts = server.facets?.[col.key];
+        if (col.filterable && opts) out.set(col.key, opts.map((o) => ({ ...o, icon: o.icon ?? col.filterIcon?.(o.value) })));
+      }
+      return out;
+    }
     for (const col of columns) {
       if (!col.filterable) continue;
       const counts = new Map<string, number>();
       for (const r of rows ?? []) {
-        const t = cellText(col, r);
+        const t = filterText(col, r);
         if (t) counts.set(t, (counts.get(t) ?? 0) + 1);
       }
+      const order = col.filterOrder;
+      const rank = (v: string) => (order ? (order.indexOf(v) === -1 ? order.length : order.indexOf(v)) : 0);
       out.set(
         col.key,
-        [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, label: value, count })),
+        [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1]).map(([value, count]) => ({ value, label: value, count, icon: col.filterIcon?.(value) })),
       );
     }
     return out;
-  }, [columns, rows]);
+  }, [columns, rows, server]);
 
   const shownRows = useMemo(() => {
+    // The server already searched, filtered and sorted this page.
+    if (server) return pageRows;
     const q = search.trim().toLowerCase();
     const filtered = pageRows.filter((r) => {
       for (const [key, value] of Object.entries(columnFilters)) {
         const col = byKey.get(key);
-        if (col && cellText(col, r) !== value) return false;
+        if (col && filterText(col, r) !== value) return false;
       }
       if (!q) return true;
       if (searchText && searchText(r).toLowerCase().includes(q)) return true;
@@ -252,7 +316,55 @@ export function DataTable<T>({
         return col ? cellSortValue(col, r) : null;
       },
     });
-  }, [pageRows, columnFilters, search, searchText, columns, byKey, sort, defaultSort, isBottom]);
+  }, [pageRows, columnFilters, search, searchText, columns, byKey, sort, defaultSort, isBottom, server]);
+
+  // ---- server mode: virtual rows (Twenty-style) ----
+  // Only rows in view plus OVERSCAN either side are in the DOM; spacer rows
+  // stand in for the rest so the scrollbar reflects the whole list.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [rowHeight, setRowHeight] = useState(36);
+  const [viewport, setViewport] = useState({ top: 0, height: 800 });
+  const OVERSCAN = 20;
+  const total = server?.total ?? 0;
+  const firstRow = server ? Math.max(0, Math.floor(viewport.top / rowHeight) - OVERSCAN) : 0;
+  const lastRow = server ? Math.min(Math.max(0, total - 1), Math.ceil((viewport.top + viewport.height) / rowHeight) + OVERSCAN) : 0;
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!server || !el) return;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const head = el.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+        setViewport({ top: Math.max(0, el.scrollTop - head), height: el.clientHeight });
+        const sample = el.querySelector<HTMLTableRowElement>("tbody tr[data-row]");
+        if (sample && sample.offsetHeight > 0) setRowHeight((h) => (h === sample.offsetHeight ? h : sample.offsetHeight));
+      });
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      el.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [!!server]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ask for the visible window once scrolling settles a moment (Twenty waits 300ms; 120ms feels snappier).
+  const onRange = server?.onRangeChange;
+  useEffect(() => {
+    if (!onRange) return;
+    const t = setTimeout(() => onRange(firstRow, lastRow), 120);
+    return () => clearTimeout(t);
+  }, [onRange, firstRow, lastRow]);
+
+  // A new search / filter / sort starts back at the top.
+  const queryKey = JSON.stringify([search, columnFilters, sort]);
+  useEffect(() => {
+    if (server && scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [queryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- selection ----
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -320,15 +432,109 @@ export function DataTable<T>({
 
   const selecting = selection && selectedIds.size > 0;
 
+  /** One data row (plus its expanded row), shared by the client and server bodies. */
+  const renderRow = (row: T) => {
+                  const id = getRowId(row);
+                  const selected = selectedIds.has(id);
+                  const expanded = renderExpanded?.(row);
+                  return (
+                    <React.Fragment key={id}>
+                      <tr
+                        data-row
+                        onClick={onRowClick ? () => onRowClick(row) : undefined}
+                        className={`h-9 transition-colors ${onRowClick ? "cursor-pointer" : ""} ${
+                          selected ? "bg-[var(--ods-bg-secondary)]" : "hover:bg-[var(--ods-bg-secondary)]"
+                        }`}
+                      >
+                        {selection && (
+                          <td className="h-9 p-0 text-center border-b border-r first:border-l border-[var(--ods-border)]" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleRow(id)}
+                              aria-label="Select row"
+                              className="m-0 align-middle rounded-[3px] border-[var(--ods-border)] accent-[var(--ods-brand-600)]"
+                            />
+                          </td>
+                        )}
+                        {visible.map((col) => renderCell(col, row))}
+                        {rowActions && (
+                          <td className={`${CELL} text-right`} onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">{rowActions(row)}</div>
+                          </td>
+                        )}
+                      </tr>
+                      {expanded && (
+                        <tr>
+                          <td colSpan={columnCount} className="px-3 py-3 border-b border-x border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
+                            {expanded}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                  };
+
+  /** Twenty-style placeholder row: a plain gray bar in every cell. */
+  const skeletonRow = (index: number) => (
+    <tr key={`skeleton-${index}`} data-row className="h-9">
+      {selection && <td className="h-9 border-b border-r first:border-l border-[var(--ods-border)]" />}
+      {visible.map((col, i) => (
+        <td key={col.key} className={CELL}>
+          <span className="block h-3 rounded-[4px] bg-[var(--ods-bg-tertiary)]" style={{ width: `${45 + ((index * 7 + i * 13) % 45)}%` }} />
+        </td>
+      ))}
+      {rowActions && <td className={CELL} />}
+    </tr>
+  );
+
+  /** Server mode body: spacer, the rows in view (or skeletons), spacer. */
+  const serverBody = () => {
+    if (!server) return null;
+    if (loading && total === 0) {
+      return <TableSkeletonRows columns={visible.length} leadingCheckbox={!!selection} trailingActions={!!rowActions} bordered />;
+    }
+    if (total === 0) {
+      return (
+        <tr>
+          <td colSpan={columnCount} className="text-center py-8 text-[13px] text-[var(--ods-text-secondary)]">
+            {state.hasActiveFilters ? (
+              <>
+                Nothing matches these filters.{" "}
+                <button onClick={clearAllFilters} className="text-[var(--ods-brand-600)] hover:underline font-medium">
+                  Clear filters
+                </button>
+              </>
+            ) : (
+              emptyMessage
+            )}
+          </td>
+        </tr>
+      );
+    }
+    const out: ReactNode[] = [];
+    if (firstRow > 0) out.push(<tr key="spacer-top" aria-hidden="true" style={{ height: firstRow * rowHeight }} />);
+    for (let i = firstRow; i <= lastRow; i++) {
+      const row = server.rowAt(i);
+      out.push(row ? renderRow(row) : skeletonRow(i));
+    }
+    const below = total - 1 - lastRow;
+    if (below > 0) out.push(<tr key="spacer-bottom" aria-hidden="true" style={{ height: below * rowHeight }} />);
+    return out;
+  };
+
   return (
     <div className="flex flex-col h-full w-full select-none bg-[var(--ods-bg-primary)]">
       {/* Toolbar */}
-      <div className="h-10 px-3 flex items-center justify-between gap-3 border-b border-[var(--ods-border)] shrink-0 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
+      <div className="h-14 px-4 flex items-center justify-between gap-3 border-b border-[var(--ods-border)] shrink-0 overflow-x-auto whitespace-nowrap no-scrollbar">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-[var(--ods-text-primary)]">{title}</span>
-          <span className="text-[11px] font-medium text-[var(--ods-text-secondary)] px-1.5 py-0.5 rounded-[4px] bg-[var(--ods-bg-secondary)] border border-[var(--ods-border)] tabular-nums">
-            {selecting ? `${selectedIds.size} selected` : shownRows.length}
-          </span>
+          <SectionTitle as="h2" title={title} pill={
+              selecting
+                ? `${selectedIds.size} selected`
+                : server && server.total != null
+                  ? server.total.toLocaleString()
+                  : String(shownRows.length)
+            } info={info} />
         </div>
         {selecting ? (
           <div className="flex items-center gap-2">
@@ -379,22 +585,33 @@ export function DataTable<T>({
       </div>
 
       {subheader && (
-        <div className="px-3 py-1.5 flex items-center gap-1.5 border-b border-[var(--ods-border)] overflow-x-auto shrink-0 [scrollbar-width:none]">
+        <div className="px-3 py-1.5 flex items-center gap-1.5 border-b border-[var(--ods-border)] overflow-x-auto shrink-0 no-scrollbar">
           {subheader}
         </div>
       )}
 
-      <div className="flex-1 w-full overflow-auto">
+      <div ref={scrollRef} className="flex-1 w-full overflow-auto no-scrollbar">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           modifiers={[restrictToHorizontalAxis]}
-          onDragStart={(e) => setActiveId(String(e.active.id))}
+          onDragStart={(e) => {
+            const id = String(e.active.id);
+            const r = headerEls.current.get(id)?.getBoundingClientRect();
+            setActiveSize(r ? { width: r.width, height: r.height } : null);
+            setActiveId(id);
+          }}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={clearDnD}
         >
-          <table ref={tableRef} className="w-full border-collapse text-left table-fixed" style={tableVars}>
+          {/*
+            Separate (not collapsed) borders: collapsed borders belong to the
+            table grid, so a sticky header loses its edges and rows show
+            through above it while scrolling. Each cell draws its own
+            right/bottom edge; the first column and header add left/top.
+          */}
+          <table ref={tableRef} className="w-full border-separate border-spacing-0 text-left table-fixed" style={tableVars}>
             <colgroup>
               {selection && <col style={{ width: 40 }} />}
               {visible.map((c) => (
@@ -410,7 +627,7 @@ export function DataTable<T>({
             >
               <tr className="h-9">
                 {selection && (
-                  <th className="p-0 text-center border border-[var(--ods-border)]">
+                  <th className="p-0 text-center border-y border-r first:border-l border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -459,8 +676,11 @@ export function DataTable<T>({
                 {rowActions && <th className={`${HEAD} text-right`}>Actions</th>}
               </tr>
             </thead>
+            {frozenBody(activeId !== null, () => (
             <tbody>
-              {loading ? (
+              {server ? (
+                serverBody()
+              ) : loading ? (
                 <TableSkeletonRows
                   columns={visible.length}
                   leadingCheckbox={!!selection}
@@ -483,56 +703,32 @@ export function DataTable<T>({
                   </td>
                 </tr>
               ) : (
-                shownRows.map((row) => {
-                  const id = getRowId(row);
-                  const selected = selectedIds.has(id);
-                  const expanded = renderExpanded?.(row);
-                  return (
-                    <React.Fragment key={id}>
-                      <tr
-                        onClick={onRowClick ? () => onRowClick(row) : undefined}
-                        className={`h-9 transition-colors ${onRowClick ? "cursor-pointer" : ""} ${
-                          selected ? "bg-[var(--ods-bg-secondary)]" : "hover:bg-[var(--ods-bg-secondary)]"
-                        }`}
-                      >
-                        {selection && (
-                          <td className="h-9 p-0 text-center border border-[var(--ods-border)]" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={() => toggleRow(id)}
-                              aria-label="Select row"
-                              className="m-0 align-middle rounded-[3px] border-[var(--ods-border)] accent-[var(--ods-brand-600)]"
-                            />
-                          </td>
-                        )}
-                        {visible.map((col) => renderCell(col, row))}
-                        {rowActions && (
-                          <td className={`${CELL} text-right`} onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1">{rowActions(row)}</div>
-                          </td>
-                        )}
-                      </tr>
-                      {expanded && (
-                        <tr>
-                          <td colSpan={columnCount} className="px-3 py-3 border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)]">
-                            {expanded}
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
+                shownRows.map(renderRow)
               )}
             </tbody>
+            ))}
           </table>
+          {/* Portalled to <body> so mounting the preview never re-lays-out the big table. */}
+          {createPortal(
           <DragOverlay dropAnimation={null}>
             {activeId ? (
-              <div className="flex items-center gap-1.5 px-3 h-8 rounded-[6px] bg-[var(--ods-bg-primary)] border border-[var(--ods-brand-600)] shadow-[0_8px_24px_rgba(0,0,0,0.18)] text-[13px] font-medium text-[var(--ods-text-primary)] cursor-grabbing whitespace-nowrap">
+              // An exact copy of the header cell (grip, label, links, menu),
+              // square and a shade darker so it reads as the one being moved.
+              <div
+                style={activeSize ?? undefined}
+                className="pointer-events-none flex items-center px-3 whitespace-nowrap overflow-hidden text-[13px] font-medium text-[var(--ods-text-primary)] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-tertiary)] shadow-[0_6px_16px_rgba(0,0,0,0.14)] cursor-grabbing"
+              >
+                <span className="mr-1 inline-flex text-[var(--ods-text-primary)]">
+                  <GripVertical className="w-3.5 h-3.5" />
+                </span>
                 {byKey.get(activeId)?.label ?? activeId}
+                {byKey.get(activeId)?.headerExtra}
+                {byKey.get(activeId) && headerMenu(byKey.get(activeId)!)}
               </div>
             ) : null}
-          </DragOverlay>
+          </DragOverlay>,
+          document.body,
+          )}
         </DndContext>
       </div>
     </div>

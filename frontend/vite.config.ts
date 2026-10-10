@@ -1,12 +1,18 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { createRequire } from "module";
+
+// Flag SVGs live wherever the package manager put country-flag-icons
+// (hoisted to the workspace root or local), so resolve it, don't guess.
+const flagsDir = path.join(path.dirname(createRequire(import.meta.url).resolve("country-flag-icons/package.json")), "3x2");
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@flags": flagsDir,
     },
   },
   server: {

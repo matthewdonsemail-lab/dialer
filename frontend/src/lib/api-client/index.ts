@@ -180,6 +180,22 @@ export const api = {
       request<void>(`/api/scripts/${id}`, { method: "DELETE" }),
   },
 
+  /** Paged contacts (prospects + leads); see lib/contacts.ts. */
+  contacts: {
+    page: (params: string) => request<unknown>(`/api/prospects/page?${params}`),
+    facets: () => request<unknown>("/api/prospects/facets"),
+    lookup: (ids: string[]) => request<unknown[]>(`/api/prospects/lookup?ids=${ids.map(encodeURIComponent).join(",")}`),
+  },
+
+  admin: {
+    /** Create/update/delete events on dialer records since `since` (ISO), newest first. */
+    activity: (since: string) =>
+      request<import("@/lib/admin").AdminActivityResponse>(`/api/admin/activity?since=${encodeURIComponent(since)}`),
+    /** Full history of specific records: "call:<id>,prospect:<id>". */
+    recordActivity: (targets: string) =>
+      request<import("@/lib/admin").AdminActivityResponse>(`/api/admin/activity?targets=${encodeURIComponent(targets)}`),
+  },
+
   twentyPhones: {
     list: () => request<any[]>("/api/twenty/phones"),
     primary: () => request<{ phone: any; isPrimary: boolean; total: number }>("/api/twenty/phones/primary"),
@@ -213,6 +229,8 @@ export const api = {
       request<{ ok: boolean; telnyxRecordingId: string | null }>(`/api/calls/${id}/record`, { method: "POST" }),
     reconcile: (id: string) =>
       request<{ attached: boolean }>(`/api/calls/${id}/reconcile`, { method: "POST" }),
+    /** Fresh, short-lived Telnyx download link for a call's recording. */
+    audioUrl: (id: string) => request<{ url: string }>(`/api/calls/${id}/audio?format=json`),
     analyze: (id: string) =>
       request<{ ok: boolean; analysis: any; call: any }>(`/api/calls/${id}/analyze`, { method: "POST" }),
   },

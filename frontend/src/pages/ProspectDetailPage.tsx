@@ -132,7 +132,7 @@ export function ProspectDetailPage() {
   const deleteProspect = useMutation({
     mutationFn: () => api.prospects.delete(prospectId ?? ""),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prospects"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts-page"] });
       navigate("/contacts");
     },
     onError: () => {
@@ -219,7 +219,7 @@ export function ProspectDetailPage() {
             onCallEnd={handleCallEnd}
           />
           <CallScriptWidget campaignId={prospect?.campaign_id ?? null} />
-          <WidgetCard title="Prospect Details" className="h-[460px]">
+          <WidgetCard title="Prospect Details" className="h-[460px]" info={{ title: "Prospect Details", what: "Everything Twenty knows about this prospect." }}>
             <div className="flex flex-col gap-[var(--ods-sp-4)] h-full overflow-y-auto pr-1">
               {/* Status with StatusSelect */}
               <div>
@@ -335,7 +335,7 @@ export function ProspectDetailPage() {
                   ["Company", prospect.company ?? "—"],
                   ["City", prospect.city ?? "—"],
                   ["State", prospect.state ?? "—"],
-                  ["Country", prospect.country ?? "—"],
+                  ["Country", <CountryBadge country={prospect.country} />],
                   ["Created", prospect.created_at ? new Date(prospect.created_at).toLocaleDateString() : "—"],
                 ] as [string, React.ReactNode][]).map(([label, value]) => (
                   <div key={label}>
@@ -395,7 +395,7 @@ export function ProspectDetailPage() {
           onFromChange={setAgencyFromNumber}
         />
 
-        <WidgetCard title="Recent Calls">
+        <WidgetCard title="Recent Calls" info={{ title: "Recent Calls", what: "The latest calls with this contact and how they ended." }}>
           {prospectCalls.length > 0 ? (
             <div className="flex flex-col gap-[var(--ods-sp-3)]">
               {prospectCalls.slice(0, 5).map((call) => (
@@ -419,11 +419,9 @@ export function ProspectDetailPage() {
                     </p>
                   )}
                   <div className="flex items-center gap-3 mt-1">
-                    {call.telnyxRecordingId && (
+                    {(call.telnyxRecordingId || call.recordingUrl) && (
                       <a
-                        href={`/api/calls/${call.id}/audio`}
-                        target="_blank"
-                        rel="noreferrer"
+                        href={`/history/${call.id}?tab=recording`}
                         className="text-[11px] text-[var(--ods-brand-600)] hover:underline"
                       >
                         Play recording
@@ -456,12 +454,12 @@ export function ProspectDetailPage() {
 
         {/* Bottom Row: Notes | Contact Info */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-[var(--ods-sp-6)]">
-          <WidgetCard title="Notes">
+          <WidgetCard title="Notes" info={{ title: "Notes", what: "Free-text notes kept on this record." }}>
             <p className="text-[13px] text-[var(--ods-text-secondary)] whitespace-pre-wrap">
               {prospect.notes ?? "No notes yet"}
             </p>
           </WidgetCard>
-          <WidgetCard title="Contact Info">
+          <WidgetCard title="Contact Info" info={{ title: "Contact Info", what: "Phone numbers and emails. Click one to call or email it." }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-[var(--ods-sp-3)]">
               {prospect.phone && (
                 <div className="flex items-center gap-2 text-[13px]">

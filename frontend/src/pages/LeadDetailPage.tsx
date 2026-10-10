@@ -170,7 +170,7 @@ export function LeadDetailPage() {
             onCallEnd={handleCallEnd}
           />
           <CallScriptWidget campaignId={lead.campaign_id ?? null} />
-          <WidgetCard title="Lead Details">
+          <WidgetCard title="Lead Details" info={{ title: "Lead Details", what: "Everything Twenty knows about this lead." }}>
             <div className="flex flex-col gap-[var(--ods-sp-4)]">
               {/* Status with StatusSelect */}
               <div>
@@ -250,12 +250,12 @@ export function LeadDetailPage() {
 
         {/* Bottom Row: Notes | Contact Info | Recent Calls */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-[var(--ods-sp-6)]">
-          <WidgetCard title="Notes">
+          <WidgetCard title="Notes" info={{ title: "Notes", what: "Free-text notes kept on this record." }}>
             <p className="text-[13px] text-[var(--ods-text-secondary)] whitespace-pre-wrap">
               {lead.notes ?? "No notes yet"}
             </p>
           </WidgetCard>
-          <WidgetCard title="Contact Info">
+          <WidgetCard title="Contact Info" info={{ title: "Contact Info", what: "Phone numbers and emails. Click one to call or email it." }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-[var(--ods-sp-3)]">
               {lead.phone && (
                 <div className="flex items-center gap-2 text-[13px]">
@@ -291,7 +291,7 @@ export function LeadDetailPage() {
               )}
             </div>
           </WidgetCard>
-          <WidgetCard title="Recent Calls">
+          <WidgetCard title="Recent Calls" info={{ title: "Recent Calls", what: "The latest calls with this contact and how they ended." }}>
             {recentCalls && recentCalls.length > 0 ? (
               <div className="flex flex-col gap-[var(--ods-sp-3)]">
                 {recentCalls.slice(0, 5).map((call) => (
@@ -316,9 +316,7 @@ export function LeadDetailPage() {
                     )}
                     {(call.telnyxRecordingId || call.recordingUrl) && (
                       <a
-                        href={call.telnyxRecordingId ? `/api/calls/${call.id}/audio` : call.recordingUrl!}
-                        target="_blank"
-                        rel="noreferrer"
+                        href={`/history/${call.id}?tab=recording`}
                         className="text-[11px] text-[var(--ods-brand-600)] hover:underline mt-1 inline-block"
                       >
                         Play recording

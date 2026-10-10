@@ -120,7 +120,7 @@ export function PhoneNumbersPage() {
                 <td className="px-3">
                   <div className="flex items-center gap-2">
                     <Phone className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
-                    <span className="text-[13px] font-mono text-[var(--ods-text-primary)]">{phone.phoneNumber}</span>
+                    <span className="text-[13px] text-[var(--ods-text-primary)]">{phone.phoneNumber}</span>
                   </div>
                 </td>
                 <td className="px-3 text-[13px] text-[var(--ods-text-secondary)]">{phone.provider}</td>

@@ -1,13 +1,6 @@
 import React, { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, Eye } from "@/components/ui/icons";
-import {
-  useFloating,
-  autoUpdate,
-  offset,
-  flip,
-  shift,
-  FloatingPortal,
-} from "@floating-ui/react";
+import { Copy, MoreHorizontal, Pencil, Trash2, Eye } from "@/components/ui/icons";
+import { AnchoredMenu } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 
 interface ActionsMenuProps {
@@ -24,13 +17,7 @@ export function ActionsMenu({ leadId, leadName, onView, onEdit, onDelete, data }
   const [isOpen, setIsOpen] = useState(false);
   const { success: showToast } = useToast();
 
-  const { refs, floatingStyles } = useFloating({
-    open: isOpen,
-    onOpenChange: setIsOpen,
-    placement: "bottom-end",
-    whileElementsMounted: autoUpdate,
-    middleware: [offset(4), flip(), shift({ padding: 8 })],
-  });
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 
   const handleCopyJson = () => {
     if (data) {
@@ -43,60 +30,55 @@ export function ActionsMenu({ leadId, leadName, onView, onEdit, onDelete, data }
   return (
     <>
       <button
-        ref={refs.setReference}
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-1 text-[var(--ods-text-secondary)] hover:text-[var(--ods-text-primary)] hover:bg-[var(--ods-bg-secondary)] rounded-[4px] transition-colors"
+        ref={setAnchor}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((o) => !o);
+        }}
+        className="ods-menu-trigger w-7 h-7 inline-flex items-center justify-center border border-transparent text-[var(--ods-text-secondary)] hover:text-[var(--ods-brand-600)] rounded-[6px]"
+        aria-expanded={isOpen}
         title="Actions"
       >
-        <MoreHorizontal className="w-3.5 h-3.5" />
+        <MoreHorizontal className="w-4 h-4" />
       </button>
 
-      {isOpen && (
-        <FloatingPortal>
-          <div
-            ref={refs.setFloating}
-            style={floatingStyles}
-            className="z-[100] w-40 bg-[var(--ods-bg-primary)] border border-[var(--ods-border)] rounded-[6px] shadow-lg py-1 text-[12px]"
-          >
-            {onView && (
-              <button
-                onClick={() => { onView(leadId); setIsOpen(false); }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[var(--ods-text-primary)] hover:bg-[var(--ods-bg-secondary)] transition-colors"
-              >
-                <Eye className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
-                View
-              </button>
-            )}
-            {onEdit && (
-              <button
-                onClick={() => { onEdit(leadId); setIsOpen(false); }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[var(--ods-text-primary)] hover:bg-[var(--ods-bg-secondary)] transition-colors"
-              >
-                <Pencil className="w-3.5 h-3.5 text-[var(--ods-text-tertiary)]" />
-                Edit
-              </button>
-            )}
-            {data && (
-              <button
-                onClick={handleCopyJson}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[var(--ods-text-primary)] hover:bg-[var(--ods-bg-secondary)] transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--ods-text-tertiary)]">
-                  <rect width="14" height="14" x="8" y="8" rx="2" />
-                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                </svg>
-                Copy JSON
-              </button>
-            )}
+      {isOpen && anchor && (
+        <AnchoredMenu anchor={anchor} onClose={() => setIsOpen(false)} placement="bottom-end" className="w-48">
+          {onView && (
             <button
-              onClick={() => { onDelete?.(leadId, leadName); setIsOpen(false); }}
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-red-600 hover:bg-red-50 transition-colors"
+              onClick={() => { onView(leadId); setIsOpen(false); }}
+              className="ods-menu-item"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete
+              <Eye className="ods-menu-icon" />
+              View
             </button>
-          </div>
-        </FloatingPortal>
+          )}
+          {onEdit && (
+            <button
+              onClick={() => { onEdit(leadId); setIsOpen(false); }}
+              className="ods-menu-item"
+            >
+              <Pencil className="ods-menu-icon" />
+              Edit
+            </button>
+          )}
+          {data && (
+            <button
+              onClick={handleCopyJson}
+              className="ods-menu-item"
+            >
+              <Copy className="ods-menu-icon" />
+              Copy JSON
+            </button>
+          )}
+          <button
+            onClick={() => { onDelete?.(leadId, leadName); setIsOpen(false); }}
+            className="ods-menu-item ods-menu-item--danger"
+          >
+            <Trash2 className="ods-menu-icon !text-current" />
+            Delete
+          </button>
+        </AnchoredMenu>
       )}
     </>
   );

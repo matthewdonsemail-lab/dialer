@@ -2,6 +2,9 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { DataTable, useDataTable, type DataColumn } from "@/components/table";
+import { Phone } from "@/components/ui/icons";
+import { CountryBadge, CountryFlag } from "@/components/common/CountryBadge";
+import { countryCode, countryName } from "@/lib/country";
 
 interface AgencyPhone {
   id: string;
@@ -67,7 +70,16 @@ export function PhoneNumbersPage() {
     { key: "provider", label: "Provider", type: "text", width: 130, value: (p) => p.provider, filterable: true },
     { key: "city", label: "City", type: "text", width: 140, value: (p) => p.city },
     { key: "state", label: "State", type: "text", width: 120, value: (p) => p.state },
-    { key: "country", label: "Country", type: "text", width: 120, value: (p) => p.country, filterable: true },
+    {
+      key: "country",
+      label: "Country",
+      type: "text",
+      width: 150,
+      value: (p) => countryName(p.country),
+      render: (p) => <CountryBadge country={p.country} />,
+      filterable: true,
+      filterIcon: (name) => <CountryFlag code={countryCode(name)} />,
+    },
     { key: "status", label: "Status", type: "status", width: 120, value: (p) => p.status, filterable: true },
     {
       key: "holder",
@@ -95,6 +107,12 @@ export function PhoneNumbersPage() {
     <DataTable
       state={table}
       title="Phone Numbers"
+      info={{
+        title: "Phone Numbers",
+        icon: Phone,
+        what: "The caller IDs your team dials out from.",
+        use: "Check Reports → Number Health to see which ones are flagged as spam.",
+      }}
       columns={columns}
       rows={phones}
       loading={isLoading}

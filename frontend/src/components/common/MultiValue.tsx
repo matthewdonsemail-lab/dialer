@@ -5,7 +5,6 @@ import {
   FloatingPortal,
   offset,
   shift,
-  useClick,
   useDismiss,
   useFloating,
   useInteractions,
@@ -27,20 +26,64 @@ export function MultiValue({
   extras?: string[] | null;
 }) {
   const others = (extras ?? []).filter((v) => v && v !== primary);
+  // Floating UI only mounts while the list is open: tables render one of
+  // these per row, so a closed chip must not carry positioning hooks.
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
-  const { refs, floatingStyles, context } = useFloating({
-    open,
-    onOpenChange: setOpen,
-    placement: "bottom-start",
-    whileElementsMounted: autoUpdate,
-    middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
-  });
-  const { getReferenceProps, getFloatingProps } = useInteractions([useClick(context), useDismiss(context)]);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 
   if (!primary && others.length === 0) return <span className="text-[var(--ods-text-tertiary)]">—</span>;
 
   const all = [primary, ...others].filter(Boolean) as string[];
+
+  return (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      <span className={`truncate ${kind === "phone" ? "tabular-nums" : ""}`}>{all[0]}</span>
+      {others.length > 0 && (
+        <>
+          <button
+            type="button"
+            ref={setAnchor}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen((o) => !o);
+            }}
+            aria-expanded={open}
+            title={`${others.length} more ${kind === "phone" ? "number" : "email"}${others.length === 1 ? "" : "s"}`}
+            className="shrink-0 h-5 px-2 rounded-full bg-[var(--ods-brand-50)] text-[11px] font-semibold text-[var(--ods-brand-700)] hover:bg-[var(--ods-brand-100)] dark:bg-[var(--ods-brand-900)]/50 dark:text-[var(--ods-brand-300)]"
+          >
+            +{others.length}
+          </button>
+          {open && anchor && <MultiValueList kind={kind} values={all} anchor={anchor} onClose={() => setOpen(false)} />}
+        </>
+      )}
+    </span>
+  );
+}
+
+function MultiValueList({
+  kind,
+  values: all,
+  anchor,
+  onClose,
+}: {
+  kind: "phone" | "email";
+  values: string[];
+  anchor: HTMLElement;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
+    open: true,
+    onOpenChange: (next) => {
+      if (!next) onClose();
+    },
+    elements: { reference: anchor },
+    placement: "bottom-start",
+    whileElementsMounted: autoUpdate,
+    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+  });
+  const { getFloatingProps } = useInteractions([useDismiss(context)]);
+
   const Icon = kind === "phone" ? Phone : Mail;
   const href = (v: string) => (kind === "phone" ? `tel:${v}` : `mailto:${v}`);
   const copy = async (v: string) => {
@@ -54,58 +97,41 @@ export function MultiValue({
   };
 
   return (
-    <span className="inline-flex items-center gap-1.5 min-w-0">
-      <span className={`truncate ${kind === "phone" ? "font-mono tabular-nums" : ""}`}>{all[0]}</span>
-      {others.length > 0 && (
-        <>
-          <button
-            type="button"
-            ref={refs.setReference}
-            {...getReferenceProps()}
-            title={`${others.length} more ${kind === "phone" ? "number" : "email"}${others.length === 1 ? "" : "s"}`}
-            className="shrink-0 h-5 px-2 rounded-full bg-[var(--ods-brand-50)] text-[11px] font-semibold text-[var(--ods-brand-700)] hover:bg-[var(--ods-brand-100)] dark:bg-[var(--ods-brand-900)]/50 dark:text-[var(--ods-brand-300)]"
-          >
-            +{others.length}
-          </button>
-          {open && (
-            <FloatingPortal>
-              <div
-                ref={refs.setFloating}
-                style={floatingStyles}
-                {...getFloatingProps()}
-                className="z-[70] w-64 py-1 rounded-[8px] border border-[var(--ods-border-strong)] bg-[var(--ods-bg-primary)] shadow-[0_12px_32px_rgba(0,0,0,0.18)]"
-              >
-                <div className="px-3 py-1.5 bg-[var(--ods-bg-secondary)] text-[11px] font-semibold uppercase tracking-wider text-[var(--ods-text-tertiary)]">
-                  {kind === "phone" ? "Phone numbers" : "Emails"} · from Twenty
-                </div>
-                {all.map((v, i) => (
-                  <div key={v} className="mx-1 h-9 px-2 flex items-center gap-2 rounded-[6px] hover:bg-[var(--ods-hover)]">
-                    <a
-                      href={href(v)}
-                      title={kind === "phone" ? "Call" : "Email"}
-                      className="flex-1 min-w-0 flex items-center gap-2 text-[13px] text-[var(--ods-text-primary)] hover:text-[var(--ods-brand-600)]"
-                    >
-                      <Icon className="w-3.5 h-3.5 shrink-0 text-[var(--ods-text-tertiary)]" />
-                      <span className={`truncate ${kind === "phone" ? "font-mono tabular-nums" : ""}`}>{v}</span>
-                    </a>
-                    {i === 0 && (
-                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--ods-text-tertiary)]">Primary</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => copy(v)}
-                      title="Copy"
-                      className="shrink-0 p-1 rounded-[4px] text-[var(--ods-text-tertiary)] hover:text-[var(--ods-text-primary)]"
-                    >
-                      {copied === v ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </FloatingPortal>
-          )}
-        </>
-      )}
-    </span>
+    <FloatingPortal>
+      <div
+        ref={refs.setFloating}
+        style={{ ...floatingStyles, visibility: isPositioned ? undefined : "hidden" }}
+        data-ready={isPositioned || undefined}
+        {...getFloatingProps()}
+        className="ods-menu w-72"
+      >
+        <div className="ods-menu-group-label">
+          {kind === "phone" ? "Phone numbers" : "Emails"} · from Twenty
+        </div>
+        {all.map((v, i) => (
+          <div key={v} className="ods-menu-item !cursor-default">
+            <a
+              href={href(v)}
+              title={kind === "phone" ? "Call" : "Email"}
+              className="flex-1 min-w-0 flex items-center gap-2.5 hover:text-[var(--ods-brand-600)]"
+            >
+              <Icon className="ods-menu-icon" />
+              <span className={`truncate ${kind === "phone" ? "tabular-nums" : ""}`}>{v}</span>
+            </a>
+            {i === 0 && (
+              <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-[var(--ods-bg-tertiary)] text-[11px] font-semibold text-[var(--ods-text-secondary)]">Primary</span>
+            )}
+            <button
+              type="button"
+              onClick={() => copy(v)}
+              title="Copy"
+              className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-[6px] text-[var(--ods-text-tertiary)] hover:text-[var(--ods-text-primary)] hover:bg-[var(--ods-active)]"
+            >
+              {copied === v ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        ))}
+      </div>
+    </FloatingPortal>
   );
 }
