@@ -3,15 +3,15 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { queryClient } from "@/lib/query-client";
-import { AuthProvider } from "@/components/auth/AuthProvider";
-import { ThemeProvider } from "@/lib/theme";
-import App from "@/App";
+import { queryClient } from "@/domains/app/queryClient";
+import { AuthProvider } from "@/domains/auth/provider";
+import { ThemeProvider } from "@/domains/app/theme";
+import App from "./app";
 // Font Awesome's base styles load before the app CSS so Tailwind size
 // utilities (w-4 h-4) override its default 1em icon height.
 import { config as fontAwesomeConfig } from "@fortawesome/fontawesome-svg-core";
 import "@fortawesome/fontawesome-svg-core/styles.css";
-import "@/index.css";
+import "./index.css";
 
 fontAwesomeConfig.autoAddCss = false;
 

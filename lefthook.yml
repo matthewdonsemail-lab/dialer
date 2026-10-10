@@ -1,8 +1,16 @@
 # Git hooks managed by lefthook (https://github.com/evilmartians/lefthook).
 # Install after cloning: bunx lefthook install
 #
-# Every job here is a plain `node scripts/check-*.mjs` with no dependencies, so
-# a hook failure is a real failure and not a missing toolchain.
+# Three gates, cheapest first:
+#   pre-commit  seconds: the branch, the staged code (AST rules), brand rules,
+#               secrets and the lockfile. Nothing broken gets committed.
+#   commit-msg  the message follows Conventional Commits.
+#   pre-push    the whole repo: types, tests, build, docs and audits. Nothing
+#               broken leaves the machine.
+#
+# Every job is a plain `node scripts/*.mjs` (or the repo's own build and test
+# commands), so a failure is a real failure, not a missing toolchain. Each
+# script names its emergency bypass variable in its header.
 #
 # parallel: false is required, not cosmetic. test-diagram-lint.mjs proves the
 # Mermaid linter works by injecting each footgun into docs/diagrams/*.mmd and
@@ -10,24 +18,47 @@
 # while it runs, check-docs.mjs reading the same files sees the injected bug
 # and reports a failure that is not real. Run the jobs one at a time.
 
-pre-push:
+pre-commit:
   parallel: false
   jobs:
-    - name: documentation map and diagrams are current
-      run: node scripts/check-docs.mjs
-    - name: diagram linter catches what it claims
-      run: node scripts/test-diagram-lint.mjs
+    - name: on a named branch, not main (version control)
+      run: node scripts/check-branch.mjs
+    - name: staged code follows the code rules (naming, layout, dead buttons, toggle state, pipelines)
+      run: node scripts/check-code.mjs --staged
+    - name: design system holds (docs/design-system.md)
+      run: node scripts/check-design-system.mjs
     - name: no emojis (brand rule)
       run: node scripts/check-no-emojis.mjs
     - name: no monospace fonts (brand rule)
       run: node scripts/check-no-monospace.mjs
     - name: no fully rounded corners, rounded-md only (design rule)
       run: node scripts/check-no-rounded-full.mjs
-    - name: design system holds (docs/design-system.md)
-      run: node scripts/check-design-system.mjs
-    - name: every CRUD action reports its failure (docs/feedback-map.md)
-      run: node scripts/audit-feedback.mjs --check
-    - name: no out-of-scope paths are tracked
-      run: node scripts/check-scope.mjs
     - name: no credentials in tracked source
       run: node scripts/check-secrets.mjs
+    - name: dependency changes ship with bun.lock
+      run: node scripts/check-lockfile.mjs
+
+commit-msg:
+  jobs:
+    - name: Conventional Commits message
+      run: node scripts/check-commit-msg.mjs {1}
+
+pre-push:
+  parallel: false
+  jobs:
+    - name: every file follows the code rules
+      run: node scripts/check-code.mjs
+    - name: types check in shared, backend and frontend
+      run: bun run build:shared && bunx tsc --noEmit -p packages/shared/tsconfig.json && bunx tsc --noEmit -p backend && bunx tsc --noEmit -p frontend
+    - name: unit tests pass in shared, backend and frontend
+      run: node scripts/run-tests.mjs
+    - name: the production build succeeds
+      run: bun run build
+    - name: every CRUD action reports its failure (docs/feedback-map.md)
+      run: node scripts/audit-feedback.mjs --check
+    - name: documentation map and diagrams are current
+      run: node scripts/check-docs.mjs
+    - name: diagram linter catches what it claims
+      run: node scripts/test-diagram-lint.mjs
+    - name: no out-of-scope paths are tracked
+      run: node scripts/check-scope.mjs

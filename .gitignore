@@ -91,3 +91,6 @@ docs/twenty/upstream/
 
 .vercel
 .env*
+
+# Codemod scratch path maps (scripts/codemods/relayout.mjs)
+.relayout-*.json

@@ -1,7 +1,6 @@
 // Pre-push gate: the design system (docs/design-system.md).
 //
-// Strict for code built on the primitives (frontend/src/domains,
-// frontend/src/primitives): no native <select>, no uppercase-tracking
+// Strict for all frontend code (frontend/src/domains): no native <select>, no uppercase-tracking
 // labels, radius and font size only from the scale, no hand-built button
 // classes (use Button / buttonClass). App-wide: no native <select> and no
 // uppercase-tracking labels anywhere in frontend/src.
@@ -21,10 +20,11 @@ if (process.env.SKIP_DESIGN_CHECK) {
   process.exit(0);
 }
 
-const STRICT = ['frontend/src/domains/', 'frontend/src/primitives/'];
+const STRICT = ['frontend/src/domains/'];
 const APP = 'frontend/src/';
 
-const RADIUS_OK = new Set(['8', '10', '12']);
+// 2px is the hairline radius for flags and colour swatches only.
+const RADIUS_OK = new Set(['2', '8', '10', '12']);
 const TEXT_OK = new Set(['12', '13', '14', '15']);
 
 const APP_RULES = [
@@ -43,7 +43,13 @@ const STRICT_RULES = [
   {
     re: /\brounded-\[(\d+)px\]/g,
     test: (m) => !RADIUS_OK.has(m[1]),
-    why: (m) => `radius ${m[0]}: use rounded-md, rounded-[8px], rounded-[10px] or rounded-[12px] (RADIUS)`,
+    why: (m) => `radius ${m[0]}: use rounded-md, rounded-[8px], rounded-[10px], rounded-[12px] (or rounded-[2px] for flags) (RADIUS)`,
+  },
+  {
+    // Tailwind 3 cannot put an opacity on a CSS variable: the class compiles to nothing.
+    re: /\[var\(--[a-z0-9-]+\)\]\/\d+/g,
+    test: () => true,
+    why: (m) => `${m[0]} compiles to nothing (Tailwind cannot fade a CSS variable): use [color-mix(in_srgb,var(--x)_15%,transparent)]`,
   },
   {
     re: /\brounded-(sm|lg|xl|2xl|3xl)\b/g,
@@ -53,7 +59,7 @@ const STRICT_RULES = [
   {
     re: /\btext-\[(\d+)px\]/g,
     test: (m) => !TEXT_OK.has(m[1]),
-    why: (m) => `font size ${m[0]}: use 12, 13, 14 or 15px, or text-xl (TEXT)`,
+    why: (m) => `font size ${m[0]}: use 12, 13, 14 or 15px, text-xl or text-2xl (TEXT)`,
   },
   {
     re: /\btext-(xs|sm|base|lg)\b/g,
@@ -63,7 +69,7 @@ const STRICT_RULES = [
   {
     re: /<button\b[^>]*className=["'`{][^>]*\bh-(8|9|10|11)\b[^>]*\bpx-\d/g,
     test: () => true,
-    why: () => 'hand-built button: use <Button> or buttonClass() from @/primitives',
+    why: () => 'hand-built button: use <Button> or buttonClass() from @/domains/ui/button',
   },
 ];
 
@@ -111,4 +117,4 @@ if (violations.length) {
   for (const v of violations) console.error(`  - ${v}`);
   process.exit(1);
 }
-console.log('pre-push: OK - design system rules hold in frontend/src (strict in domains/ and primitives/).');
+console.log('OK - design system rules hold in frontend/src.');
