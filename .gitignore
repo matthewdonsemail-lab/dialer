@@ -94,3 +94,6 @@ docs/twenty/upstream/
 
 # Codemod scratch path maps (scripts/codemods/relayout.mjs)
 .relayout-*.json
+
+# Vendor reference screenshots (GoHighLevel, Close, Attio): local only, never published.
+docs/references/dialer-ui/screenshots/*.png

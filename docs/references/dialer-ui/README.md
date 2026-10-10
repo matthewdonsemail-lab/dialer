@@ -2,7 +2,7 @@
 
 These screenshots are the visual source of truth for the contact / dialer / conversations rebuild described in [`docs/plans/CONTACT_DIALER_HANDOFF.md`](../../plans/CONTACT_DIALER_HANDOFF.md).
 
-They were captured on 2026-10-10 from each vendor's public help centre or changelog, so they show the current (2025-2026) UI. The original URL is listed for each one so it can be re-checked.
+They were captured on 2026-10-10 from each vendor's public help centre or changelog, so they show the current (2025-2026) UI. The images are the vendors' own and are **not published with this repository**: `screenshots/*.png` is gitignored, so each file below exists only on a machine that downloaded it. The original URL is listed for each one so it can be fetched and re-checked.
 
 **How to use them:**
 - Copy the interaction patterns and the information layout.
