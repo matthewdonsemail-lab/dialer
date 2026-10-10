@@ -127,7 +127,7 @@ export function AdminPage() {
             {tab === "overview" ? (
               <Overview events={events} range={range} records={records} />
             ) : tab === "activity" ? (
-              <ActivityLog events={events} />
+              <ActivityLog events={events} loading={isLoading} />
             ) : tab === "team" ? (
               <TeamActivity events={events} records={records} range={range} />
             ) : (
@@ -231,7 +231,7 @@ function Overview({ events, range, records }: { events: ResolvedActivity[]; rang
 
 const PAGE = 100;
 
-function ActivityLog({ events }: { events: ResolvedActivity[] }) {
+function ActivityLog({ events, loading }: { events: ResolvedActivity[]; loading: boolean }) {
   const [action, setAction] = usePersistedState<string>("admin-log-action", ALL);
   const [object, setObject] = usePersistedState<string>("admin-log-object", ALL);
   const [who, setWho] = useState<string>(ALL);
@@ -245,7 +245,7 @@ function ActivityLog({ events }: { events: ResolvedActivity[] }) {
   return (
     <ReportCard
       title="Activity Log"
-      unit={`${filtered.length} events`}
+      unit={loading ? <Skeleton className="h-3 w-14" /> : `${filtered.length} events`}
       tip={{
         title: "Activity Log",
         icon: Activity,

@@ -495,7 +495,7 @@ export function DataTable<T>({
   /** Server mode body: spacer, the rows in view (or skeletons), spacer. */
   const serverBody = () => {
     if (!server) return null;
-    if (loading && total === 0) {
+    if (server.total == null || (loading && total === 0)) {
       return <TableSkeletonRows rows={30} columns={visible.length} leadingCheckbox={!!selection} trailingActions={!!rowActions} bordered />;
     }
     if (total === 0) {

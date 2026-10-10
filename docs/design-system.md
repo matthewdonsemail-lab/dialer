@@ -101,6 +101,10 @@ Label above value. Editable fields show a pencil and, when empty, an "Add ..." l
 
 `SelectMenu` (`.ods-menu`) is the only dropdown; native `<select>` is not allowed. Options may carry a dot or icon, a hint, a one-line `description` and `disabled`. A disabled option stays visible and its description says why.
 
+## Loading and counts
+
+A number is shown only once the data behind it has loaded. Until then the count pill is a skeleton (`Section count={null}`, `<Skeleton/>` as a `ReportCard` unit, an undefined tab badge), never a premature `0` and never the previous query's total. Server-paged tables treat an unknown total as "still loading": rows stay skeletons and the header count waits with them (`useContactWindow` drops the placeholder total while a new search, filter or sort loads).
+
 ## Scrollbars
 
 No horizontal scrollbar anywhere. Content that is wider than its box still scrolls (trackpad, shift+wheel, touch); only the bar is hidden. `index.css` owns this: it styles the base `::-webkit-scrollbar` (Chromium only honours the `:horizontal` rule when the base is styled), gives horizontal bars zero height and vertical bars a slim themed thumb, and gives Firefox thin bars. Components never set `scrollbar-width` or `scrollbar-color`: Chrome 121+ drops every `::-webkit-scrollbar` rule on an element that has either, which brings the horizontal bar back. The design check fails a push that does.

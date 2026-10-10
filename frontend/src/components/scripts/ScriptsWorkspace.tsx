@@ -116,7 +116,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const { data: scripts, isLoading } = useScripts();
   const { data: campaigns } = useCampaigns();
-  const { data: calls } = useCalls();
+  const { data: calls, isLoading: callsLoading } = useCalls();
   // Only contacts that have calls (to place calls in campaigns), never the whole list.
   const { data: lookedUp } = useProspectLookup((calls ?? []).map((c) => c.agencyProspectId));
   const prospects = useMemo(() => [...(lookedUp?.values() ?? [])] as ContactLite[], [lookedUp]);
@@ -337,7 +337,7 @@ export function ScriptsWorkspace({ onNavigate }: { onNavigate?: () => void }) {
                   t.key === "objections"
                     ? { ...t, badge: editing ? draft!.objections.length : Object.keys(selected.scriptData?.objection_responses ?? {}).length }
                     : t.key === "calls"
-                      ? { ...t, badge: stats.calls.length }
+                      ? { ...t, badge: callsLoading ? undefined : stats.calls.length }
                       : t,
                 )}
                 value={tab}

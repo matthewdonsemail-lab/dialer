@@ -116,8 +116,12 @@ export function useContactWindow(query: ContactQuery, range: [number, number]) {
   const byPage = new Map<number, ContactPage>();
   results.forEach((r, i) => r.data && !r.isPlaceholderData && byPage.set(pageIndexes[i], r.data));
   const head = results[pageIndexes.indexOf(0)];
+  // While a new search/filter/sort loads, page 0 is the previous query's
+  // placeholder: its rows are already hidden, and its total must be too, or
+  // the header shows a number that belongs to the old results.
+  const fresh = head && !head.isPlaceholderData ? head.data : undefined;
   return {
-    total: head?.data?.totalCount ?? null,
+    total: fresh?.totalCount ?? null,
     initialLoading: !!head?.isLoading,
     fetching: results.some((r) => r.isFetching),
     error: results.find((r) => r.error)?.error as Error | undefined,

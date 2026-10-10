@@ -17,7 +17,8 @@ export function ReportCard({
   className = "",
 }: {
   title: string;
-  unit?: string;
+  /** Qualifier pill; pass <Skeleton/> (or countPill(null)) while the number is unknown. */
+  unit?: ReactNode;
   tip: TipSpec;
   aside?: ReactNode;
   children: ReactNode;

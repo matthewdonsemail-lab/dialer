@@ -28,8 +28,8 @@ export function Section({
 }: {
   title: string;
   icon?: IconComponent;
-  /** Shown in a pill after the title. */
-  count?: number;
+  /** Shown in a pill after the title; null while the number is still loading (skeleton, never a premature 0). */
+  count?: number | null;
   tip?: TipSpec;
   action?: ReactNode;
   /** With onToggle, the header collapses the body. */
@@ -42,11 +42,13 @@ export function Section({
     <span className="flex items-center gap-2 min-w-0">
       {Icon && <Icon className="w-3.5 h-3.5 shrink-0 text-[var(--ods-text-tertiary)]" aria-hidden="true" />}
       <span className={`${TEXT.input} font-semibold truncate`}>{title}</span>
-      {count !== undefined && (
+      {count === null ? (
+        <span className={`h-5 w-6 ${RADIUS.chip} bg-[var(--ods-bg-tertiary)] animate-pulse`} role="status" aria-label="Loading count" />
+      ) : count !== undefined ? (
         <span className={`h-5 min-w-5 px-1.5 ${RADIUS.chip} bg-[var(--ods-bg-tertiary)] ${TEXT.meta} font-semibold tabular-nums inline-flex items-center justify-center`}>
           {count}
         </span>
-      )}
+      ) : null}
       {onToggle &&
         (collapsed ? (
           <ChevronRight className="w-3 h-3 text-[var(--ods-text-tertiary)]" aria-hidden="true" />

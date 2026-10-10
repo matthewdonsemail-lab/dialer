@@ -52,7 +52,7 @@ export function ContactPeople({ contact }: { contact: Contact }) {
     <Section
       title="People"
       icon={Users}
-      count={people.length}
+      count={isLoading ? null : people.length}
       collapsed={!open}
       onToggle={() => setOpen(!open)}
       tip={{ title: "People", icon: Users, what: "The people at this business, stored in Twenty as agencyPerson. Call, email or edit them here; every change is recorded in Record history." }}

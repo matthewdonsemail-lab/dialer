@@ -20,12 +20,12 @@ import {
   type IconComponent,
 } from "@/components/ui/icons";
 import { SectionTitle } from "@/components/ui/SectionTitle";
-import { TableSkeletonRows } from "@/components/ui/Skeleton";
+import { Skeleton, TableSkeletonRows } from "@/components/ui/Skeleton";
 import { CallReviewSkeleton } from "@/components/ui/PageSkeletons";
 import { useToast } from "@/components/ui/Toast";
 import { CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 import { EmptyState, HeadCell, ReportCard, ReportTable, StatTiles, TD, TR } from "@/components/reports/ReportParts";
-import { DASH, callStats, durationText, keyPoints } from "@/components/calls/CallInsight";
+import { DASH, KeyPointList, callStats, durationText, keyPoints, pointsLabel } from "@/components/calls/CallInsight";
 import { ACTION_KEY_TIP, ActivityTable } from "@/components/admin/ActivityTable";
 import { useCalls } from "@/hooks/use-call-logs";
 import { usePersistedState } from "@/hooks/use-persisted-state";
@@ -229,10 +229,7 @@ export function CallDetailPage() {
               tip={{ title: "Summary", icon: FileText, what: "A short recap of the call, written by the AI when available, otherwise the agent's notes." }}
             >
               {summary ? (
-                <div className="space-y-3">
-                  <p className="text-[14px] leading-relaxed text-[var(--ods-text-primary)] whitespace-pre-wrap">{summary}</p>
-                  {points.length > 0 && <KeyPoints points={points} />}
-                </div>
+                <p className="text-[14px] leading-relaxed text-[var(--ods-text-primary)] whitespace-pre-wrap">{summary}</p>
               ) : (
                 <EmptyState>No summary for this call yet.</EmptyState>
               )}
@@ -258,7 +255,7 @@ export function CallDetailPage() {
             </ReportCard>
             <ReportCard
               title="Latest Activity"
-              unit={`${events.length} events`}
+              unit={history.isLoading ? <Skeleton className="h-3 w-14" /> : `${events.length} events`}
               tip={{ title: "Latest Activity", icon: Activity, what: "The most recent changes to this call and its contact.", key: ACTION_KEY_TIP, use: "The Activity tab has the full history." }}
             >
               <ActivityBody loading={history.isLoading} error={history.error as Error | null} events={events.slice(0, 5)} compact />
@@ -331,10 +328,10 @@ export function CallDetailPage() {
             </ReportCard>
             <ReportCard
               title="Key Points"
-              unit={`${points.length}`}
+              unit={pointsLabel(points.length)}
               tip={{ title: "Key Points", icon: FileText, what: "The main things the AI picked out of the conversation." }}
             >
-              {points.length ? <KeyPoints points={points} /> : <EmptyState>No key points yet.</EmptyState>}
+              {points.length ? <KeyPointList points={points} /> : <EmptyState>No key points yet.</EmptyState>}
               {(call.aiModel || call.aiAnalyzedAt || typeof call.aiConfidence === "number") && (
                 <div className="mt-4">
                   <KeyValueTable
@@ -353,7 +350,7 @@ export function CallDetailPage() {
         {tab === "activity" && (
           <ReportCard
             title="Call & Contact History"
-            unit={`${events.length} events`}
+            unit={history.isLoading ? <Skeleton className="h-3 w-14" /> : `${events.length} events`}
             tip={{
               title: "Call & Contact History",
               icon: Activity,
@@ -429,18 +426,6 @@ function KeyValueTable({ rows }: { rows: [string, React.ReactNode][] }) {
   );
 }
 
-function KeyPoints({ points }: { points: string[] }) {
-  return (
-    <ul className="space-y-2">
-      {points.map((p, i) => (
-        <li key={i} className="flex gap-2.5 text-[14px] leading-snug text-[var(--ods-text-primary)]">
-          <span className="mt-0.5 w-5 h-5 shrink-0 rounded-md bg-blue-500/15 text-blue-600 text-[12px] font-bold flex items-center justify-center">{i + 1}</span>
-          {p}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 function ActivityBody({ loading, error, events, compact = false }: { loading: boolean; error: Error | null; events: ReturnType<typeof resolveActivities>; compact?: boolean }) {
   if (loading) {

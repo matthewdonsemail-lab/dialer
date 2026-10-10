@@ -24,6 +24,31 @@ export function keyPoints(raw?: string | null): string[] {
   }
 }
 
+/** "3 points" for a card pill. */
+export function pointsLabel(n: number): string {
+  return n === 1 ? "1 point" : `${n} points`;
+}
+
+/**
+ * The AI's key points for a call: numbered findings, one per row, divided
+ * edge to edge like every list in the app. Sentences, not tags, so they are
+ * never shown as pills. Used by the Call History quick view and the review.
+ */
+export function KeyPointList({ points }: { points: string[] }) {
+  return (
+    <ol className="-mx-4 border-y border-[var(--ods-border)] divide-y divide-[var(--ods-border)]">
+      {points.map((p, i) => (
+        <li key={i} className="px-4 py-2.5 flex items-start gap-3">
+          <span className="w-6 h-6 shrink-0 rounded-md bg-[var(--ods-brand-600)]/10 text-[var(--ods-brand-700)] dark:text-[var(--ods-brand-300)] text-[12px] font-semibold tabular-nums flex items-center justify-center">
+            {i + 1}
+          </span>
+          <span className="pt-0.5 text-[13px] leading-5 font-medium text-[var(--ods-text-primary)]">{p}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 type CallLike = Pick<
   AgencyCallRecord,
   "id" | "status" | "durationSeconds" | "aiScore" | "aiSentiment" | "direction" | "fromNumber" | "toNumber" | "createdBy"
@@ -145,15 +170,6 @@ export function CallQuickView({ call, conversationSeconds }: { call: AgencyCallR
             {summary || call.transcript ? (
               <div className="space-y-3">
                 {summary && <p className="text-[14px] leading-relaxed font-medium text-[var(--ods-text-primary)]">{summary}</p>}
-                {points.length > 0 && (
-                  <ul className="flex flex-wrap gap-1.5">
-                    {points.map((p, i) => (
-                      <li key={i} className="px-2 py-1 rounded-md border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] text-[12px] font-semibold text-[var(--ods-text-primary)]">
-                        {p}
-                      </li>
-                    ))}
-                  </ul>
-                )}
                 {call.transcript && (
                   <p className="max-h-40 overflow-y-auto rounded-[8px] bg-[var(--ods-bg-secondary)] p-3 text-[13px] leading-relaxed text-[var(--ods-text-secondary)] whitespace-pre-wrap">
                     {call.transcript}
@@ -164,6 +180,15 @@ export function CallQuickView({ call, conversationSeconds }: { call: AgencyCallR
               <EmptyState>No summary or transcript yet.</EmptyState>
             )}
           </ReportCard>
+          {points.length > 0 && (
+            <ReportCard
+              title="Key Points"
+              unit={pointsLabel(points.length)}
+              tip={{ title: "Key Points", icon: MessageSquare, what: "The main things the AI picked out of the conversation, in the order they came up." }}
+            >
+              <KeyPointList points={points} />
+            </ReportCard>
+          )}
         </div>
         <ReportCard
           title="Call Quality"
