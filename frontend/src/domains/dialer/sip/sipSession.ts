@@ -53,6 +53,10 @@ export async function startAgent(handlers: {
     // muxed and non-muxed answers instead of failing with 488.
     sessionDescriptionHandlerFactoryOptions: {
       peerConnectionOptions: { rtcConfiguration: { rtcpMuxPolicy: "negotiate" } },
+      // sip.js waits up to 5s for ICE gathering before sending the INVITE, so
+      // a call took ~6s to start and could not be hung up in that window. The
+      // host and server-reflexive candidates arrive well inside 1s.
+      iceGatheringTimeout: 1000,
     } as any,
   });
   ua.delegate = {

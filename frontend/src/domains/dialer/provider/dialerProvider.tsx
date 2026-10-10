@@ -379,6 +379,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
 
   const startSip = useCallback(async (lc: CallLifecycle) => {
     const cfg = getSipConfig();
+    // Hanging up while the call is still being set up ends it at once; every
+    // await below re-checks, so no INVITE leaves after the operator hung up.
+    const hungUp = () => stateRef.current === "ended" || stateRef.current === "idle" || lifecycleRef.current !== lc;
     if (!isSipConfigured()) return failLoud(classifyFailure({ notConfigured: true }));
     if (!agentRef.current) {
       // Pre-flight: is the WS host reachable before burning 8s on a timeout?
@@ -390,17 +393,22 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         sipLog.warn("netcheck", `probe failed (${err?.message || err}); dialling anyway`);
       }
     }
+    if (hungUp()) return;
     const agent = await ensureAgent();
+    if (hungUp()) return;
     if (!agent) return failLoud(classifyFailure({ timedOut: true, wsUrl: cfg.wsUrl }));
     try {
       // Mic permission check up front so a denial fails loudly, not mid-INVITE.
       const probeStream = await getMicStream(microphoneId);
       probeStream.getTracks().forEach((t) => t.stop());
     } catch {
+      if (hungUp()) return;
       return failLoud(classifyFailure({ micDenied: true }));
     }
+    if (hungUp()) return;
     try {
       const { UserAgent, Inviter, SessionState } = await loadSip();
+      if (hungUp()) return;
       const targetUri = UserAgent.makeURI(`sip:${lc.ctx.toNumber}@${agent.domain}`);
       if (!targetUri) return failLoud(classifyFailure({ wsUrl: cfg.wsUrl }));
       const callerId = lc.ctx.fromNumber || cfg.callerId;
@@ -463,6 +471,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       }, timeoutSeconds * 1000);
       lc.startHeartbeat(HEARTBEAT_INTERVAL_MS, () => isLive(stateRef.current));
     } catch (err: any) {
+      // Hung up before the INVITE went out: sip.js rejects the pending offer
+      // ("Peer connection closed"). That is the hang-up, not a failure.
+      if (hungUp()) {
+        sipLog.info("invite", "call ended before it connected");
+        return;
+      }
       sipLog.error("invite", `dial path threw: ${err?.message || err}`);
       await failLoud(classifyFailure({ sipStatusCode: lastSipStatusRef.current, wsUrl: cfg.wsUrl }));
     }
