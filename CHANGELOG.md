@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- WAVV-style single-line power dialer: floating dialer card, call campaigns stored in Twenty, campaign statistics and history
+- WAVV dispositions (Positive / Negative) that update the contact's status
+- Settings -> Audio Source: computer audio with device pickers and a test, plus phone audio (Call me / Dial in) over Telnyx Call Control
+- Reports (Overview, Number Health, Team Performance, Disposition Report) replacing the Dashboard
+- Shared typed data table, light / dark / system theme, Settings page, Font Awesome 6 Solid icons
 - Self-hosted backend with SQLite database
 - Express.js API server with JWT authentication
 - Twenty CRM integration for member authentication
@@ -26,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated hooks to use backend API exclusively
 
 ### Fixed
+- Valid dialer sessions were discarded after sign-in (JWT decoder rejected padded payloads)
+- Do Not Contact was saved as NEW in Twenty; lead statuses did not read back after a reload
+- Light theme was force-darkened by Opera GX and Chrome auto dark mode
 - Removed hardcoded email from dev user
 - Updated .env.example with all configuration options
 - Expanded .gitignore for better security

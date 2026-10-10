@@ -11,6 +11,7 @@ Start at the [README](../README.md). This page is the index of everything else.
 | [data-flow.md](./data-flow.md) | How a read or write becomes a row in Twenty, and why pagination is a keyset walk. |
 | [diagrams/](./diagrams/README.md) | Seven Mermaid diagrams, each linked to the source file that implements it. |
 | [identity.md](./identity.md) | Sign-in: Twenty OAuth PKCE, what the user sees, what happens underneath, and operator config. |
+| [dialer-features.md](./dialer-features.md) | Contacts sheet, dispositions, call campaigns, the power dialer, audio source, reports, and their one-time setup. |
 
 ## Run it
 
