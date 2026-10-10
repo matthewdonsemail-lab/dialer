@@ -46,17 +46,17 @@ The **softphone becomes a global dock** opened from a phone button in the top ba
 
 | Area | File |
 |---|---|
-| Route | `frontend/src/App.tsx:74` (`contacts/:prospectId` → `ProspectDetailPage`), `leads/:leadId` → `LeadDetailPage` |
+| Route | `frontend/src/app.tsx:74` (`contacts/:prospectId` → `ProspectDetailPage`), `leads/:leadId` → `LeadDetailPage` |
 | Page | `frontend/src/pages/ProspectDetailPage.tsx` (554 lines), `frontend/src/pages/LeadDetailPage.tsx` (372) |
 | Softphone | `frontend/src/components/softphone/Softphone.tsx` (1520 lines, sip.js 0.21, `full` and `compact` variants) |
-| Power dialer | `frontend/src/components/campaigns/PowerDialer.tsx` (provider in `Layout.tsx:168-169`; it mounts `<Softphone variant="compact">` at `fixed top-12 left-1/2 z-[55]`) |
+| Power dialer | `frontend/src/domains/campaigns/powerDialer/powerDialer.tsx` (provider in `Layout.tsx:168-169`; it mounts `<Softphone variant="compact">` at `fixed top-12 left-1/2 z-[55]`) |
 | Script | `frontend/src/components/scripts/CallScriptWidget.tsx` (hard-coded 460px height) |
 | SMS today | `frontend/src/components/website/SendWebsiteWidget.tsx`. It only opens an `sms:` link, then calls `POST /api/prospects/:id/website-sent`, which just sets `outboundLabel=SMS_IN_PROGRESS` |
-| Calls API | `backend/src/routes/calls/index.ts`, `frontend/src/hooks/use-call-logs.ts` (`useCallsForRecord` fetches **every** call and filters in the browser) |
+| Calls API | `backend/src/routes/calls/index.ts`, `frontend/src/domains/calls/data/useCallLogs.ts` (`useCallsForRecord` fetches **every** call and filters in the browser) |
 | Telnyx webhook | `backend/src/routes/telnyx/webhook/index.ts` (recording and transcription only; **no `message.*` handling**) |
 | Twenty access | REST: `backend/src/lib/twenty/client/index.ts`. Typed GraphQL (genql): `backend/src/lib/twenty/graphql/index.ts` plus `packages/shared/src/generated/client` (generated Sep 29 and **stale**). Metadata: `backend/src/lib/twenty/objectService/index.ts` (`setupTwentyCRM`, `createRelationField`), `backend/src/lib/twenty/agencyCall/index.ts` (how agencyCall fields and relations get created) |
-| Prospect mapping | `backend/src/routes/prospects/helpers/map-prospect.ts`, `routes/prospects/index.ts` |
-| Layout | `frontend/src/components/common/Layout.tsx`. Top bar at `:241-293`, right-side actions group at `:288`, main column ends at `:299` |
+| Prospect mapping | `backend/src/routes/prospects/helpers/mapProspect.ts`, `routes/prospects/index.ts` |
+| Layout | `frontend/src/domains/app/layout/layout.tsx`. Top bar at `:241-293`, right-side actions group at `:288`, main column ends at `:299` |
 
 ### Bugs to fix first (Phase 0)
 
@@ -66,7 +66,7 @@ The **softphone becomes a global dock** opened from a phone button in the top ba
 4. **Call notes are dropped.** The softphone passes `notes` to `onCallEnd`, the page ignores it, and `agencyCall` has no notes field.
 5. **Wrong cache key.** Pages invalidate `["twenty-phones"]`; the real key is `["twentyPhones"]` (ProspectDetailPage `:147`, LeadDetailPage `:80`).
 6. **Caller ID comes from the wrong place.** The softphone's `callerId` comes from the "Send from" select inside `SendWebsiteWidget`. The dialer has no number picker of its own.
-7. **Schema drift.** The generated schema has `agencyCall.status` as a 5-value enum (`IN_PROGRESS|COMPLETED|FAILED|NO_ANSWER|BUSY`) and no `ai*` / `createdByMemberId` fields. Meanwhile `frontend/src/lib/call-outcome.ts:41-58` writes `INTERESTED`, `VOICEMAIL`, `DNC`, … **Check the live schema** (run `bun run api:client` or §6 step 1) and fix whichever side is wrong. The recommended fix is in §5.3.
+7. **Schema drift.** The generated schema has `agencyCall.status` as a 5-value enum (`IN_PROGRESS|COMPLETED|FAILED|NO_ANSWER|BUSY`) and no `ai*` / `createdByMemberId` fields. Meanwhile `frontend/src/domains/calls/disposition/callOutcome.ts:41-58` writes `INTERESTED`, `VOICEMAIL`, `DNC`, … **Check the live schema** (run `bun run api:client` or §6 step 1) and fix whichever side is wrong. The recommended fix is in §5.3.
 8. **Debug logging.** `console.log`s in ProspectDetailPage `:96-99`, Softphone `:1022,1032`, and the backend `GET /api/prospects/:id` at `routes/prospects/index.ts:246-250`.
 9. **`qualificationStatus`** is rendered but never mapped by `mapProspectDetail`.
 10. **Webhook full scan.** `findCallByTelnyxId` scans every `agencyCalls` row on each webhook (`webhook/index.ts:34-37`). Filter with `telnyxCallId[eq]` instead.
@@ -100,7 +100,7 @@ Copy `ScriptsWorkspace.tsx`'s multi-pane layout (`:207-372`):
 | `SelectMenu` | `ui/Menu.tsx` | Menus |
 | `useToast` | `ui/Toast.tsx` | Feedback |
 | `ConfirmDialog variant="danger"` | `common/ConfirmDialog.tsx` | Deletes |
-| `usePersistedState` | `hooks/use-persisted-state.ts` | Remembering tabs |
+| `usePersistedState` | `domains/app/persistedState/usePersistedState.ts` | Remembering tabs |
 
 ### Tokens and sizes
 - Cards: `rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-4`.
@@ -148,7 +148,7 @@ Reference: `ghl-04`, `ghl-05`, `ghl-08`, `ghl-06`, `close-02`.
   - **In call.** Avatar, name, number, timer, state chip. Control grid of 3×N round buttons: Mute, Hold, Keypad, Notes, Script, plus Transfer later. Full-width red **End call**.
     - **Notes** opens a textarea in the dock; it autosaves to the call row (§5.3).
     - **Script** opens the campaign script in a panel docked to the **left** of the dock (`ghl-08`), reusing `CallScriptViewer`.
-  - **Call summary** (`ghl-06`). Our number, contact, "Call ended" plus a status chip, a duration pill, then disposition chips in a 2-column grid (from `OutcomeSelect`'s options / `lib/call-outcome.ts`), the notes, and **Done**. In a power-dialer session the button is **Save & next**.
+  - **Call summary** (`ghl-06`). Our number, contact, "Call ended" plus a status chip, a duration pill, then disposition chips in a 2-column grid (from `OutcomeSelect`'s options / `domains/calls/disposition/callOutcome.ts`), the notes, and **Done**. In a power-dialer session the button is **Save & next**.
     - Saving keeps today's `handleSaveOutcome` behaviour: PATCH status, reconcile, release the number, update the record status via `recordStatusForOutcome`.
   - **Settings sheet** (gear, `close-02`). Caller ID, the audio devices from `AudioSourceSettings`, and phone-audio mode.
   - **Incoming.** A banner inside the dock with Accept and Decline. Replace the full-screen `IncomingCallBanner`.
@@ -173,7 +173,7 @@ Handles both `contacts/:prospectId` and `leads/:leadId`, with `type` taken from 
   - **Business:** niche, label, rating and reviews, Google links.
   - **Pipeline:** cold-call status, qualification, campaign, outbound state and label, video status, WhatsApp.
   - **System:** created, updated, Twenty link.
-- Rows follow the key/value pattern: icon, label, value; "—" when empty; click to edit inline, which calls `useUpdateContact` (optimistic). Remove every `as any` by typing the API shape in `frontend/src/lib/contacts.ts`.
+- Rows follow the key/value pattern: icon, label, value; "—" when empty; click to edit inline, which calls `useUpdateContact` (optimistic). Remove every `as any` by typing the API shape in `frontend/src/domains/contact/list/contacts.ts`.
 
 **Centre pane: `ContactFeed.tsx` plus `Composer.tsx`** (`ghl-01`, `ghl-02`, `ghl-10`, `close-01`):
 - Filter chips: All, Calls, SMS, Notes, Activity.
@@ -271,7 +271,7 @@ Rules:
 
 ### 5.3 `agencyCall` additions
 - `notes` (TEXT) holds the dock's call notes. Add it to the PATCH allow-list in `routes/calls/index.ts:262-289`.
-- `disposition` (SELECT) holds the user outcome: `INTERESTED`, `NOT_INTERESTED`, `CALLBACK`, `VOICEMAIL`, `WRONG_NUMBER`, `DNC`, `MEETING_BOOKED`, `NO_ANSWER`, … taken from `lib/call-outcome.ts`.
+- `disposition` (SELECT) holds the user outcome: `INTERESTED`, `NOT_INTERESTED`, `CALLBACK`, `VOICEMAIL`, `WRONG_NUMBER`, `DNC`, `MEETING_BOOKED`, `NO_ANSWER`, … taken from `domains/calls/disposition/callOutcome.ts`.
 - Keep `status` as the **system** result (`IN_PROGRESS|COMPLETED|FAILED|NO_ANSWER|BUSY`). This is how Close separates system dispositions from outcomes, and it resolves bug #7.
 
 ### 5.4 Fix prospect notes
@@ -359,12 +359,12 @@ mutation MarkRead($id: UUID!) { updateAgencyConversation(id: $id, data: { unread
 ### 6.5 Live updates
 - Twenty's GraphQL subscription (`onEventSubscription`) **rejects API keys**, so the backend cannot subscribe.
 - **v1:** React Query `refetchInterval`: 5s for the open thread, 15s for the inbox.
-- **v2:** a Twenty webhook (`agencyMessage.created`, `agencyConversation.updated`; register it with the metadata `createWebhook`; verify the `X-Twenty-Webhook-Signature` HMAC as in `routes/twenty/webhook/helpers/verify-signature.ts`) plus the Telnyx webhook, forwarded to an SSE endpoint `GET /api/stream`.
+- **v2:** a Twenty webhook (`agencyMessage.created`, `agencyConversation.updated`; register it with the metadata `createWebhook`; verify the `X-Twenty-Webhook-Signature` HMAC as in `routes/twenty/webhook/helpers/verifySignature.ts`) plus the Telnyx webhook, forwarded to an SSE endpoint `GET /api/stream`.
 
 ---
 
 ## 7. Frontend data hooks
-- `frontend/src/lib/api-client/index.ts`: add `conversations.{list, byContact, messages, read, update}` and `messages.{send, note}`.
+- `frontend/src/domains/api/client/apiClient.ts`: add `conversations.{list, byContact, messages, read, update}` and `messages.{send, note}`.
 - `frontend/src/hooks/use-conversations.ts`:
   - `useInbox(tab, q)` with `useInfiniteQuery`;
   - `useContactConversation(type, id)`;

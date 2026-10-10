@@ -1,6 +1,6 @@
 # Design system
 
-How every screen in the dialer looks and behaves, and the code that enforces it. The rules are short because the primitives carry them: a screen that uses `@/primitives` gets the right radius, type, colour and state logic without choosing any of it.
+How every screen in the dialer looks and behaves, and the code that enforces it. The rules are short because the primitives carry them: a screen built from the `ui` primitives (`@/domains/ui/button`, `@/domains/ui/section` ...) gets the right radius, type, colour and state logic without choosing any of it.
 
 The visual language follows the ListeningKit dashboard (`listeningkit-hackathon`, `DASHBOARD_DESIGN.md`): same Satoshi font, same text tokens, the same link, button and value recipes. Twenty's own UI conventions are kept for reference in [twenty-ui-reference.md](./twenty-ui-reference.md).
 
@@ -9,11 +9,11 @@ The visual language follows the ListeningKit dashboard (`listeningkit-hackathon`
 | Path | Holds |
 |---|---|
 | `packages/shared/src/domains/<domain>/` | Rules both the backend and the SPA use: `types.ts`, `lib/*-machine.ts` (pipelines), `utils/` (pure helpers). Imported as `@dialer/shared`. |
-| `frontend/src/primitives/<primitive>/` | Buttons, sections, pills, notices, inputs, the pipeline picker. Sizes come from `primitives/tokens.ts`. |
+| `frontend/src/domains/ui/<primitive>/` | Buttons, sections, pills, notices, inputs, the pipeline picker, tables, menus, toasts. Sizes come from `domains/ui/tokens/tokens.ts`. |
 | `frontend/src/domains/<domain>/` | One feature: `components/` (screens and panes), `lib/` (React Query hooks), `types/`, `utils/` (pure, unit-tested). |
 | `backend/src/lib/pipelines/` | The write-side guard that runs the shared machines before anything reaches Twenty. |
 
-File and directory names in `domains/`, `primitives/` and `packages/shared/src/domains/` are kebab-case (`contact-sidebar.tsx`, `use-people.ts`). Older code under `components/` and `pages/` moves over as it is touched.
+Every file and folder is camelCase (`contactSidebar.tsx`, `usePeople.ts`), and every frontend file lives at `domains/<domain>/<primitive>/`; see [naming-conventions.md](./naming-conventions.md).
 
 ## State: one pipeline per field
 
@@ -34,7 +34,7 @@ Each state has a label (shown to people), a one-line description, a tone, and th
 
 ## Scale
 
-From `frontend/src/primitives/tokens.ts`. Add a value there (and here) or use the nearest one.
+From `frontend/src/domains/ui/tokens/tokens.ts`. Add a value there (and here) or use the nearest one.
 
 | Role | Value |
 |---|---|
@@ -47,6 +47,8 @@ From `frontend/src/primitives/tokens.ts`. Add a value there (and here) or use th
 | Text: inputs and field values | 14px |
 | Text: list and card titles | 15px |
 | Text: page and section headings | `text-xl` |
+| Text: big numbers in stat tiles | `text-2xl` |
+| Radius: flags and colour swatches | 2px (`RADIUS.hairline`) |
 | Control heights | 32 (`sm`), 36 (`md`, default), 44 (`lg`) |
 
 Weights: 400 for body text, 600 for labels, values, buttons and titles. Satoshi only; no monospace (enforced).
@@ -68,7 +70,7 @@ One recipe, the `.ods-link` class (`LINK`): bold brand text with a dashed underl
 
 ## Buttons
 
-`Button` from `@/primitives` (or `buttonClass()` on an `<a>`):
+`Button` from `@/domains/ui/button` (or `buttonClass()` on an `<a>`). A toggle (pin, open, active filter) is a `Button` with `pressed`: it gets the selected look and `aria-pressed` together, so its state is visible and readable.
 
 | Variant | Use |
 |---|---|
@@ -115,4 +117,4 @@ No horizontal scrollbar anywhere. Content that is wider than its box still scrol
 
 ## Enforced on push
 
-`scripts/check-design-system.mjs` (lefthook pre-push) fails the push when `frontend/src/domains`, `frontend/src/primitives` or `packages/shared` contain a native `<select>`, `uppercase tracking` labels, an off-scale radius or font size, or a hand-built button class; and when anything in `frontend/src` uses a native `<select>` or uppercase-tracking labels. The emoji, monospace and `rounded-full` checks still apply everywhere.
+`scripts/check-design-system.mjs` (lefthook pre-commit) fails when any frontend code uses a native `<select>`, an uppercase-tracking label, an off-scale radius or font size, a hand-built button class, or `scrollbar-width` in a component. `scripts/check-code.mjs` adds the behaviour rules: a button that does nothing, a toggle whose state is only a colour, and a pipeline value written as a bare string. The emoji, monospace and `rounded-full` checks still apply everywhere.

@@ -33,31 +33,37 @@ yarn typecheck
 yarn test:unit
 ```
 
-## Pre-push checks
+## Git hooks
 
-Three gates, each a dependency-free `node scripts/check-*.mjs`, run
-automatically once lefthook is installed:
+lefthook runs three gates once installed (`bunx lefthook install`), cheapest first. Each script names its emergency bypass variable in its header.
+
+**pre-commit** (seconds, staged changes):
 
 | Check | Fails when |
 |---|---|
-| `scripts/check-docs.mjs` | a documented file is missing, a diagram is unlisted in `docs/diagrams/README.md`, a diagram is invalid Mermaid, the README's embedded diagram has drifted from its `.mmd` source, or a relative link is broken |
+| `scripts/check-branch.mjs` | you commit straight to `main`, or the branch is not `<type>/<short-kebab-name>` |
+| `scripts/check-code.mjs --staged` | a staged file breaks a code rule: a folder or file that is not camelCase, frontend code outside `domains/<domain>/<primitive>/`, an import reaching inside another module, a button that does nothing, a toggle that does not expose its state, or a pipeline value written as a bare string ([naming-conventions.md](docs/naming-conventions.md)) |
+| `scripts/check-design-system.mjs` | an off-scale radius or font size, a native `<select>`, an uppercase label, a hand-built button, or `scrollbar-width` in a component ([design-system.md](docs/design-system.md)) |
+| `scripts/check-no-emojis.mjs`, `check-no-monospace.mjs`, `check-no-rounded-full.mjs` | a brand rule is broken |
+| `scripts/check-secrets.mjs` | a credential is committed: a JWT, a private key, a provider key, or a connection string with a real password |
+| `scripts/check-lockfile.mjs` | a `package.json` changes dependencies without `bun.lock` |
+
+**commit-msg**: `scripts/check-commit-msg.mjs` requires Conventional Commits (see below).
+
+**pre-push** (the whole repo):
+
+| Check | Fails when |
+|---|---|
+| `scripts/check-code.mjs` | any file breaks a code rule |
+| types | `tsc` fails in `packages/shared`, `backend` or `frontend` |
+| `scripts/run-tests.mjs` | a unit test fails in any package |
+| `bun run build` | the production build fails |
+| `scripts/audit-feedback.mjs --check` | an action can fail without telling anyone, or `docs/feedback-map.md` is stale ([feedback-map.md](docs/feedback-map.md)) |
+| `scripts/check-docs.mjs` | a documented file is missing, a diagram is unlisted or invalid, the README's diagrams drifted, or a relative link is broken |
 | `scripts/test-diagram-lint.mjs` | the Mermaid linter stops catching the footguns it claims to catch |
 | `scripts/check-scope.mjs` | anything outside the application's scope is tracked in git |
-| `scripts/check-no-emojis.mjs` | an emoji appears in a tracked file |
-| `scripts/check-secrets.mjs` | a credential is committed: a JWT, a private key, a cloud or provider key, or a connection string with a real password |
 
-Run them by hand:
-
-```bash
-bun run check:docs
-bun run check:scope
-bun run check:secrets
-node scripts/check-no-emojis.mjs
-node scripts/test-diagram-lint.mjs
-```
-
-Emergency bypass: `SKIP_DOCS_CHECK=1`, `SKIP_SCOPE_CHECK=1`,
-`SKIP_EMOJI_CHECK=1`, or `SKIP_SECRET_CHECK=1`.
+Run any of them by hand, e.g. `node scripts/check-code.mjs` or `bunx lefthook run pre-push`.
 
 ### Credentials
 
@@ -131,22 +137,27 @@ be read from the `requestDelegate` passed to `inviter.invite()`, and stamped on
 the call row *before* `POST /api/calls/:id/record`. Both have broken recording
 before. See [docs/diagrams/call-lifecycle.mmd](docs/diagrams/call-lifecycle.mmd).
 
-## Commit messages
+## Branches and commit messages
+
+Work on a branch named `<type>/<short-kebab-name>` (`feat/contact-dialer-page`, `fix/pin-state`); `main` takes merges only.
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`, enforced by the commit-msg hook.
 
 ```
-feat: add CSV import for leads
-fix: stamp telnyxCallId before starting the recording
+feat(dialer): show the pinned state on the pin button
+fix(calls): stamp telnyxCallId before starting the recording
 docs: update the SIP provider guide
-refactor: extract auth into a provider
+refactor(contact): move the sidebar into domains/contact/sidebar
 ```
 
-Note the existing history predates conventional commits and uses
-`<area>: <description>`. Match whatever the recent log is doing.
+- Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. Add `!` after the type for a breaking change.
+- Subject in lower case, no trailing period; first line at most 72 characters; a blank line before the body.
+- Merge, revert, fixup and squash messages from git pass as they are.
 
 ## Pull requests
 
 1. Update the docs, including the diagram, if you changed behaviour.
-2. Make sure the three pre-push checks pass.
+2. Make sure the pre-push hooks pass (`bunx lefthook run pre-push`).
 3. Run `bun run build`.
 4. Open the PR.
 

@@ -361,15 +361,15 @@ error('Error', 'Failed to delete the lead');
 
 | Component | Path | Purpose |
 |---|---|---|
-| `Layout` | `components/common/Layout.tsx` | App shell with sidebar, header, routing |
-| `PageCanvas` | `components/common/PageCanvas.tsx` | Canvas wrapper for non-table pages |
-| `WidgetCard` | `components/ui/WidgetCard.tsx` | Twenty-style card primitive |
-| `StatusSelect` | `components/common/StatusSelect.tsx` | Floating dropdown for status selection |
-| `StatusBadge` | `components/common/StatusBadge.tsx` | Inline status indicator |
-| `Badge` | `components/ui/Badge.tsx` | Generic badge with variants |
-| `ToastProvider` | `components/ui/Toast.tsx` | Notification system |
-| `RecordIndexCommandMenu` | `components/common/RecordIndexCommandMenu.tsx` | Bulk actions toolbar |
-| `ColumnVisibilityDropdown` | `components/common/ColumnVisibilityDropdown.tsx` | Column toggle menu |
+| `Layout` | `domains/app/layout/layout.tsx` | App shell with sidebar, header, routing |
+| `PageCanvas` | `domains/app/pageCanvas/pageCanvas.tsx` | Canvas wrapper for non-table pages |
+| `WidgetCard` | `domains/ui/widgetCard/widgetCard.tsx` | Twenty-style card primitive |
+| `StatusSelect` | `domains/ui/status/statusSelect.tsx` | Floating dropdown for status selection |
+| `StatusBadge` | `domains/ui/status/statusBadge.tsx` | Inline status indicator |
+| `Badge` | `domains/ui/badge/badge.tsx` | Generic badge with variants |
+| `ToastProvider` | `domains/ui/toast/toast.tsx` | Notification system |
+| `RecordIndexCommandMenu` | `domains/ui/table/recordIndexCommandMenu.tsx` | Bulk actions toolbar |
+| `ColumnVisibilityDropdown` | `domains/ui/table/columnVisibilityDropdown.tsx` | Column toggle menu |
 | `RecordTableColumnHead` | `components/common/RecordTableColumnHead.tsx` | Interactive column header |
 
 ---

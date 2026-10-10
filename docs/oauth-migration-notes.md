@@ -40,8 +40,8 @@ Provider plumbing (`backend/src/lib/twenty/oauth/`):
 Frontend:
 
 - `frontend/src/lib/oauth.ts` — `beginSignIn()` (PKCE state + verifier into `sessionStorage`, redirect to `/authorize`) and `finishSignIn()` (state check → `/token` → `/session` → store dialer JWT → caller navigates to `/dashboard`).
-- `frontend/src/pages/CallbackPage.tsx` — the `/callback` route that drives `finishSignIn` and then bounces to `/dashboard`.
-- `frontend/src/pages/LoginPage.tsx` — one button: Continue with Twenty.
+- `frontend/src/domains/auth/callback/callbackPage.tsx` — the `/callback` route that drives `finishSignIn` and then bounces to `/dashboard`.
+- `frontend/src/domains/auth/login/loginPage.tsx` — one button: Continue with Twenty.
 - `frontend/src/lib/apiClient.ts` — `getAuthToken()` reads `localStorage` on every call.
 
 ## The deployment layers, and how each was crossed
