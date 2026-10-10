@@ -35,13 +35,18 @@ import { HistorySentence, rowIcon } from "@/domains/contact/history";
 import { useRecordHistory } from "@/domains/contact/history";
 import type { Contact } from "@/domains/contact/model";
 import { initials } from "@/domains/contact/model";
+import { useContactTexts, useSendText } from "@/domains/messaging/thread";
+import type { TextMessage } from "@/domains/api/client";
+import { useToast } from "@/domains/ui/toast";
+import { describeError } from "@/domains/feedback/describeError";
 
 export type ComposerMode = "sms" | "note";
 
-type FeedFilter = "all" | "calls" | "notes" | "updates";
+type FeedFilter = "all" | "calls" | "texts" | "notes" | "updates";
 
 type FeedItem =
   | { kind: "call"; at: string; call: any }
+  | { kind: "text"; at: string | null; text: TextMessage }
   | { kind: "note"; at: string | null; author: string | null; body: string }
   | { kind: "event"; at: string; row: HistoryRow };
 
@@ -77,10 +82,12 @@ export function ContactFeed({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { rows: history } = useRecordHistory(contact);
+  const { data: thread } = useContactTexts(contact);
 
   const items = useMemo<FeedItem[]>(() => {
     const out: FeedItem[] = [];
     for (const call of calls) out.push({ kind: "call", at: call.startedAt || call.created_at, call });
+    for (const text of thread?.messages ?? []) out.push({ kind: "text", at: text.at, text });
     for (const n of parseNotes(contact.notes)) out.push({ kind: "note", at: n.at, author: n.author, body: n.body });
     // Record changes, the same rows as Record history. Added notes already
     // show as note cards, so their history rows are left out here.
@@ -94,9 +101,9 @@ export function ContactFeed({
     }
     // Oldest first, like a chat: undated (older free-form) notes lead.
     return out.sort((a, b) => (a.at ? new Date(a.at).getTime() : 0) - (b.at ? new Date(b.at).getTime() : 0));
-  }, [calls, contact, history]);
+  }, [calls, contact, history, thread]);
 
-  const shown = items.filter((i) => filter === "all" || (filter === "calls" && i.kind === "call") || (filter === "notes" && i.kind === "note") || (filter === "updates" && i.kind === "event"));
+  const shown = items.filter((i) => filter === "all" || (filter === "calls" && i.kind === "call") || (filter === "texts" && i.kind === "text") || (filter === "notes" && i.kind === "note") || (filter === "updates" && i.kind === "event"));
 
   // Land on the newest item, and follow new items as they arrive.
   useLayoutEffect(() => {
@@ -127,6 +134,7 @@ export function ContactFeed({
                 options: [
                   { value: "all", label: "Everything", hint: items.length },
                   { value: "calls", label: "Calls", hint: items.filter((i) => i.kind === "call").length },
+                  { value: "texts", label: "Texts", hint: items.filter((i) => i.kind === "text").length },
                   { value: "notes", label: "Notes", hint: items.filter((i) => i.kind === "note").length },
                   { value: "updates", label: "Record updates", hint: items.filter((i) => i.kind === "event").length },
                 ],
@@ -137,7 +145,7 @@ export function ContactFeed({
             trigger={
               <>
                 <ListFilter className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{filter === "all" ? "All activity" : filter === "calls" ? "Calls" : filter === "notes" ? "Notes" : "Updates"}</span>
+                <span className="hidden sm:inline">{filter === "all" ? "All activity" : filter === "calls" ? "Calls" : filter === "texts" ? "Texts" : filter === "notes" ? "Notes" : "Updates"}</span>
                 <ChevronDown className="w-3 h-3 opacity-60 hidden sm:inline" />
               </>
             }
@@ -155,11 +163,22 @@ export function ContactFeed({
         </div>
       </div>
 
+      {filter !== "all" && items.length > shown.length && (
+        <div className="px-4 py-1.5 shrink-0 flex items-center justify-between gap-2 border-b border-[var(--ods-border)] bg-[var(--ods-bg-primary)] text-[12px] text-[var(--ods-text-secondary)]">
+          <span>
+            Showing {filter === "calls" ? "calls" : filter === "texts" ? "texts" : filter === "notes" ? "notes" : "record updates"} only. {items.length - shown.length} other{" "}
+            {items.length - shown.length === 1 ? "item is" : "items are"} hidden.
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setFilter("all")}>
+            Show everything
+          </Button>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3 bg-[var(--ods-bg-secondary)]">
         {shown.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-[var(--ods-text-tertiary)]">
             <CalendarDays className="w-6 h-6" />
-            <p className="text-[13px]">{filter === "all" ? "Nothing here yet. Calls, notes and changes show up as they happen." : "Nothing of this kind yet."}</p>
+            <p className="text-[13px]">{filter === "all" ? "Nothing here yet. Calls, texts, notes and changes show up as they happen." : "Nothing of this kind yet."}</p>
           </div>
         )}
         {shown.map((item, i) => {
@@ -174,6 +193,7 @@ export function ContactFeed({
                 </div>
               )}
               {item.kind === "call" && <CallItem call={item.call} />}
+              {item.kind === "text" && <TextItem text={item.text} />}
               {item.kind === "note" && <NoteItem at={item.at} author={item.author} body={item.body} />}
               {item.kind === "event" && <EventItem row={item.row} />}
             </div>
@@ -181,7 +201,14 @@ export function ContactFeed({
         })}
       </div>
 
-      <Composer contact={contact} mode={composer} onModeChange={onComposerChange} onAddNote={onAddNote} focusSignal={composerFocus} />
+      <Composer
+        contact={contact}
+        mode={composer}
+        onModeChange={onComposerChange}
+        onAddNote={onAddNote}
+        focusSignal={composerFocus}
+        onTextSent={() => filter !== "all" && filter !== "texts" && setFilter("all")}
+      />
     </div>
   );
 }
@@ -239,6 +266,46 @@ function CallItem({ call }: { call: any }) {
   );
 }
 
+const TEXT_STATUS: Record<string, string> = {
+  sending: "Sending",
+  queued: "Queued",
+  sent: "Sent",
+  delivered: "Delivered",
+  delivery_unconfirmed: "Sent, delivery unconfirmed",
+  received: "Received",
+  sending_failed: "Failed to send",
+  delivery_failed: "Not delivered",
+  not_sent: "Not sent",
+};
+const TEXT_FAILED = new Set(["sending_failed", "delivery_failed", "not_sent", "failed"]);
+
+/** One text as a chat bubble: ours on the right in the brand tint, theirs on the left. */
+function TextItem({ text }: { text: TextMessage }) {
+  const ours = text.direction === "OUTBOUND";
+  const failed = TEXT_FAILED.has(text.status ?? "");
+  const status = text.status ? (TEXT_STATUS[text.status] ?? text.status) : null;
+  return (
+    <div className={`flex ${ours ? "justify-end" : "justify-start"}`}>
+      <div className="max-w-[78%]">
+        <div
+          className={`rounded-[10px] px-3 py-2 text-[14px] whitespace-pre-wrap break-words ${
+            ours
+              ? "bg-[color-mix(in_srgb,var(--ods-brand-600)_12%,transparent)] text-[var(--ods-text-primary)]"
+              : "bg-[var(--ods-bg-primary)] border border-[var(--ods-border)] text-[var(--ods-text-primary)]"
+          } ${failed ? "ring-1 ring-inset ring-red-500/50" : ""}`}
+        >
+          {text.body}
+        </div>
+        <div className={`mt-1 flex items-center gap-1.5 text-[12px] ${ours ? "justify-end" : ""} ${failed ? "text-red-600" : "text-[var(--ods-text-tertiary)]"}`}>
+          <MessageSquare className="w-3 h-3" />
+          <span>{[ours ? text.author || "You" : "Them", text.at ? time(text.at) : null, status].filter(Boolean).join(" · ")}</span>
+        </div>
+        {failed && text.error && <div className={`mt-0.5 text-[12px] text-red-600 ${ours ? "text-right" : ""}`}>{text.error}</div>}
+      </div>
+    </div>
+  );
+}
+
 function NoteItem({ at, author, body }: { at: string | null; author: string | null; body: string }) {
   return (
     <div className="max-w-[560px] ml-auto rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3">
@@ -273,20 +340,33 @@ function EventItem({ row }: { row: HistoryRow }) {
 
 // ---------------------------------------------------------------- composer
 
+/** A US number that carriers will refuse to carry texts from until it is registered. */
+function unregistered(line: { countryCode: string | null; numberType: string | null; tenDlcCampaignId: string | null; tollFreeVerificationId: string | null }): boolean {
+  if ((line.countryCode ?? "").toUpperCase() !== "US") return false;
+  if (line.numberType === "TOLL_FREE") return !line.tollFreeVerificationId;
+  if (line.numberType === "SHORT_CODE") return false;
+  return !line.tenDlcCampaignId;
+}
+
 function Composer({
   contact,
   mode,
   onModeChange,
   onAddNote,
   focusSignal,
+  onTextSent,
 }: {
   contact: Contact;
   mode: ComposerMode;
   onModeChange: (m: ComposerMode) => void;
   onAddNote: (body: string) => Promise<boolean>;
   focusSignal: number;
+  /** Called as a text goes out, so a filtered timeline can show it. */
+  onTextSent: () => void;
 }) {
   const { lines, line, setLine } = useDialer();
+  const { error: toastError } = useToast();
+  const sendText = useSendText(contact);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -302,6 +382,18 @@ function Composer({
       setBusy(true);
       if (await onAddNote(text)) setText("");
       setBusy(false);
+      return;
+    }
+    if (!line || !contact.phone) return;
+    const body = text.trim();
+    setText("");
+    onTextSent();
+    try {
+      await sendText.mutateAsync({ fromPhoneId: line.id, fromNumber: line.phoneNumber, body });
+    } catch (err) {
+      // The bubble stays, marked "Not sent"; put the words back to edit and retry.
+      setText((current) => current || body);
+      toastError("Text not sent", describeError(err).detail);
     }
   };
 
@@ -351,6 +443,12 @@ function Composer({
           </div>
         )}
       </div>
+      {mode === "sms" && line && unregistered(line) && (
+        <p className="text-[12px] text-amber-700 dark:text-amber-400">
+          {line.phoneNumber} is not {line.numberType === "TOLL_FREE" ? "toll-free verified" : "registered for 10DLC"}, so US carriers block texts from it (Telnyx error{" "}
+          {line.numberType === "TOLL_FREE" ? "40329" : "40010"}). Register it in the Telnyx portal under Messaging first.
+        </p>
+      )}
       <textarea
         ref={ref}
         value={text}
@@ -366,7 +464,7 @@ function Composer({
       />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12px] text-[var(--ods-text-tertiary)] tabular-nums">
-          {mode === "sms" ? `Chars: ${sms.units} · Segments: ${sms.segments}${sms.encoding === "UCS-2" ? " · Unicode" : ""}` : "Ctrl+Enter to save"}
+          {mode === "sms" ? `Chars: ${sms.units} · Segments: ${sms.segments}${sms.encoding === "UCS-2" ? " · Unicode" : ""} · Ctrl+Enter to send` : "Ctrl+Enter to save"}
         </span>
         <div className="flex items-center gap-2">
           <Button variant="ghost" disabled={!text} onClick={() => setText("")}>
@@ -377,7 +475,15 @@ function Composer({
               Add note
             </Button>
           ) : (
-            <Button variant="primary" icon={Send} disabled title="SMS sending is wired up in the messaging phase (Phase 2)">
+            <Button
+              variant="primary"
+              icon={Send}
+              disabled={!text.trim() || !line || !contact.phone}
+              busy={sendText.isPending}
+              busyLabel="Sending…"
+              title={!contact.phone ? "This contact has no phone number" : !line ? "Pick a number to text from" : "Send (Ctrl+Enter)"}
+              onClick={() => void submit()}
+            >
               Send
             </Button>
           )}

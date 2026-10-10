@@ -6,6 +6,7 @@ import { createLogger } from "../../../lib/logger/index.js";
 import type { AgencyCall } from "../../calls/types.js";
 import { handleBridgeEvent } from "../../../lib/audioBridge/index.js";
 import { bridgeConfig, bridgeDeps } from "../../../lib/audioBridge/telnyx.js";
+import { handleMessageEvent } from "../../messages/events.js";
 
 const log = createLogger('telnyx-webhook');
 
@@ -189,8 +190,11 @@ router.post(["/telnyx", "/"], async (req, res) => {
     let result = "ignored";
     // Phone audio (Call me / Dial in) call-control events, when configured.
     const bridged = bridgeConfig().appId ? await handleBridgeEvent(eventType, payload, bridgeDeps()) : null;
+    const texted = bridged ? null : await handleMessageEvent(eventType, payload);
     if (bridged) {
       result = bridged;
+    } else if (texted) {
+      result = texted;
     } else if (eventType === "call.recording.saved") {
       result = await handleRecordingSaved(payload);
     } else if (eventType === "call.recording.transcription.saved") {

@@ -36,6 +36,21 @@ export interface AudioSessionView {
   error: string | null;
 }
 
+/** One text in a contact's thread, as GET /api/messages returns it. */
+export interface TextMessage {
+  id: string;
+  direction: "INBOUND" | "OUTBOUND";
+  body: string;
+  fromNumber: string | null;
+  toNumber: string | null;
+  /** Telnyx's word: queued, sending, sent, delivered, delivery_failed, received... ("sending" while optimistic). */
+  status: string | null;
+  at: string | null;
+  author: string | null;
+  /** Why it failed, in Telnyx's words (e.g. "Not 10DLC registered (40010)"). */
+  error?: string | null;
+}
+
 export type CallCampaignStatus = "active" | "completed" | "archived";
 
 /** A WAVV-style dial list (backend: /api/call-campaigns, stored in Twenty). */
@@ -286,6 +301,14 @@ export const api = {
     update: (id: string, data: Partial<PersonInput>) =>
       request<Person>(`/api/people/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/api/people/${id}`, { method: "DELETE" }),
+  },
+
+  /** Texts with a contact (agencyMessage), sent through Telnyx by the backend. */
+  messages: {
+    list: (contactType: "prospect" | "lead", contactId: string) =>
+      request<{ numbers: string[]; messages: TextMessage[] }>(`/api/messages?contactType=${contactType}&contactId=${encodeURIComponent(contactId)}`),
+    send: (data: { contactType: "prospect" | "lead"; contactId: string; fromPhoneId: string; body: string }) =>
+      request<{ message: TextMessage; failed: boolean }>("/api/messages/send", { method: "POST", body: JSON.stringify(data) }),
   },
 
   calls: {

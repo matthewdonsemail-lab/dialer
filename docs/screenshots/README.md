@@ -61,6 +61,10 @@ every API request from [apiFixtures.ts](../../scripts/screenshots/apiFixtures.ts
 
 ![Contact: notes](contact-notes.png)
 
+**texts**
+
+![Contact: texts](contact-texts.png)
+
 **website and video**
 
 ![Contact: website and video](contact-website.png)

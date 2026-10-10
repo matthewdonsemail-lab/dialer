@@ -88,6 +88,16 @@ export const SHOTS: Shot[] = [
   { name: "contact-history", title: "Contact: record history", path: `/contacts/${featured.id}`, act: rail("Record history") },
   { name: "contact-script", title: "Contact: call script", path: `/contacts/${featured.id}`, act: rail("Call script") },
   { name: "contact-notes", title: "Contact: notes", path: `/contacts/${featured.id}`, act: rail("Notes") },
+  {
+    name: "contact-texts",
+    title: "Contact: texts",
+    path: `/contacts/${featured.id}`,
+    act: async (page) => {
+      await rail("Call summary")(page);
+      await page.getByRole("button", { name: /^SMS$/ }).last().click();
+      await page.getByPlaceholder(/^Text /).fill("Perfect, I'll call at 10:00 Thursday.");
+    },
+  },
   { name: "contact-website", title: "Contact: website and video", path: `/contacts/${featured.id}`, act: rail("Website and video") },
   { name: "lead", title: "Lead", path: `/leads/${lead.id}`, act: rail("Call summary") },
   { name: "dialer-recents", title: "Dialer: recents", path: "/contacts", act: dock("Recents") },

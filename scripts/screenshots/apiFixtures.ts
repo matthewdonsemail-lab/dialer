@@ -163,7 +163,27 @@ export function respond(method: string, url: URL, pageUrl: string): FixtureRespo
   const q = url.searchParams;
   const ok = (body: unknown): FixtureResponse => ({ status: 200, body });
 
+  if (method === "POST" && path === "/api/messages/send") {
+    return { status: 201, body: { failed: false, message: { id: `sent-${Date.now()}`, direction: "OUTBOUND", body: "Sent from the demo", fromNumber: "+15125550100", toNumber: null, status: "queued", at: new Date().toISOString(), author: "Alex Rivera" } } };
+  }
   if (method !== "GET") return ok({ ok: true, success: true });
+  if (path === "/api/messages") {
+    const id = url.searchParams.get("contactId");
+    const contact = db.agencyProspects.find((p) => p.id === id);
+    if (!contact || contact.id !== db.agencyProspects[0].id) return ok({ numbers: contact ? [contact.phone] : [], messages: [] });
+    const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+    const ours = (body: string, minutesAgo: number, status: string) => ({ id: `t${minutesAgo}`, direction: "OUTBOUND", body, fromNumber: "+15125550100", toNumber: contact.phone, status, at: at(minutesAgo), author: "Alex Rivera" });
+    const theirs = (body: string, minutesAgo: number) => ({ id: `t${minutesAgo}`, direction: "INBOUND", body, fromNumber: contact.phone, toNumber: "+15125550100", status: "received", at: at(minutesAgo), author: null });
+    return ok({
+      numbers: [contact.phone],
+      messages: [
+        ours("Hi Maria, it's Alex. Here's the booking page for Clearview, with your reviews and prices: https://offer.example/window-tinting/clearview-window-tint", 38, "delivered"),
+        theirs("Oh nice, that was quick. Can customers pick a time slot on it?", 31),
+        ours("Yes, they choose a slot and get a text reminder the day before. Want me to switch it on for Thursday?", 29, "delivered"),
+        theirs("Yes please. Talk Thursday.", 12),
+      ],
+    });
+  }
 
   if (path === "/api/auth/me") {
     return ok({ id: DEMO_USER.id, email: DEMO_USER.email, fullName: DEMO_USER.name, role: "admin", twentyUserId: DEMO_USER.id, workspaceMemberId: DEMO_USER.id, member: { id: DEMO_USER.id, name: DEMO_USER.name, avatarUrl: "" } });
