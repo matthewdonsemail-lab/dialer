@@ -1,4 +1,4 @@
-import { contactStatusMachine } from "../lib/contact-status-machine.js";
+import { contactStatusMachine } from "../lib/contactStatusMachine.js";
 import type { ContactStatus } from "../types.js";
 
 /**

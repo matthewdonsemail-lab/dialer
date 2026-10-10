@@ -44,6 +44,7 @@ export function createMachine<S extends string>(spec: MachineSpec<S>): Machine<S
     initial: spec.initial,
     states,
     isState,
+    state: (name) => name,
     parse,
     def: (state) => spec.states[state],
     label: (state) => (state && known.has(state) ? spec.states[state].label : "Unknown"),

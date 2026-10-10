@@ -40,6 +40,8 @@ export interface Machine<S extends string> {
   /** States in declaration order (also the order menus show them in). */
   readonly states: readonly S[];
   isState(value: unknown): value is S;
+  /** A state named on purpose in code: checked by the type system, not a free string. */
+  state(name: S): S;
   /** The state for a stored value; blank becomes the initial state, unknown becomes null. */
   parse(value: unknown): S | null;
   def(state: S): StateDef<S>;
