@@ -1,7 +1,8 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BarChart3, Check, Clock, LogOut, Monitor, Moon, Palette, PhoneOutgoing, Sun, Timer, User, type IconComponent } from "@/components/ui/icons";
+import { BarChart3, Check, Clock, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, Sun, Timer, User, type IconComponent } from "@/components/ui/icons";
 import { InfoTip, TipCard, type TipSpec } from "@/components/ui/InfoTip";
+import { AudioSourceSettings } from "@/components/audio/AudioSourceSettings";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -183,6 +184,20 @@ export function SettingsPage() {
               );
             })}
           </div>
+        </WidgetCard>
+
+        <WidgetCard
+          title="Audio Source"
+          icon={Headphones}
+          info={{
+            title: "Audio Source",
+            icon: Headphones,
+            what: "How you hear and talk on calls: this computer's mic and speakers, or your phone.",
+            formula: ["Your phone", "+", "Telnyx", "=", "One call leg per session"],
+            use: "Call me / Dial in need the Telnyx Call Control app and dial-in number configured on the server.",
+          }}
+        >
+          <AudioSourceSettings />
         </WidgetCard>
 
         <WidgetCard

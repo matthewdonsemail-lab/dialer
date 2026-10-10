@@ -7,6 +7,7 @@ import { api } from '@/lib/api-client';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { PowerDialerProvider } from '@/components/campaigns/PowerDialer';
+import { AudioBridgeProvider } from '@/components/audio/AudioBridge';
 import {
   BarChart3,
   Users,
@@ -145,6 +146,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <AudioBridgeProvider>
     <PowerDialerProvider>
     <div className="flex h-screen overflow-hidden bg-[var(--ods-bg-secondary,#fafafb)] text-[var(--ods-text-primary,#18181b)] font-sans antialiased">
       {/* always-visible sidebar: every section as an icon + label row */}
@@ -272,5 +274,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
     </PowerDialerProvider>
+    </AudioBridgeProvider>
   );
 }

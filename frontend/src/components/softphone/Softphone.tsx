@@ -22,6 +22,8 @@ import { mapOutcomeToCallStatus, isWithinCooldown, lastDialTo, DIAL_COOLDOWN_HOU
 import { useCalls } from "@/hooks/use-call-logs";
 import type { Database } from "@/types/database";
 import { useToast } from "@/components/ui/Toast";
+import { useAudioSettings } from "@/hooks/use-audio-settings";
+import { useAudioBridge } from "@/components/audio/AudioBridge";
 
 // Explicit opt-in only: simulated calls NEVER happen silently. Ordinary dials
 // fail loudly with the classified reason instead.
@@ -93,6 +95,12 @@ export function Softphone({
   onCallEnd,
 }: SoftphoneProps) {
   const { error: toastError, warning: toastWarning } = useToast();
+  // Settings -> Audio Source: computer mic/speaker, or a phone line (Call me / Dial in).
+  const { source: audioSource, microphoneId, speakerId } = useAudioSettings();
+  const audioBridge = useAudioBridge();
+  const phoneAudio = audioSource !== "computer";
+  /** Contact leg id while a phone-audio call is up. */
+  const bridgeLegRef = useRef<string | null>(null);
   const [callState, setCallState] = useState<CallState>("idle");
   const [duration, setDuration] = useState(0);
   const [notes, setNotes] = useState("");
@@ -299,7 +307,17 @@ export function Softphone({
   // Get local microphone stream
   const getLocalStream = useCallback(async (): Promise<MediaStream> => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The microphone chosen in Settings; fall back to the default if it is unplugged.
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: microphoneId ? { deviceId: { exact: microphoneId } } : true,
+        });
+      } catch (err: any) {
+        if (!microphoneId || (err?.name !== "OverconstrainedError" && err?.name !== "NotFoundError")) throw err;
+        sipLog.warn("audio", "selected microphone unavailable; using the default");
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       localStreamRef.current = stream;
       return stream;
     } catch (err) {
@@ -307,7 +325,17 @@ export function Softphone({
       toastError("Microphone access denied. Please allow microphone permissions.");
       throw err;
     }
-  }, [toastError]);
+  }, [toastError, microphoneId]);
+
+  // Play the call through the speaker chosen in Settings (Chromium browsers;
+  // others use the system default output).
+  useEffect(() => {
+    const el = remoteAudioRef.current as (HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (!el?.setSinkId) return;
+    el.setSinkId(speakerId || "default").catch(() => {
+      sipLog.warn("audio", "selected speaker unavailable; using the default");
+    });
+  }, [speakerId, callState]);
 
   const stopLocalStream = useCallback(() => {
     if (localStreamRef.current) {
@@ -539,6 +567,60 @@ export function Softphone({
     setTimeout(() => setCallState("active"), 4000);
   }, []);
 
+  /**
+   * Phone audio: make sure the operator's phone line is connected, then have
+   * the backend ring the contact into it (Telnyx bridges on answer and
+   * records). Call state follows the line's contactState, polled by AudioBridge.
+   */
+  const startPhoneAudioCall = useCallback(async () => {
+    const from = callerId || "";
+    sipLog.info("app", "phone audio: connecting your line", { source: audioSource });
+    const failCall = async (title: string, detail: string) => {
+      toastError(title, detail);
+      bridgeLegRef.current = null;
+      setOutcome("failed");
+      setCallState("ended");
+      await releaseNumber(callLogIdRef.current);
+      void finalizeCall("failed", 0, "outbound");
+    };
+    const line = await audioBridge.ensureReady(from);
+    if (!line) {
+      await failCall("Call not placed", "Your phone line is not connected.");
+      return;
+    }
+    try {
+      const { contactLegId } = await api.audioSessions.dial(line.id, { to: phoneNumberForCallRef.current, from });
+      bridgeLegRef.current = contactLegId;
+      telnyxCallControlIdRef.current = contactLegId;
+      recordStartedRef.current = true; // Telnyx records from answer (dial record option)
+      const rowId = await ensureCallRow();
+      if (rowId) api.calls.update(rowId, { telnyxCallId: contactLegId }).catch(() => {});
+      setCallState("ringing");
+    } catch (err: any) {
+      await failCall("Call not placed", err?.message || "The dialer could not ring this contact.");
+    }
+  }, [callerId, audioSource, audioBridge, ensureCallRow, finalizeCall, releaseNumber, toastError]);
+
+  // Follow the contact leg of a phone-audio call.
+  useEffect(() => {
+    const line = audioBridge.session;
+    const leg = bridgeLegRef.current;
+    if (!leg || !line) return;
+    const lineDown = line.status === "ended" || line.status === "failed";
+    if (line.contactLegId === leg && line.contactState === "answered" && callStateRef.current !== "active") {
+      wasEstablishedRef.current = true;
+      setOutcome("connected");
+      setCallState("active");
+      setPhoneActive();
+    }
+    if ((line.contactLegId === leg && line.contactState === "ended") || lineDown) {
+      bridgeLegRef.current = null;
+      if (!wasEstablishedRef.current) setOutcome("no_answer");
+      setCallState("ended");
+      void finalizeCall(wasEstablishedRef.current ? outcomeRef.current : "no_answer", durationRef.current, "outbound");
+    }
+  }, [audioBridge.session, finalizeCall, setPhoneActive]);
+
   const startCall = useCallback(async () => {
     if (!phoneNumber) return;
 
@@ -595,6 +677,11 @@ export function Softphone({
     // cleared by the reset. The live call needs an id before Telnyx hands us
     // a call-control-id.
     await ensureCallRow();
+
+    if (phoneAudio && !SIMULATE_CALLS) {
+      await startPhoneAudioCall();
+      return;
+    }
 
     const sipConfig = getSipConfig();
     sipLog.info("app", "sip config", {
@@ -866,9 +953,14 @@ export function Softphone({
       return;
     }
 }, [phoneNumber, callerId, recentCalls, startSimulatedCall, getLocalStream, claimNumber, failLoud, ensureCallRow,
-    maybeStartServerRecording, clearDialTimers, handleUnansweredTimeout]);
+    maybeStartServerRecording, clearDialTimers, handleUnansweredTimeout, phoneAudio, startPhoneAudioCall]);
 
   const endCall = useCallback(async () => {
+    if (bridgeLegRef.current && audioBridge.session) {
+      // Phone audio: drop the contact; the operator's line stays up for the next call.
+      bridgeLegRef.current = null;
+      void api.audioSessions.hangup(audioBridge.session.id).catch(() => {});
+    }
     stopLocalStream();
     // Manual hangup wins over the watchdog: no timeout firing afterwards.
     clearDialTimers();
@@ -900,7 +992,7 @@ export function Softphone({
     // Covers simulated calls (no SIP Terminated event) and user hangup:
     // guarded, so the SIP listener path won't double-log.
     void finalizeCall(outcomeRef.current, durationRef.current, directionRef.current);
-  }, [stopLocalStream, finalizeCall, clearDialTimers]);
+  }, [stopLocalStream, finalizeCall, clearDialTimers, audioBridge.session]);
 
   const toggleMute = useCallback(() => {
     const isCurrentlyMuted = callState === "muted";
@@ -1151,15 +1243,16 @@ export function Softphone({
                 </button>
                 <button
                   onClick={toggleMute}
-                  disabled={callState === "on_hold"}
-                  title={callState === "muted" ? "Unmute" : "Mute"}
+                  disabled={phoneAudio || callState === "on_hold"}
+                  title={phoneAudio ? "Mute on your phone (phone audio)" : callState === "muted" ? "Unmute" : "Mute"}
                   className={`w-10 h-10 rounded-full flex items-center justify-center ${callState === "muted" ? "bg-red-500/25 text-red-200" : "bg-white/10 hover:bg-white/15"}`}
                 >
                   {callState === "muted" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </button>
                 <button
                   onClick={toggleHold}
-                  title={callState === "on_hold" ? "Resume" : "Hold"}
+                  disabled={phoneAudio}
+                  title={phoneAudio ? "Hold on your phone (phone audio)" : callState === "on_hold" ? "Resume" : "Hold"}
                   className={`w-10 h-10 rounded-full flex items-center justify-center ${callState === "on_hold" ? "bg-amber-500/25 text-amber-200" : "bg-white/10 hover:bg-white/15"}`}
                 >
                   <Headphones className="w-4 h-4" />
@@ -1288,24 +1381,25 @@ export function Softphone({
                 </button>
                 <button
                   onClick={toggleMute}
-                  disabled={callState === "on_hold"}
+                  disabled={phoneAudio || callState === "on_hold"}
                   className={`w-10 h-10 rounded-full flex items-center justify-center transition ${FOCUS_RING} ${
                     callState === "muted"
                       ? "bg-red-500/10 text-red-600"
                       : "bg-[var(--ods-bg-tertiary)] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-border)]"
                   }`}
-                  title={callState === "muted" ? "Unmute" : "Mute"}
+                  title={phoneAudio ? "Mute on your phone (phone audio)" : callState === "muted" ? "Unmute" : "Mute"}
                 >
                   {callState === "muted" ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </button>
                 <button
                   onClick={toggleHold}
+                  disabled={phoneAudio}
                   className={`w-10 h-10 rounded-full flex items-center justify-center transition ${FOCUS_RING} ${
                     callState === "on_hold"
                       ? "bg-amber-500/10 text-amber-600"
                       : "bg-[var(--ods-bg-tertiary)] text-[var(--ods-text-secondary)] hover:bg-[var(--ods-border)]"
                   }`}
-                  title="Hold"
+                  title={phoneAudio ? "Hold on your phone (phone audio)" : "Hold"}
                 >
                   <Headphones className="w-5 h-5" />
                 </button>

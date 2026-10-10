@@ -24,6 +24,22 @@ export class ApiError extends Error {
   }
 }
 
+/** Phone audio line (Call me / Dial in), as /api/audio-sessions returns it. */
+export interface AudioSessionView {
+  id: string;
+  mode: "call_me" | "dial_in";
+  status: "calling_agent" | "waiting_dial_in" | "ready" | "ended" | "failed";
+  agentPhone: string | null;
+  dialInNumber: string | null;
+  pin: string | null;
+  contactLegId: string | null;
+  contactState: "idle" | "dialing" | "ringing" | "answered" | "ended";
+  contactAnsweredAt: string | null;
+  contactEndedAt: string | null;
+  hangupCause: string | null;
+  error: string | null;
+}
+
 export type CallCampaignStatus = "active" | "completed" | "archived";
 
 /** A WAVV-style dial list (backend: /api/call-campaigns, stored in Twenty). */
@@ -207,6 +223,20 @@ export const api = {
       request<any>(`/api/twenty/phones/${id}/state`, { method: "POST", body: JSON.stringify(data) }),
     release: (id: string, data: { memberId: string; force?: boolean; callId?: string }) =>
       request<any>(`/api/twenty/phones/${id}/release`, { method: "POST", body: JSON.stringify(data) }),
+  },
+
+  audioSessions: {
+    config: () =>
+      request<{ callMeAvailable: boolean; dialInAvailable: boolean; dialInNumber: string | null; missing: string[] }>(
+        "/api/audio-sessions/config",
+      ),
+    open: (data: { mode: "call_me" | "dial_in"; agentPhone?: string; from: string }) =>
+      request<AudioSessionView>("/api/audio-sessions", { method: "POST", body: JSON.stringify(data) }),
+    get: (id: string) => request<AudioSessionView>(`/api/audio-sessions/${id}`),
+    dial: (id: string, data: { to: string; from: string }) =>
+      request<{ contactLegId: string }>(`/api/audio-sessions/${id}/dial`, { method: "POST", body: JSON.stringify(data) }),
+    hangup: (id: string) => request<void>(`/api/audio-sessions/${id}/hangup`, { method: "POST" }),
+    end: (id: string) => request<void>(`/api/audio-sessions/${id}/end`, { method: "POST" }),
   },
 
   callCampaigns: {
