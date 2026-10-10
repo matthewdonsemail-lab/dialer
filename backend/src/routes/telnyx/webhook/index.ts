@@ -3,6 +3,8 @@ import { listTwentyAll, createTwenty, updateTwenty } from "../../../lib/twenty/c
 import { analyzeCallTranscript, isAiConfigured } from "../../../lib/ai/analysis/index.js";
 import { createLogger } from "../../../lib/logger/index.js";
 import type { AgencyCall } from "../../calls/types.js";
+import { handleBridgeEvent } from "../../../lib/audioBridge/index.js";
+import { bridgeConfig, bridgeDeps } from "../../../lib/audioBridge/telnyx.js";
 
 const log = createLogger('telnyx-webhook');
 
@@ -15,6 +17,8 @@ const log = createLogger('telnyx-webhook');
  * Twenty writes, plus best-effort AI analysis when a transcript lands.
  *
  * Handled events:
+ *   call.initiated / call.answered / call.gather.ended / call.hangup
+ *                                      -> phone audio sessions (lib/audioBridge)
  *   call.recording.saved               -> attach recording to agencyCalls (by telnyxCallId)
  *   call.recording.transcription.saved -> attach transcript, then AI-analyze
  *   call.recording.error               -> transcriptionStatus=FAILED
@@ -172,7 +176,11 @@ router.post(["/telnyx", "/"], async (req, res) => {
 
   try {
     let result = "ignored";
-    if (eventType === "call.recording.saved") {
+    // Phone audio (Call me / Dial in) call-control events, when configured.
+    const bridged = bridgeConfig().appId ? await handleBridgeEvent(eventType, payload, bridgeDeps()) : null;
+    if (bridged) {
+      result = bridged;
+    } else if (eventType === "call.recording.saved") {
       result = await handleRecordingSaved(payload);
     } else if (eventType === "call.recording.transcription.saved") {
       result = await handleTranscriptionSaved(payload);

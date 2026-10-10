@@ -33,6 +33,7 @@ import twentyPhonesRoutes from "./routes/twenty/phones/index.js";
 import twentyMetaRoutes from "./routes/twenty/meta/index.js";
 import twentySetupRoutes from "./routes/twenty/setup/index.js";
 import callCampaignRoutes from "./routes/callCampaigns/index.js";
+import audioSessionRoutes from "./routes/audioSessions/index.js";
 import twentyWebhookRouter from "./routes/twenty/webhook/index.js";
 import { callLogsRouter } from "./routes/call-logs/index.js";
 import callsRouter from "./routes/calls/index.js";
@@ -181,6 +182,7 @@ app.use("/api/twenty/meta", twentyMetaRoutes);
 app.use("/api/twenty/webhook", twentyWebhookRouter);
 app.use("/api/setup/twenty", twentySetupRoutes);
 app.use("/api/call-campaigns", callCampaignRoutes);
+app.use("/api/audio-sessions", audioSessionRoutes);
 app.use("/api/call-logs", callLogsRouter);
 app.use("/api/calls", callsRouter);
 // Telnyx webhooks are token-gated (no authMiddleware) — mount alongside,

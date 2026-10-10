@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BarChart3, Check, LogOut, Monitor, Moon, Palette, Sun, User } from "@/components/ui/icons";
+import { BarChart3, Check, Headphones, LogOut, Monitor, Moon, Palette, Sun, User } from "@/components/ui/icons";
+import { AudioSourceSettings } from "@/components/audio/AudioSourceSettings";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -161,6 +162,10 @@ export function SettingsPage() {
               );
             })}
           </div>
+        </WidgetCard>
+
+        <WidgetCard title="Audio Source" icon={Headphones}>
+          <AudioSourceSettings />
         </WidgetCard>
 
         <WidgetCard
