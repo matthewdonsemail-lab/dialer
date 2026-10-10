@@ -32,7 +32,10 @@ out/
 .vercel/
 .scratch/
 coverage/
-data/
+# The old SQLite backend's database and recordings. Anchored: a bare "data/"
+# also ignored every frontend/src/domains/*/data folder, so the data hooks
+# never reached git and the Vercel build could not find them.
+/backend/data/
 
 # Logs & debug
 *.log

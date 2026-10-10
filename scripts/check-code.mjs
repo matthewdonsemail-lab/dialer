@@ -14,6 +14,10 @@
 //   pipeline-literal  a status / outboundLabel / videoStatus / coldCallStatus
 //                     written to the API as a hard-coded string instead of a
 //                     value from the shared pipelines
+//   in-git            no source file is ignored by .gitignore (a bare "data/"
+//                     once hid six frontend folders: every local check passed
+//                     and the Vercel build could not find them); on a full run
+//                     (pre-push) no source file is left untracked either
 //
 //   node scripts/check-code.mjs            every file
 //   node scripts/check-code.mjs --staged   staged files only (pre-commit)
@@ -54,6 +58,23 @@ function listFiles() {
 
 const violations = [];
 const report = (rel, line, rule, why) => violations.push(`${rel}:${line}  [${rule}] ${why}`);
+
+// in-git: the build that ships is the one in git, so every source file must be in it.
+if (!process.env.CODE_TEST_FILE) {
+  const gitFiles = (...args) =>
+    execFileSync('git', ['ls-files', ...args, '--', ...ROOTS], { cwd: ROOT, encoding: 'utf8' })
+      .split(/\r?\n/)
+      .map((f) => f.trim().split(path.sep).join('/'))
+      .filter((f) => /\.(tsx?|css)$/.test(f));
+  for (const f of gitFiles('--others', '--ignored', '--exclude-standard')) {
+    report(f, 1, 'in-git', 'ignored by .gitignore, so it never reaches git or the deployed build; narrow the ignore rule');
+  }
+  if (!process.argv.includes('--staged')) {
+    for (const f of gitFiles('--others', '--exclude-standard')) {
+      report(f, 1, 'in-git', 'not committed: the build from git (Vercel) will not have it; commit it or delete it');
+    }
+  }
+}
 
 for (const rel of listFiles()) {
   const abs = path.isAbsolute(rel) ? rel : path.join(ROOT, rel);
@@ -161,4 +182,4 @@ if (violations.length) {
   for (const v of violations) console.error(`  - ${v}`);
   process.exit(1);
 }
-console.log('OK - code rules hold (naming, layout, dead buttons, toggle state, pipeline literals).');
+console.log('OK - code rules hold (naming, layout, dead buttons, toggle state, pipeline literals, in git).');
