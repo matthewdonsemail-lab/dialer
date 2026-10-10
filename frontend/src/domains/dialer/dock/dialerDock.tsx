@@ -42,6 +42,7 @@ import { AudioSourceSettings } from "@/domains/dialer/audio";
 import { CallScriptViewer } from "@/domains/scripts/viewer";
 import { usePowerDialer, contactDisplayName } from "@/domains/campaigns/powerDialer";
 import { usePersistedState } from "@/domains/app/persistedState";
+import { DEFAULT_UNANSWERED_TIMEOUT_SECONDS, UNANSWERED_TIMEOUT_CHOICES, getUnansweredTimeoutSeconds, setUnansweredTimeoutSeconds } from "@/domains/app/config";
 import { useCalls } from "@/domains/calls/data";
 import { contactsApi, contactName, useContactFacets, useProspectLookup, type ContactRow } from "@/domains/contact/list";
 import { lineCountry, lineRegion, pickCallLine } from "@/domains/dialer/route";
@@ -999,8 +1000,43 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
           Caller ID is the <b className="text-[var(--ods-text-primary)]">Calling from</b> number at the top. Audio below applies to every call on
           this browser.
         </p>
+        <RingTimeSetting />
         <AudioSourceSettings />
       </div>
+    </div>
+  );
+}
+
+/** How long a call rings before the dialer logs No answer and stops it. */
+function RingTimeSetting() {
+  const [seconds, setSeconds] = useState(getUnansweredTimeoutSeconds);
+  return (
+    <div>
+      <div className="text-[12px] font-semibold text-[var(--ods-text-secondary)] mb-1">Ring for</div>
+      <SelectMenu
+        value={String(seconds)}
+        onChange={(v) => {
+          const n = Number(v);
+          setUnansweredTimeoutSeconds(n);
+          setSeconds(n);
+        }}
+        width={220}
+        sections={[
+          {
+            title: "Give up after",
+            options: UNANSWERED_TIMEOUT_CHOICES.map((n) => ({ value: String(n), label: `${n} seconds of ringing`, hint: n === DEFAULT_UNANSWERED_TIMEOUT_SECONDS ? "default" : undefined })),
+          },
+        ]}
+        triggerTitle="How long a call rings before it is logged as No answer"
+        triggerClassName="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-[var(--ods-border)] text-[13px] text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
+        trigger={
+          <>
+            {seconds} seconds of ringing
+            <ChevronDown className="w-3 h-3 opacity-60" />
+          </>
+        }
+      />
+      <p className="mt-1 text-[12px] text-[var(--ods-text-tertiary)]">Counted from the first ring. Most businesses answer within 4 to 6 rings (20 to 30 seconds).</p>
     </div>
   );
 }

@@ -382,6 +382,16 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     // Hanging up while the call is still being set up ends it at once; every
     // await below re-checks, so no INVITE leaves after the operator hung up.
     const hungUp = () => stateRef.current === "ended" || stateRef.current === "idle" || lifecycleRef.current !== lc;
+    const rangRef = { current: false };
+    let inviter: any = null;
+    const startUnanswered = (seconds: number) => {
+      clearUnanswered();
+      unansweredRef.current = setTimeout(() => {
+        if (establishedRef.current || !inviter || sessionRef.current !== inviter) return;
+        sipLog.warn("session", `no answer after ${seconds}s${rangRef.current ? " of ringing" : ""}, cancelling the INVITE (No answer)`);
+        try { inviter.cancel()?.catch?.(() => {}); } catch { /* already terminating */ }
+      }, seconds * 1000);
+    };
     if (!isSipConfigured()) return failLoud(classifyFailure({ notConfigured: true }));
     if (!agentRef.current) {
       // Pre-flight: is the WS host reachable before burning 8s on a timeout?
@@ -412,7 +422,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       const targetUri = UserAgent.makeURI(`sip:${lc.ctx.toNumber}@${agent.domain}`);
       if (!targetUri) return failLoud(classifyFailure({ wsUrl: cfg.wsUrl }));
       const callerId = lc.ctx.fromNumber || cfg.callerId;
-      const inviter = new Inviter(agent.ua, targetUri, {
+      inviter = new Inviter(agent.ua, targetUri, {
         sessionDescriptionHandlerOptions: {
           constraints: { audio: microphoneId ? { deviceId: { exact: microphoneId } } : true, video: false },
         },
@@ -452,6 +462,13 @@ export function DialerProvider({ children }: { children: ReactNode }) {
               sipLog.warn("invite", "200 OK without X-Telnyx-Call-Control-ID header");
             }
           },
+          onProgress: (response: any) => {
+            const code = response?.message?.statusCode;
+            if ((code === 180 || code === 183) && !rangRef.current) {
+              rangRef.current = true;
+              startUnanswered(getUnansweredTimeoutSeconds());
+            }
+          },
           onReject: (response: any) => {
             lastSipStatusRef.current = response?.message?.statusCode ?? null;
             sipLog.error("invite", `INVITE rejected: ${lastSipStatusRef.current} ${response?.message?.reasonPhrase ?? ""}`.trim());
@@ -461,14 +478,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       if (stateRef.current === "connecting") setCallState("ringing");
       sipLog.info("invite", "INVITE sent", { to: lc.ctx.toNumber });
       // Unanswered watchdog: cancel the INVITE and mark NO_ANSWER. The
-      // Terminated listener then does the normal finalize.
-      const timeoutSeconds = getUnansweredTimeoutSeconds();
-      clearUnanswered();
-      unansweredRef.current = setTimeout(() => {
-        if (establishedRef.current || sessionRef.current !== inviter) return;
-        sipLog.warn("session", `unanswered timeout (${timeoutSeconds}s) — cancelling INVITE, marking NO_ANSWER`);
-        try { (inviter as any).cancel()?.catch?.(() => {}); } catch { /* already terminating */ }
-      }, timeoutSeconds * 1000);
+      // Terminated listener then does the normal finalize. The ringing time
+      // is counted from the first ring (see onProgress), so carrier setup
+      // does not eat into it; this backstop covers a call that never rings.
+      if (!rangRef.current) startUnanswered(getUnansweredTimeoutSeconds() + 15);
       lc.startHeartbeat(HEARTBEAT_INTERVAL_MS, () => isLive(stateRef.current));
     } catch (err: any) {
       // Hung up before the INVITE went out: sip.js rejects the pending offer
