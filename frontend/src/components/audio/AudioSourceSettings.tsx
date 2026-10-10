@@ -312,7 +312,7 @@ export function AudioSourceSettings() {
             onChange={(e) => setCallMeNumber(e.target.value.replace(/[^\d+]/g, ""))}
             placeholder="+15551234567"
             inputMode="tel"
-            className={`w-full h-9 px-2.5 rounded-[8px] border bg-[var(--ods-bg-primary)] text-[13px] font-mono text-[var(--ods-text-primary)] outline-none ${
+            className={`w-full h-9 px-2.5 rounded-[8px] border bg-[var(--ods-bg-primary)] text-[13px] tabular-nums text-[var(--ods-text-primary)] outline-none ${
               callMeNumber && !numberValid ? "border-red-500" : "border-[var(--ods-border-strong)] focus:border-[var(--ods-brand-500)]"
             }`}
           />
@@ -333,7 +333,7 @@ export function AudioSourceSettings() {
         disabledReason={config && !config.dialInAvailable ? `Not set up on the server yet (needs ${config.missing.join(", ")}).` : undefined}
       >
         <p className="text-[13px] text-[var(--ods-text-primary)]">
-          Dial-in number: <b className="font-mono">{config?.dialInNumber ?? "—"}</b>
+          Dial-in number: <b className="tabular-nums">{config?.dialInNumber ?? "—"}</b>
           <span className="block text-[12px] text-[var(--ods-text-secondary)] mt-0.5">Your PIN is shown each time you start dialing.</span>
         </p>
       </Option>
