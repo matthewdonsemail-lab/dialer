@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LINK } from "@/domains/ui/tokens";
 import {
   AudioLines,
   CalendarDays,
@@ -178,7 +179,32 @@ export function CallHistoryPage() {
 
   const columns: DataColumn<Call>[] = [
     { key: "agent", label: "Agent", type: "text", width: 160, value: agentOf, filterable: true },
-    { key: "contact", label: "Contact", type: "title", width: 200, value: contactOf, filterable: true },
+    {
+      key: "contact",
+      label: "Contact",
+      type: "title",
+      width: 200,
+      value: contactOf,
+      filterable: true,
+      // The name opens the prospect or lead; the rest of the row opens the call.
+      render: (c) => {
+        const name = contactOf(c);
+        const path = c.agencyProspectId ? `/contacts/${c.agencyProspectId}` : c.agencyLeadId ? `/leads/${c.agencyLeadId}` : null;
+        if (!path) return <span className="truncate">{name}</span>;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(path);
+            }}
+            title={`Open ${name}`}
+            className={`${LINK} max-w-full truncate text-left font-semibold`}
+          >
+            {name}
+          </button>
+        );
+      },
+    },
     {
       key: "status",
       label: "Disposition",

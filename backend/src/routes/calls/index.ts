@@ -6,7 +6,7 @@ import { telnyxClient, telnyxErrorMessage } from "../../lib/telnyx/index.js";
 import { analyzeCallTranscript, isAiConfigured } from "../../lib/ai/analysis/index.js";
 import { createLogger } from "../../lib/logger/index.js";
 import type { AgencyCall } from "./types.js";
-import { mapCall, splitStatus } from "./helpers/index.js";
+import { mapCall, sortNewestFirst, splitStatus } from "./helpers/index.js";
 import { callResultMachine } from "@dialer/shared";
 import { forgetLastCalls } from "../../lib/twenty/lastCall/index.js";
 
@@ -15,11 +15,13 @@ router.use(authMiddleware);
 
 const log = createLogger('calls');
 
-// GET /api/calls — newest first (Twenty returns insertion order; reverse client-side)
+// GET /api/calls — newest first. The walk returns calls in id order, and
+// Twenty ids are random UUIDs, so reversing it was not time order: today's
+// calls landed mid-list and Recents / Call History never showed them.
 router.get("/", async (_req, res) => {
   try {
     const calls = await listTwentyAll<AgencyCall>('agencyCalls');
-    res.json(calls.map(mapCall).reverse());
+    res.json(sortNewestFirst(calls.map(mapCall)));
   } catch (err: any) {
     log.error("Failed to fetch calls:", err.message);
     res.status(500).json({ error: "Failed to fetch calls", details: err.message });
