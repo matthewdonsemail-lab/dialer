@@ -31,6 +31,7 @@ export function toMessageView(m: AgencyMessage): MessageView {
     status: m.status ? String(m.status).toLowerCase() : null,
     at: m.createdAt ?? null,
     author: m.createdBy?.name ?? null,
+    error: m.errorMessage ? `${m.errorMessage}${m.errorCode ? ` (${m.errorCode})` : ""}` : null,
   };
 }
 
@@ -39,12 +40,20 @@ export function oldestFirst(messages: MessageView[]): MessageView[] {
   return [...messages].sort((a, b) => Date.parse(a.at ?? "") - Date.parse(b.at ?? ""));
 }
 
-/** Telnyx's send response -> the status and parts to store. Pure. */
-export function telnyxSendResult(json: any): { id: string | null; status: string; parts: number | null } {
+/** Telnyx's first error on a message -> the fields stored on the record. Pure. */
+export function telnyxError(data: any): { errorCode: string; errorMessage: string } | null {
+  const err = data?.errors?.[0];
+  if (!err) return null;
+  return { errorCode: String(err.code ?? ""), errorMessage: String(err.title || err.detail || "Failed") };
+}
+
+/** Telnyx's send or message response -> the status, parts and error to store. Pure. */
+export function telnyxSendResult(json: any): { id: string | null; status: string; parts: number | null; error: { errorCode: string; errorMessage: string } | null } {
   const data = json?.data ?? {};
   return {
     id: typeof data.id === "string" ? data.id : null,
     status: String(data.to?.[0]?.status ?? "queued").toLowerCase(),
     parts: typeof data.parts === "number" ? data.parts : null,
+    error: telnyxError(data),
   };
 }

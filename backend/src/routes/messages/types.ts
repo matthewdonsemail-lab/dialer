@@ -8,6 +8,9 @@ export interface AgencyMessage {
   toNumber?: string | null;
   status?: string | null;
   telnyxMessageId?: string | null;
+  /** Telnyx's error when the text failed (written back so the record says why). */
+  errorCode?: string | null;
+  errorMessage?: string | null;
   createdAt?: string;
   createdBy?: { name?: string | null; workspaceMemberId?: string | null } | null;
 }

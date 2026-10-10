@@ -416,6 +416,43 @@ export const SCHEMA_OBJECTS: SchemaObject[] = [
       { name: "status", type: "TEXT", label: "Status" },
     ],
   },
+  {
+    // Shared with Blaster: TEXT fields and Telnyx's own status words.
+    nameSingular: "agencyMessage",
+    namePlural: "agencyMessages",
+    labelSingular: "Agency Message",
+    labelPlural: "Agency Messages",
+    description: "SMS sent and received through Telnyx",
+    icon: "IconMessage",
+    fields: [
+      { name: "body", type: "TEXT", label: "Body" },
+      { name: "direction", type: "TEXT", label: "Direction" },
+      { name: "fromNumber", type: "TEXT", label: "From Number" },
+      { name: "toNumber", type: "TEXT", label: "To Number" },
+      { name: "status", type: "TEXT", label: "Status" },
+      { name: "telnyxMessageId", type: "TEXT", label: "Telnyx Message ID" },
+      { name: "errorCode", type: "TEXT", label: "Error Code", description: "Telnyx error code when the text failed, e.g. 40010" },
+      { name: "errorMessage", type: "TEXT", label: "Error Message", description: "Why the text failed, in Telnyx's words" },
+    ],
+  },
+  {
+    nameSingular: "agencyConversation",
+    namePlural: "agencyConversations",
+    labelSingular: "Agency Conversation",
+    labelPlural: "Agency Conversations",
+    description: "One SMS thread per pair of numbers (ours, theirs)",
+    icon: "IconMessages",
+    fields: [
+      { name: "pairKey", type: "TEXT", label: "Pair Key" },
+      { name: "peerPhone", type: "TEXT", label: "Peer Phone" },
+      { name: "blasterNumber", type: "TEXT", label: "Blaster Number" },
+      { name: "latestMessageId", type: "TEXT", label: "Latest Message ID" },
+      { name: "latestMessageAt", type: "DATE_TIME", label: "Latest Message At" },
+      { name: "latestPreview", type: "TEXT", label: "Latest Preview" },
+      { name: "latestDirection", type: "TEXT", label: "Latest Direction" },
+      { name: "messageCount", type: "NUMBER", label: "Message Count" },
+    ],
+  },
 ];
 
 /** Created after every object exists, from the MANY_TO_ONE side. */

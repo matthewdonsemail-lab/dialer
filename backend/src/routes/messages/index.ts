@@ -54,10 +54,11 @@ async function refreshPending(rows: AgencyMessage[]): Promise<void> {
       try {
         const res = await fetch(`${TELNYX}/messages/${encodeURIComponent(m.telnyxMessageId!)}`, { headers: telnyxHeaders() });
         if (!res.ok) return;
-        const { status } = telnyxSendResult(await res.json());
+        const { status, error } = telnyxSendResult(await res.json());
         if (status && status !== String(m.status).toLowerCase()) {
-          await updateTwenty("agencyMessages", m.id, { status });
+          await updateTwenty("agencyMessages", m.id, { status, ...(error ?? {}) });
           m.status = status;
+          if (error) Object.assign(m, error);
         }
       } catch (err: any) {
         log.info(`Status refresh skipped for ${m.id}: ${err.message}`);
@@ -73,20 +74,21 @@ function parseContact(req: AuthRequest): { type: ContactType; id: string } | nul
   return type && /^[0-9a-f-]{36}$/i.test(id) ? { type, id } : null;
 }
 
-/** Telnyx's reason for a failed text, by message id; fixed once failed, so kept. */
-const failureReasons = new Map<string, string | null>();
-
-async function failureReason(telnyxId: string): Promise<string | null> {
-  if (failureReasons.has(telnyxId)) return failureReasons.get(telnyxId) ?? null;
+/**
+ * A failed text whose record does not say why yet (sent before the error
+ * fields existed, or failed with no webhook): ask Telnyx once and write the
+ * reason onto the agencyMessage, so Twenty shows it too.
+ */
+async function backfillFailure(m: AgencyMessage): Promise<void> {
   try {
-    const res = await fetch(`${TELNYX}/messages/${encodeURIComponent(telnyxId)}`, { headers: telnyxHeaders() });
-    if (!res.ok) return null;
-    const err = (await res.json())?.data?.errors?.[0];
-    const reason = err ? `${err.title || err.detail || "Failed"}${err.code ? ` (${err.code})` : ""}` : null;
-    failureReasons.set(telnyxId, reason);
-    return reason;
-  } catch {
-    return null;
+    const res = await fetch(`${TELNYX}/messages/${encodeURIComponent(m.telnyxMessageId!)}`, { headers: telnyxHeaders() });
+    if (!res.ok) return;
+    const { error } = telnyxSendResult(await res.json());
+    if (!error) return;
+    await updateTwenty("agencyMessages", m.id, error);
+    Object.assign(m, error);
+  } catch (err: any) {
+    log.info(`Failure reason not recorded for ${m.id}: ${err.message}`);
   }
 }
 
@@ -98,16 +100,9 @@ router.get("/", async (req: AuthRequest, res) => {
     const { numbers } = await loadContact(who.type, who.id);
     const rows = await messagesFor(numbers);
     await refreshPending(rows);
-    const views = rows.map(toMessageView);
-    // Say why a text failed (at most 10 asked per load; answers are cached).
-    const failed = rows.filter((m) => m.telnyxMessageId && FAILED_STATUSES.has(String(m.status ?? "").toLowerCase())).slice(0, 10);
-    await Promise.all(
-      failed.map(async (m) => {
-        const view = views.find((v) => v.id === m.id);
-        if (view) view.error = await failureReason(m.telnyxMessageId!);
-      }),
-    );
-    res.json({ numbers, messages: oldestFirst(views) });
+    const unexplained = rows.filter((m) => m.telnyxMessageId && !m.errorCode && FAILED_STATUSES.has(String(m.status ?? "").toLowerCase())).slice(0, 5);
+    await Promise.all(unexplained.map(backfillFailure));
+    res.json({ numbers, messages: oldestFirst(rows.map(toMessageView)) });
   } catch (err: any) {
     log.error("Failed to load messages:", err.message);
     res.status(500).json({ error: "Could not load the texts for this contact", details: err.message });
@@ -159,7 +154,7 @@ router.post("/send", async (req: AuthRequest, res) => {
     const at = new Date().toISOString();
     const row = await createTwenty<AgencyMessage>(
       "agencyMessages",
-      { name: preview(body), body, direction: "OUTBOUND", fromNumber: from, toNumber: to, status: result.status, telnyxMessageId: result.id },
+      { name: preview(body), body, direction: "OUTBOUND", fromNumber: from, toNumber: to, status: result.status, telnyxMessageId: result.id, ...(result.error ?? {}) },
       actor,
     );
 

@@ -1,7 +1,7 @@
 import { createTwenty, listTwenty, updateTwenty } from "../../lib/twenty/client/index.js";
 import { createLogger } from "../../lib/logger/index.js";
 import type { AgencyMessage } from "./types.js";
-import { preview, TELNYX_RECEIVED } from "./helpers/index.js";
+import { preview, TELNYX_RECEIVED, telnyxError } from "./helpers/index.js";
 import { touchConversation } from "./thread.js";
 
 const log = createLogger("messages");
@@ -49,7 +49,10 @@ export async function handleMessageEvent(eventType: string, payload: any): Promi
     const status = String(payload?.to?.[0]?.status ?? "").toLowerCase();
     const existing = await findByTelnyxId(id);
     if (!existing || !status) return "not ours";
-    if (status !== String(existing.status ?? "").toLowerCase()) await updateTwenty("agencyMessages", existing.id, { status });
+    const error = telnyxError(payload);
+    if (status !== String(existing.status ?? "").toLowerCase() || (error && !existing.errorCode)) {
+      await updateTwenty("agencyMessages", existing.id, { status, ...(error ?? {}) });
+    }
     return `status ${status}`;
   }
   return "ignored";
