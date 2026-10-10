@@ -19,13 +19,13 @@ import {
   Bell,
   PanelLeftClose,
   PanelLeftOpen,
-  type LucideIcon,
-} from 'lucide-react';
+  type IconComponent,
+} from "@/components/ui/icons";
 
 interface NavItem {
   to: string;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
 }
 
 /** Sidebar sections, separated by a divider (like GoHighLevel / WAVV). */

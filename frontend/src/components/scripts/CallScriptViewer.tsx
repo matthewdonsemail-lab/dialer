@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, BookOpen, AlertTriangle } from "lucide-react";
+import { X, BookOpen, AlertTriangle } from "@/components/ui/icons";
 import { useScripts, Script } from "@/hooks/use-scripts";
 
 interface CallScriptViewerProps {

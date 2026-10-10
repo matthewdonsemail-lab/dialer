@@ -10,7 +10,7 @@ import {
   useFloating,
   useInteractions,
 } from "@floating-ui/react";
-import { Check, Columns3 } from "lucide-react";
+import { Check, Columns3 } from "@/components/ui/icons";
 import { FilterTriggerContent, filterTriggerClass } from "@/components/ui/Menu";
 
 export interface ColumnDef {

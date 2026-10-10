@@ -13,7 +13,7 @@ import {
   useRole,
   type Placement,
 } from "@floating-ui/react";
-import { Check, Search } from "lucide-react";
+import { Check, Search } from "@/components/ui/icons";
 
 export interface MenuOption {
   value: string;

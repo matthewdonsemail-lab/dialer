@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LucideIcon, ChevronDown, ArrowUp, ArrowDown, EyeOff, ArrowLeft, ArrowRight } from 'lucide-react';
+import { IconComponent, ChevronDown, ArrowUp, ArrowDown, EyeOff, ArrowLeft, ArrowRight } from "@/components/ui/icons";
 
 interface RecordTableColumnHeadProps {
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   sortDirection?: 'asc' | 'desc' | null;
   onSort?: (direction: 'asc' | 'desc') => void;
   onHide?: () => void;

@@ -7,7 +7,13 @@ import { queryClient } from "@/lib/query-client";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ThemeProvider } from "@/lib/theme";
 import App from "@/App";
+// Font Awesome's base styles load before the app CSS so Tailwind size
+// utilities (w-4 h-4) override its default 1em icon height.
+import { config as fontAwesomeConfig } from "@fortawesome/fontawesome-svg-core";
+import "@fortawesome/fontawesome-svg-core/styles.css";
 import "@/index.css";
+
+fontAwesomeConfig.autoAddCss = false;
 
 // A deploy replaces hashed chunks: a tab holding a stale index.html then fails
 // to import a deleted chunk (served as text/html by the SPA fallback). Recover

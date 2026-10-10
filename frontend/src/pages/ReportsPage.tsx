@@ -10,7 +10,7 @@ import {
   ThumbsUp,
   Timer,
   Users,
-} from "lucide-react";
+} from "@/components/ui/icons";
 import { useCalls } from "@/hooks/use-call-logs";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useReportSettings } from "@/hooks/use-report-settings";

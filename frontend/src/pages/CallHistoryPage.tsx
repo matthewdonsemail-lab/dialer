@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AudioLines } from "lucide-react";
+import { AudioLines } from "@/components/ui/icons";
 import { useCalls } from "@/hooks/use-call-logs";
 import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 import { api } from "@/lib/api-client";

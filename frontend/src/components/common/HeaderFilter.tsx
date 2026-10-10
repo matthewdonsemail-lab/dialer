@@ -1,4 +1,4 @@
-import { ArrowDownAZ, ArrowUpZA, ListFilter, X } from "lucide-react";
+import { ArrowDownAZ, ArrowUpZA, ListFilter, X } from "@/components/ui/icons";
 import type { SortDirection } from "@/lib/list-sort";
 import { MenuRow, SelectMenu } from "@/components/ui/Menu";
 

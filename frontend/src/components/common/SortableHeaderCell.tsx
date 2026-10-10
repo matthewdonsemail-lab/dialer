@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical } from "@/components/ui/icons";
 import { MIN_COLUMN_WIDTH } from "@/hooks/use-column-widths";
 
 /**

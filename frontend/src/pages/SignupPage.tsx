@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, LogIn } from "lucide-react";
+import { AlertCircle, LogIn } from "@/components/ui/icons";
 
 /**
  * Sign up is disabled — members are created in Twenty, not in the dialer.

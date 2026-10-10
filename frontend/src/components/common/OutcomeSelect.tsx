@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@/components/ui/icons";
 import { SelectMenu } from "@/components/ui/Menu";
 import { DISPOSITIONS, dispositionFor, outcomeLabel, type DispositionType } from "@/lib/call-outcome";
 

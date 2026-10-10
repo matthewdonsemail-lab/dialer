@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { CheckSquare, AlertTriangle, Info, X } from "lucide-react";
+import { CheckSquare, AlertTriangle, Info, X } from "@/components/ui/icons";
 
 export type ToastVariant = "success" | "error" | "warning" | "info";
 

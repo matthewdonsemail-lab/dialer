@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Mail, PhoneCall, RefreshCw } from "lucide-react";
+import { Mail, PhoneCall, RefreshCw } from "@/components/ui/icons";
 import { api } from "@/lib/api-client";
 import { StatusSelect } from "@/components/common/StatusSelect";
 import { StatusFilterDropdown } from "@/components/common/StatusFilterDropdown";

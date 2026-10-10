@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, ChevronLeft, HelpCircle } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, ChevronLeft, HelpCircle } from "@/components/ui/icons";
 import { useScripts, Script } from "@/hooks/use-scripts";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Badge } from "@/components/ui/Badge";

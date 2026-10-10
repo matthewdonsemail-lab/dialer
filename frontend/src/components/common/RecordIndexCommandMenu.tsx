@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pencil, Trash2, X } from 'lucide-react';
+import { Pencil, Trash2, X } from "@/components/ui/icons";
 
 interface RecordIndexCommandMenuProps {
   selectedCount: number;

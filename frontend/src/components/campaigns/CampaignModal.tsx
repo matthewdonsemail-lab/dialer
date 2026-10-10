@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, ChevronRight, MoreVertical, Pencil, Phone, PhoneCall, Search, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, MoreVertical, Pencil, Phone, PhoneCall, Search, X } from "@/components/ui/icons";
 import type { CallCampaign, CallCampaignStatus } from "@/lib/api-client";
 import { useCallCampaigns, useDeleteCallCampaign, useUpdateCallCampaign } from "@/hooks/use-call-campaigns";
 import { useCalls } from "@/hooks/use-call-logs";

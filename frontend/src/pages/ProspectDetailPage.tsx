@@ -17,7 +17,7 @@ import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
-import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin, Star, CheckCircle, XCircle, ExternalLink } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin, Star, CheckCircle, XCircle, ExternalLink } from "@/components/ui/icons";
 import { CountryBadge } from "@/components/common/CountryBadge";
 import { DetailPageSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";

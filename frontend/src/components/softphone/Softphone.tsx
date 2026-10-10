@@ -11,7 +11,7 @@ import {
   Clock,
   RotateCcw,
   Check,
-} from "lucide-react";
+} from "@/components/ui/icons";
 import { getSipConfig, isSipConfigured, getSipDomain, getSipExtension } from "@/sip";
 import { sipLog, classifyFailure, getReport, type ClassifiedFailure } from "@/sip";
 import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/config";

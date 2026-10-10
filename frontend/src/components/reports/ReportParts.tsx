@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import type { IconComponent } from "@/components/ui/icons";
 
 /**
  * Every report widget uses this frame: a title with its unit in brackets
@@ -42,7 +42,7 @@ export interface Stat {
   value: string;
   /** Small line under the value, e.g. how it is calculated. */
   detail?: string;
-  icon?: LucideIcon;
+  icon?: IconComponent;
   tone?: "default" | "positive" | "negative";
 }
 
@@ -197,7 +197,7 @@ export function Heatmap({ grid }: { grid: number[][] }) {
 }
 
 /** WAVV-style two-line toolbar dropdown trigger: icon on the left, caption above the value. */
-export function TwoLineTrigger({ icon: Icon, caption, value }: { icon: LucideIcon; caption: string; value: string }) {
+export function TwoLineTrigger({ icon: Icon, caption, value }: { icon: IconComponent; caption: string; value: string }) {
   return (
     <>
       <Icon className="w-4 h-4 shrink-0 text-[var(--ods-text-secondary)]" />

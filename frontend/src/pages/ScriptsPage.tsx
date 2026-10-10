@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, AlertTriangle, Search, Plus, Trash2, Save, X, Check } from "lucide-react";
+import { BookOpen, AlertTriangle, Search, Plus, Trash2, Save, X, Check } from "@/components/ui/icons";
 import { useFloating, autoUpdate, offset, flip, shift, FloatingPortal } from "@floating-ui/react";
 import { Badge } from "@/components/ui/Badge";
 import { PageCanvas } from "@/components/common/PageCanvas";

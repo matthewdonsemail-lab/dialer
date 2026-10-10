@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { MoreVertical, SkipForward, Square } from "lucide-react";
+import { MoreVertical, SkipForward, Square } from "@/components/ui/icons";
 import { api, type CallCampaign } from "@/lib/api-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { Softphone } from "@/components/softphone/Softphone";

@@ -19,7 +19,7 @@ import { WidgetCard } from "@/components/ui/WidgetCard";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
-import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Phone, Mail, Globe, MapPin } from "@/components/ui/icons";
 import { DetailPageSkeleton } from "@/components/ui/Skeleton";
 import { CountryBadge } from "@/components/common/CountryBadge";
 import { api } from "@/lib/api-client";

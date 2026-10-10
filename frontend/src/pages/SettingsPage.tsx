@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BarChart3, Check, LogOut, Monitor, Moon, Palette, Sun, User } from "lucide-react";
+import { BarChart3, Check, LogOut, Monitor, Moon, Palette, Sun, User } from "@/components/ui/icons";
 import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { useAuth } from "@/components/auth/AuthProvider";

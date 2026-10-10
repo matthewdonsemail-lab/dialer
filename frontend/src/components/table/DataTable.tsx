@@ -11,7 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { Search, X } from "lucide-react";
+import { Search, X } from "@/components/ui/icons";
 import { ColumnVisibilityDropdown } from "@/components/common/ColumnVisibilityDropdown";
 import { HeaderFilter, type HeaderFilterOption } from "@/components/common/HeaderFilter";
 import { RecordIndexCommandMenu } from "@/components/common/RecordIndexCommandMenu";

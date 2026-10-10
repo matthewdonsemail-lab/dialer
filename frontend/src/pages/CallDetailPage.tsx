@@ -6,7 +6,7 @@ import { PageCanvas } from "@/components/common/PageCanvas";
 import { WidgetCard } from "@/components/ui/WidgetCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { DetailPageSkeleton } from "@/components/ui/Skeleton";
-import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines, Star } from "lucide-react";
+import { ArrowLeft, Phone, Clock, User, FileText, Calendar, AudioLines, Star } from "@/components/ui/icons";
 import { RatingBadge, CallQualityScores, WaveformPlayer, parseAiScores } from "@/components/calls/CallRating";
 import { useToast } from "@/components/ui/Toast";
 

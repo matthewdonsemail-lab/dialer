@@ -10,7 +10,7 @@ import {
   useFloating,
   useInteractions,
 } from "@floating-ui/react";
-import { Check, Copy, Mail, Phone } from "lucide-react";
+import { Check, Copy, Mail, Phone } from "@/components/ui/icons";
 
 /**
  * A phone or email field that can hold several values (Twenty keeps one
