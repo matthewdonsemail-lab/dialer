@@ -79,7 +79,8 @@ const diagrams = fs.existsSync(diagramDir)
 
 /** Strip the leading %% header block: it is an editor note, not diagram source. */
 function diagramBody(file) {
-  const lines = fs.readFileSync(path.join(diagramDir, file), 'utf8').split('\n');
+  // A Windows checkout may hold CRLF; the README embeds LF, so compare without CRs.
+  const lines = fs.readFileSync(path.join(diagramDir, file), 'utf8').replace(/\r\n/g, '\n').split('\n');
   let i = 0;
   while (i < lines.length && (lines[i].startsWith('%%') || lines[i].trim() === '')) i += 1;
   return lines.slice(i).join('\n').trim();

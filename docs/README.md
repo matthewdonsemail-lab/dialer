@@ -17,6 +17,7 @@ Start at the [README](../README.md). This page is the index of everything else.
 | Document | What it answers |
 |---|---|
 | [quick-start.md](./quick-start.md) | Shortest path to a working local stack. |
+| [screenshots/](./screenshots/README.md) | Every page and tab in light mode, from the demo workspace. `bun run screenshots` regenerates them. |
 | [../SETUP.md](../SETUP.md) | Full environment variable reference. |
 | [design-system.md](./design-system.md) | The scale, buttons, links, pills, sections, and the shared pipelines (state machines) every screen uses. |
 | [twenty-ui-reference.md](./twenty-ui-reference.md) | How Twenty itself sizes and styles its UI (reference notes). |

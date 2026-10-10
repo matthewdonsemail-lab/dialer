@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (October 2026)
+- Power dialing: dial lists (`callCampaign`), a global dialer dock with recents,
+  contacts, keypad, queue, live-call notes and script, and an after-call summary
+- Contact workspace: details and people, one timeline, and panels for the call
+  summary, readable record history, script, notes, and website and video
+- Shared state machines for contact status, outreach, video, call result, dial
+  lists and offers, enforced by the API and the screens
+- `bun run twenty:schema`: creates every object, field and relation the dialer
+  uses in a Twenty workspace, from one manifest; `twenty:schema:check` dry run
+- `bun run twenty:seed`: the demo workspace (fictional, refuses real workspaces)
+- `bun run screenshots`: every page and tab captured from the demo workspace
+- `./scripts/setup.sh`: install, env files, schema check, `--apply`, `--seed`
+- AST commit checks (naming, layout, dead buttons, toggle state, pipeline
+  values), Conventional Commits, branch names, and a full pre-push gate
+
+### Changed (October 2026)
+- Whole repo moved to a camelCase `domains/<domain>/<primitive>` layout
+- README rewritten around the screenshots and the open-source setup
+
+### Fixed (October 2026)
+- The contacts list showed Interested, Callback and Not Interested as New
+- Semi-transparent brand tints written as `bg-[var(--x)]/NN` never rendered
+
 ### Added
 - Self-hosted backend with SQLite database
 - Express.js API server with JWT authentication

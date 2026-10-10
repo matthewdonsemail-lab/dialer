@@ -1,54 +1,44 @@
 # dialer Setup Guide
 
-## Quick Start
+## Quick start
 
-### 1. Start Backend (already running on port 4000)
 ```bash
-cd backend
-npm run dev
+./scripts/setup.sh            # install, create .env.local files, check the Twenty schema
+./scripts/setup.sh --apply    # ...and create whatever the schema is missing
+./scripts/setup.sh --seed     # ...and load the demo workspace (fresh workspaces only)
+bun run dev                   # backend on :4000, frontend on :5173
 ```
 
-### 2. Start Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### 3. Access the App
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:4000
+Or the same steps by hand: `bun run install:all`, copy `.env.example` to
+`.env.local` and `frontend/.env.example` to `frontend/.env.local`, then
+`bun run twenty:schema` and optionally `bun run twenty:seed`.
 
 ## Authentication
 
-The app uses JWT auth. Use these credentials to log in:
-- **Email**: admin@example.com
-- **Password**: password123
+Twenty is the identity provider. Sign in with your Twenty account through
+OAuth with PKCE ([docs/identity.md](docs/identity.md)); the dialer keeps no
+users or passwords of its own, and signup is disabled.
 
-(Or sign up for a new account)
+## Data
 
-## Database
+There is no database. Every record is a custom object in your Twenty
+workspace, created by `bun run twenty:schema` from
+[backend/src/lib/twenty/schema/manifest.ts](backend/src/lib/twenty/schema/manifest.ts):
+`agencyProspect`, `agencyLead`, `agencyCampaign`, `agencyScript`,
+`agencyPhone`, `agencyCall`, `agencyPerson`, `agencyOffer`, `callCampaign`
+and `dialerAudioSession`. The command only adds what is missing;
+`bun run twenty:schema:check` is the dry run.
 
-- SQLite database: `backend/data/cold-dialer.db`
-- Currently seeded with:
-  - 1 admin user
-  - 2 campaigns
-  - 1 call script
-  - 40 leads
-  - 5 call logs
-
-## Sync to Twenty CRM
-
-The sync service is configured and will:
-- Create/update/delete `agencyLeads` in Twenty when leads change in OCD
-- Create/update/delete `agencyCampaigns` in Twenty when campaigns change
-- Update lead status in Twenty based on call outcomes
+`bun run twenty:seed` loads the demo workspace the screenshots show (24
+fictional businesses, 48 calls, scripts, numbers, dial lists). It refuses to
+write to a workspace that already has real prospects unless you pass
+`-- --force`, and `bun run twenty:seed -- --reset` removes it.
 
 ## Environment Variables
 
-### Backend (.env.local)
+### Backend (.env.local at the repo root)
 ```bash
-TWENTY_BASE_URL=https://twenty.inferencesaver.com
+TWENTY_BASE_URL=https://twenty.example.com
 TWENTY_API_KEY=<your-key>
 SYNC_POLL_INTERVAL_MS=30000
 PORT=4000
@@ -96,9 +86,14 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_ANALYSIS_MODEL=gpt-4o-mini
 ```
 
-### Frontend (.env.local)
+### Frontend (frontend/.env.local)
 ```bash
-VITE_API_URL=http://localhost:4000
+VITE_API_URL=                      # empty = same origin, proxied to :4000 in dev
+VITE_SIP_PROVIDER=telnyx
+VITE_SIP_URI=sip:your-username@sip.telnyx.com
+VITE_SIP_PASSWORD=
+VITE_SIP_WS_URL=wss://sip.telnyx.com:7443
+VITE_SIP_CALLER_ID=+15551234567
 ```
 
 ## Where each environment actually runs

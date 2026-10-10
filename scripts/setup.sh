@@ -1,51 +1,75 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# One-step setup after cloning. Safe to re-run.
+#
+#   ./scripts/setup.sh            install, create env files, check the Twenty schema
+#   ./scripts/setup.sh --apply    ...and create whatever the schema is missing
+#   ./scripts/setup.sh --seed     ...and load the demo workspace (fresh workspaces only)
+#
+# Nothing is written to Twenty without --apply or --seed.
+set -euo pipefail
+cd "$(dirname "$0")/.."
 
-echo "=== Cold Dialer - Setup Script ==="
-echo ""
+APPLY=0
+SEED=0
+for arg in "$@"; do
+  case "$arg" in
+    --apply) APPLY=1 ;;
+    --seed) APPLY=1; SEED=1 ;;
+    *) echo "Unknown option: $arg (use --apply or --seed)"; exit 1 ;;
+  esac
+done
 
-# Check Node.js
-if ! command -v node &> /dev/null; then
-  echo "Error: Node.js 20+ is required. Install from https://nodejs.org"
+need() {
+  command -v "$1" >/dev/null 2>&1 || { echo "Missing $1. $2"; exit 1; }
+}
+need node "Install Node.js 20 or later: https://nodejs.org"
+need bun "Install Bun: https://bun.sh"
+NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
+if [ "$NODE_MAJOR" -lt 20 ]; then
+  echo "Node.js 20 or later is required (found $(node -v))."
   exit 1
 fi
 
-NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 20 ]; then
-  echo "Error: Node.js 20+ is required (found v$(node -v))"
+echo "== Installing packages"
+bun run install:all
+bunx lefthook install >/dev/null 2>&1 || echo "   (lefthook not installed; the git hooks will not run)"
+
+echo "== Environment files"
+for pair in ".env.example:.env.local" "frontend/.env.example:frontend/.env.local"; do
+  src="${pair%%:*}"; dst="${pair##*:}"
+  if [ -f "$dst" ]; then echo "   $dst exists, kept"; else cp "$src" "$dst"; echo "   created $dst from $src"; fi
+done
+
+value() { grep -E "^$1=" .env.local | tail -1 | cut -d= -f2- | tr -d '"' || true; }
+missing=()
+for key in TWENTY_BASE_URL TWENTY_API_KEY JWT_SECRET; do
+  v=$(value "$key")
+  if [ -z "$v" ] || [[ "$v" == your-* ]]; then missing+=("$key"); fi
+done
+if [ ${#missing[@]} -gt 0 ]; then
+  echo
+  echo "Fill these in .env.local, then run this script again: ${missing[*]}"
+  echo "  TWENTY_API_KEY: Twenty, Settings, APIs and Webhooks, create a key."
+  echo "  JWT_SECRET: any long random string, e.g. $(node -e 'console.log(require("crypto").randomBytes(24).toString("hex"))')"
   exit 1
 fi
 
-echo "Node.js $(node -v) detected"
-echo ""
+echo "== Twenty schema"
+if [ "$APPLY" -eq 1 ]; then
+  bun run twenty:schema
+else
+  bun run twenty:schema:check || {
+    echo
+    echo "Your workspace is missing the items above. Create them with: ./scripts/setup.sh --apply"
+    exit 1
+  }
+fi
 
-# Setup backend
-echo "Setting up backend..."
-cd backend
-npm install
-npm run seed
-echo ""
+if [ "$SEED" -eq 1 ]; then
+  echo "== Demo workspace"
+  bun run twenty:seed
+fi
 
-# Setup frontend
-echo "Setting up frontend..."
-cd ../frontend
-npm install
-cp .env.example .env.local
-echo ""
-
-# Print instructions
-echo "=== Setup Complete ==="
-echo ""
-echo "To start the application:"
-echo ""
-echo "  Terminal 1 (Backend):"
-echo "    cd backend && npm run dev"
-echo ""
-echo "  Terminal 2 (Frontend):"
-echo "    cd frontend && npm run dev"
-echo ""
-echo "Open http://localhost:5173"
-echo ""
-echo "Default credentials: admin@example.com / password123"
-echo ""
-echo "To configure SIP, edit frontend/.env.local"
+echo
+echo "Ready. Start it with: bun run dev"
+echo "Then open http://localhost:5173 and sign in with your Twenty account."

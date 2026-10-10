@@ -4,25 +4,134 @@
 
 # dialer
 
-**Need telephony working with your CRM, and one clean place for all the
-information it collects? [Talk to Matthew on X](https://x.com/matthewsoldit).**
+**A power dialing softphone CRM that works the same way as the GoHighLevel
+dialer and the WAVV dialer: open source, in your browser, with every record
+kept in [Twenty CRM](https://twenty.com).**
 
-A cold calling dialer that keeps every record in Twenty CRM and puts the phone
-in the browser.
-
-There is no separate database. Prospects, leads, campaigns, scripts, phone
-numbers and calls are all `agency*` custom objects in Twenty, and every server
-in this repository is a thin translator between an HTTP client and the Twenty
-REST API. The call itself is SIP over WebRTC straight from the browser to
-Telnyx; the recording is Telnyx server-side.
+Built by [Matthew](https://github.com/matthewdonsemail-lab)
+([@matthewsoldit on X](https://x.com/matthewsoldit)). Need telephony working
+with your CRM? [Talk to Matthew on X](https://x.com/matthewsoldit).
 
 [![License: MIT](https://img.shields.io/badge/LICENSE-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org/)
+[![Twenty CRM](https://img.shields.io/badge/CRM-Twenty-000000.svg)](https://twenty.com)
+[![Telnyx](https://img.shields.io/badge/voice-Telnyx-00c08b.svg)](https://telnyx.com)
+
+<p align="center">
+  <img src="docs/screenshots/contact-website.png" alt="A contact: details and people, the call timeline, and the website and video panel" width="100%">
+</p>
+
+Load a list, press call, and the dialer works through it: the script appears
+next to the call, the call is recorded and transcribed, an AI rates it, and
+one click on a disposition moves the contact on and dials the next. It is the
+power dialing workflow agencies pay a monthly fee per seat for, rebuilt in the
+open on top of Twenty, so you own the data and the code.
+
+## Why it works
+
+- **It works the moment you connect it.** There is no database to provision.
+  Every prospect, lead, call, script, number and dial list is a custom object
+  in your Twenty workspace, created by one command. The servers here only
+  translate between the browser and the Twenty API, so there is nothing to
+  migrate, back up or keep in sync.
+- **The phone is in the browser.** SIP over WebRTC straight to Telnyx, with
+  one registered agent per session, so inbound calls ring while you work.
+  Hold, mute, keypad, notes and the script all live in a floating dialer that
+  follows you around the app.
+- **Power dialing, like WAVV.** Select contacts, start a dial list, and work it
+  in order: the queue shows now and next, every call is logged, and a
+  disposition advances the list.
+- **Every call is reviewed.** Telnyx records server-side, the transcript lands
+  on the call row by webhook, and an AI writes a summary, key points, a 0-100
+  score and five quality ratings, visible in the dialer and in Twenty itself.
+- **Two agents can never dial from the same number.** The number lock lives on
+  the Twenty record, so it holds across servers, restarts and every surface.
+- **State cannot go wrong.** Contact status, outreach, video, call result, dial
+  lists and offers are state machines shared by the screens and the server, so
+  a refused move (calling a do-not-contact, texting a number that cannot
+  receive from yours) is refused in both places, with a reason.
+- **Everything is guarded.** AST checks run on every commit; the full type
+  check, tests and build run on every push. A button that does nothing, a
+  toggle that hides its state or a hard-coded status cannot be committed.
+
+## Screenshots
+
+Every page and tab, in light mode, from the demo workspace (no real data).
+The full set is in [docs/screenshots](docs/screenshots/README.md).
+
+| | |
+|---|---|
+| ![Reports](docs/screenshots/reports-overview.png) | ![Contacts](docs/screenshots/contacts.png) |
+| **Reports**: calls, conversations, talk time, goal per member | **Contacts**: prospects and leads, paged and filtered on the server |
+| ![Live call](docs/screenshots/dialer-live-script.png) | ![After the call](docs/screenshots/dialer-summary.png) |
+| **The dialer**: a live call with the campaign script beside it | **After the call**: one click on a disposition, then the next |
+| ![Call review](docs/screenshots/call-ai.png) | ![Admin](docs/screenshots/admin-activity.png) |
+| **Call review**: AI summary, key points and quality ratings | **Admin**: every create, update and delete, by member |
+
+## Run your own in five commands
+
+You need [Bun](https://bun.sh), Node 20+, a [Twenty](https://twenty.com)
+workspace (cloud or self-hosted) with an API key, and a
+[Telnyx](https://telnyx.com) SIP connection for calls.
+
+```bash
+git clone https://github.com/matthewdonsemail-lab/dialer.git && cd dialer
+bun run install:all
+cp .env.example .env.local        # TWENTY_BASE_URL, TWENTY_API_KEY, JWT_SECRET, Telnyx
+bun run twenty:schema             # creates every object, field and relation in Twenty
+bun run twenty:seed               # optional: the demo workspace from the screenshots
+bun run dev                       # backend :4000, frontend :5173
+```
+
+- `twenty:schema` is additive and safe to re-run: it creates what is missing
+  and never edits or deletes. `bun run twenty:schema:check` is the dry run.
+- `twenty:seed` loads 24 fictional businesses, 48 calls (one with a full
+  transcript and AI review), scripts, numbers and dial lists. It refuses to
+  write to a workspace that already has real prospects, and
+  `bun run twenty:seed -- --reset` removes it again.
+- Sign in with your Twenty account (OAuth). The full reference is in
+  [SETUP.md](SETUP.md).
+
+## How it was built
+
+Matthew built this to run his own agency's outbound calling on Twenty instead
+of renting a dialer seat per rep. The dialers it is modelled on keep your
+calls in their own system; this one writes every call, recording link,
+transcript and rating onto the Twenty record, where the rest of the CRM can
+use it.
+
+The latest round of work, all in this repository's history:
+
+- **A contact workspace in the style of the GoHighLevel contact page.** Details
+  and the people at the business on the left, one timeline of calls, notes and
+  changes in the middle, and panels for the call summary, record history,
+  script, notes, and the website and video sent to the prospect.
+- **A global dialer dock.** One floating dialer with recents, contacts, keypad,
+  queue, a live-call view with notes and the script, and an after-call summary.
+- **Readable record history**, modelled on HubSpot, Close, Attio and Zoho:
+  "Status changed from Contacted to Interested", never raw JSON.
+- **One prospect page per business** on a canonical offer URL, with a live
+  preview, and a same-country rule so a number never texts a country it
+  cannot reach.
+- **Shared state machines** for every pipeline field, used by both the API
+  and the screens.
+- **A design system** with one type scale, one radius scale, Font Awesome 6
+  icons and page-shaped loading skeletons, enforced by a pre-commit check.
+- **A failure map**: every create, update and delete reports its failure in
+  words (see [docs/feedback-map.md](docs/feedback-map.md)), with no silent errors.
+- **A whole-repo move** to a camelCase `domains/<domain>/<primitive>` layout,
+  done by an AST codemod and enforced on every commit.
+- **Open-source setup**: the one-command Twenty schema, the demo seed, and the
+  screenshot capture that produced every image in this README.
 
 ---
 
 ## Contents
 
+- [Why it works](#why-it-works)
+- [Screenshots](#screenshots)
+- [Run your own in five commands](#run-your-own-in-five-commands)
+- [How it was built](#how-it-was-built)
 - [The workflow](#the-workflow)
 - [What it does](#what-it-does)
 - [The three surfaces](#the-three-surfaces)
@@ -124,6 +233,11 @@ flowchart TB
 
 > Source: [`docs/diagrams/agent-workflow.mmd`](docs/diagrams/agent-workflow.mmd).
 
+| | |
+|---|---|
+| ![A contact with its call summary](docs/screenshots/contact-summary.png) | ![A live call with notes](docs/screenshots/dialer-live-notes.png) |
+| A contact with its call summary | A live call with notes |
+
 The claim lock is the only thing stopping two agents dialing out of the same
 number. It lives on the `agencyPhones` row rather than in server memory, so it
 holds across servers, restarts, and all three surfaces. Read
@@ -132,18 +246,28 @@ thinnest security in the codebase.
 
 ## What it does
 
-- **Browser softphone.** SIP over WebRTC, dial from a lead or a prospect record,
-  hold, mute, redial, and take inbound calls.
+- **Browser softphone.** SIP over WebRTC, dial from any contact, hold, mute,
+  keypad, notes, redial, and take inbound calls. Or bridge the call to your own
+  phone (Settings, Audio Source) when the browser has no headset.
+- **Power dialing.** Select contacts and start a dial list (a `callCampaign` in
+  Twenty). The dock's queue shows now and next; a disposition moves on.
+- **A floating dialer dock.** Recents, contacts, keypad and queue when idle; a
+  live view with notes and the campaign script during a call; an after-call
+  summary with every disposition one click away. Pin it open or let it close.
 - **Number locking.** One member holds a number for the duration of a call, so
   two agents cannot dial from the same line. Enforced in Twenty, so it holds
   across servers and restarts.
-- **Call recording and transcription.** Started server-side through Telnyx
-  Call Control, attached to the call row by webhook, playable from the call
-  history.
-- **Prospect and lead lifecycle.** Status, notes, industry, campaign assignment,
-  CSV import, and conversion from prospect to lead.
-- **Campaigns and scripts.** Organise calling effort, attach a script and its
-  objection handling to a campaign, and surface it while a call is up.
+- **Recording, transcript and AI review.** Started server-side through Telnyx
+  Call Control, attached to the call row by webhook, then rated by any
+  OpenAI-compatible model: summary, key points, 0-100 score, sentiment and five
+  1-5 quality ratings.
+- **A contact workspace.** Details and the people at the business, one timeline
+  of calls, notes and readable record history, and panels for the call summary,
+  the script, notes, and the website and video sent to the prospect.
+- **Website and SMS outreach.** One prospect page per business, previewed in the
+  app, sent by SMS from a number in the same country as the contact.
+- **Reports and admin.** Calls, conversations, talk time and goal per member;
+  number health; dispositions; and an activity log of every change, by member.
 - **Runs inside Twenty.** A native app gives an agent the queue, the numbers and
   the call log without a second login.
 
@@ -221,6 +345,11 @@ flowchart TB
 > It records what only each path can do, which is the question this repository
 > gets asked most.
 
+| | |
+|---|---|
+| ![Sign in with Twenty](docs/screenshots/login.png) | ![Settings: audio source](docs/screenshots/settings-audio.png) |
+| Sign in with Twenty | Settings: audio source |
+
 ## Architecture
 
 <!-- mermaid:system-context.mmd -->
@@ -273,6 +402,11 @@ flowchart TB
 
 > Source: [`docs/diagrams/system-context.mmd`](docs/diagrams/system-context.mmd).
 
+| | |
+|---|---|
+| ![Reports: team performance](docs/screenshots/reports-team.png) | ![Admin: overview](docs/screenshots/admin-overview.png) |
+| Reports: team performance | Admin: overview |
+
 Read [docs/architecture.md](docs/architecture.md) for the route tables, the
 auth model, and the places where the security is thinner than it looks.
 
@@ -319,6 +453,11 @@ flowchart TB
 ```
 
 > Source: [`docs/diagrams/data-flow.mmd`](docs/diagrams/data-flow.mmd).
+
+| | |
+|---|---|
+| ![Contacts, paged on the server](docs/screenshots/contacts.png) | ![Call history](docs/screenshots/history.png) |
+| Contacts, paged on the server | Call history |
 
 The one thing to know: this Twenty build ignores `startingAfter`, `offset` and
 `page`, and caps `limit` at 200. Cursor pagination does not work, so every list
@@ -423,6 +562,13 @@ sequenceDiagram
 
 > Source: [`docs/diagrams/call-lifecycle.mmd`](docs/diagrams/call-lifecycle.mmd).
 
+| | |
+|---|---|
+| ![Recording and transcript](docs/screenshots/call-recording.png) | ![AI review](docs/screenshots/call-ai.png) |
+| Recording and transcript | AI review |
+| ![Technical: the SIP trail](docs/screenshots/call-technical.png) | ![A live call with the script](docs/screenshots/dialer-live-script.png) |
+| Technical: the SIP trail | A live call with the script |
+
 Two steps in that sequence are load-bearing, and both have broken the recording
 before:
 
@@ -474,6 +620,11 @@ stateDiagram-v2
 ```
 
 > Source: [`docs/diagrams/phone-claim.mmd`](docs/diagrams/phone-claim.mmd).
+
+| | |
+|---|---|
+| ![Phone numbers with their claim state](docs/screenshots/phone-numbers.png) | ![Reports: number health](docs/screenshots/reports-numbers.png) |
+| Phone numbers with their claim state | Reports: number health |
 
 The claim state lives on the `agencyPhones` row in Twenty rather than in server
 memory, so it survives a restart and every surface sees the same answer. The
@@ -630,11 +781,19 @@ erDiagram
 
 > Source: [`docs/diagrams/data-model.mmd`](docs/diagrams/data-model.mmd).
 
-`POST /api/setup/twenty` creates four of these idempotently:
-`agencyProspects`, `agencyLeads`, `agencyCampaigns`, `agencyScripts`, plus the
-`coldCallStatus` and `utmSource` selects and the `campaignId` relations. It does
-**not** create `agencyPhones`, `agencyCalls`, or `agencyOffers`; those have to
-exist in the workspace already.
+| | |
+|---|---|
+| ![Admin: the Twenty objects](docs/screenshots/admin-objects.png) | ![Record history on a contact](docs/screenshots/contact-history.png) |
+| Admin: the Twenty objects | Record history on a contact |
+
+`bun run twenty:schema` (or `POST /api/setup/twenty`) creates all of these,
+plus `agencyPerson`, `callCampaign` (dial lists) and `dialerAudioSession`, from
+one manifest: [backend/src/lib/twenty/schema/manifest.ts](backend/src/lib/twenty/schema/manifest.ts).
+That is 10 objects, 134 fields and 9 relations, with select options exactly as
+the live workspace has them. It only adds what is missing and never edits or
+deletes, so it is safe to run against a workspace in use; `twenty:schema:check`
+reports what it would create. `GET /api/setup/twenty/status` checks the same
+manifest from the running app.
 
 One API rule worth memorising: Twenty writes relation fields as
 `{fieldName}Id`, so a relation declared as `campaignId` is sent as
@@ -679,6 +838,11 @@ sequenceDiagram
 ```
 
 > Source: [`docs/diagrams/bark-new-lead-notify.mmd`](docs/diagrams/bark-new-lead-notify.mmd).
+
+| | |
+|---|---|
+| ![A lead](docs/screenshots/lead.png) | ![Notes on a contact](docs/screenshots/contact-notes.png) |
+| A lead | Notes on a contact |
 
 ### Member identity and record attribution
 
@@ -733,10 +897,14 @@ flowchart TB
 
     note1["updatedBy is NOT settable.<br/>Twenty recomputes it from the<br/>authenticated caller, so it stays<br/>the API actor. Read createdBy."]
     actor -.- note1
-```mermaid
 ```
 
 > Source: [`docs/diagrams/member-attribution.mmd`](docs/diagrams/member-attribution.mmd).
+
+| | |
+|---|---|
+| ![Admin: activity by member](docs/screenshots/admin-activity.png) | ![Admin: team activity](docs/screenshots/admin-team.png) |
+| Admin: activity by member | Admin: team activity |
 
 The member id is derived server-side from the JWT, never read from a request
 body, so a caller cannot claim to be someone else. Two consequences worth
@@ -786,23 +954,36 @@ Full field tables are in [docs/okf/datamodel/dialer.md](docs/okf/datamodel/diale
 
 ## Running it
 
+The short version is [Run your own in five commands](#run-your-own-in-five-commands).
+In more detail:
+
 ```bash
 git clone https://github.com/matthewdonsemail-lab/dialer.git
 cd dialer
+bun run install:all             # root, shared package, backend, frontend
 
-bun install
-bun run install:all          # root, backend, frontend
+cp .env.example .env.local      # Twenty, JWT, Telnyx, OpenAI-compatible key
+cp frontend/.env.example frontend/.env.local   # VITE_API_URL and VITE_SIP_*
 
-cp .env.example .env.local   # then fill it in; see below
-cp backend/.env.example backend/.env.local
-cp frontend/.env.example frontend/.env.local
+bun run twenty:schema:check     # what your workspace is missing
+bun run twenty:schema           # create it
+bun run twenty:seed             # optional demo data (fresh workspaces only)
 
-bun run dev                  # backend on :4000, frontend on :3000
+bun run dev                     # backend on :4000, frontend on :5173
 ```
 
-Open http://localhost:5173 and sign in with an account that already exists in
-Twenty. Signup is disabled: the dialer verifies credentials against Twenty's
-`core."user"` table rather than keeping its own.
+Open http://localhost:5173 and sign in with your Twenty account. Twenty is the
+identity provider (OAuth with PKCE, see [docs/identity.md](docs/identity.md));
+the dialer keeps no users of its own. Port 5173 is pinned because it is the
+OAuth client's registered redirect.
+
+The screenshots in this README come from the same demo data, captured by a
+script that never touches a real workspace:
+
+```bash
+bunx playwright install chromium   # once
+bun run screenshots                # every page and tab into docs/screenshots/
+```
 
 The native app is a separate build with its own toolchain:
 
@@ -866,36 +1047,29 @@ fixes, required settings, and status-code guide are in the
 
 ## Repository layout
 
+Every folder and file is camelCase, and everything lives in a domain, then a
+primitive named after what it is about. [docs/naming-conventions.md](docs/naming-conventions.md)
+has the rule; `scripts/check-code.mjs` enforces it on every commit.
+
 ```
 dialer/
-├── backend/                  Express API, port 4000
+├── backend/                     Express API, port 4000
 │   └── src/
-│       ├── lib/              twenty-client, twenty-object-service, telnyx
-│       ├── middleware/       auth (JWT)
-│       ├── db/               twenty-pg (the one password query); schema.ts is dead
-│       └── routes/           one file per resource
-├── frontend/                 Vite SPA, the browser softphone
-│   ├── api/telnyx-webhook.ts  Telnyx webhook receiver (Vercel function)
-│   └── src/
-│       ├── components/dialer/  the dial path: provider, dock, SIP and call lifecycle
-│       ├── sip/              config, diagnostics, failure classification
-│       ├── hooks/            React Query hooks
-│       └── pages/            routes
-├── railcode/              same UI, Hono worker, Railcode deployment
-│   ├── server/               worker, twenty connector access
-│   └── frontend/             the ported UI
-├── twenty-native-app/        the dialer as a Twenty app
-│   └── src/
-│       ├── logic-functions/  33 /dialer/* routes
-│       ├── front-components/ DialerApp, api.ts, FieldCell
-│       └── lib/              dialer-client
-├── docker/                   Dockerfiles, compose, nginx configs
-├── docs/                     everything below
-│   ├── diagrams/             six .mmd files, the source of the diagrams above
-│   ├── telnyx/               Telnyx notes; upstream/ is a gitignored mirror
-│   ├── plans/                scoped but unbuilt design work
-│   └── marketing/            launch copy, not documentation
-└── scripts/                  deploy, setup, doc mirrors, pre-push checks
+│       ├── lib/<domain>/        twenty (client, schema, pipelines...), telnyx, ai, website, demo
+│       ├── middleware/          auth (JWT)
+│       └── routes/<domain>/     one module per resource: prospects, calls, people, callCampaigns...
+├── frontend/                    Vite SPA, the browser softphone
+│   ├── api/telnyx-webhook.ts    Telnyx webhook receiver (Vercel function)
+│   └── src/domains/<domain>/<primitive>/
+│                                app, auth, api, ui, dialer, calls, contact, campaigns,
+│                                scripts, reports, admin, feedback, website, settings...
+├── packages/shared/             @dialer/shared: the state machines, SMS route rule,
+│                                and the generated Twenty client, used by both sides
+├── railcode/                    same UI, Hono worker, Railcode deployment
+├── twenty-native-app/           the dialer as a Twenty app
+├── docker/                      Dockerfiles, compose, nginx configs
+├── docs/                        everything below, plus screenshots/ and diagrams/
+└── scripts/                     the commit and push checks, codemods, screenshot capture
 ```
 
 Deliberately **not** tracked: host-specific infrastructure, unrelated apps,
@@ -922,13 +1096,21 @@ served inside Twenty at `/dialer/*`.
 | POST | `/api/prospects/:id/website-sent` | Advances `outboundLabel` to `SMS_IN_PROGRESS`. |
 | POST | `/api/prospects/:id/ensure-offer` | Idempotently creates the `INDUSTRY:<key>` offer. |
 | GET POST PATCH DELETE | `/api/campaigns` | CRUD. |
+| GET POST PATCH DELETE | `/api/people` | The people at a business (`agencyPerson`), by `prospectId` or `leadId`. |
+| GET POST PATCH DELETE | `/api/call-campaigns` | Dial lists for power dialing. Status follows the shared `callCampaign` machine. |
+| GET | `/api/prospects/page` | Contacts a window at a time, searched, filtered and sorted in Twenty. |
+| GET | `/api/prospects/facets` | Counts per status, country, industry and campaign for the filter menus. |
+| GET | `/api/admin/activity` | Create, update and delete events on dialer records, or one record's history. |
+| POST | `/api/calls/:id/analyze` | AI review of the transcript, written onto the call row. |
+| GET POST | `/api/audio-sessions` | Phone audio: the call bridged to the agent's own phone. |
 | GET POST PATCH DELETE | `/api/scripts` | CRUD. `scriptData` is a JSON string. |
 | GET | `/api/twenty/phones` | Inventory with live claim state. |
 | POST | `/api/twenty/phones/:id/claim` | `IDLE` to `DIALING`. 409 with `heldBy` when taken. |
 | POST | `/api/twenty/phones/:id/state` | `DIALING` or `ACTIVE`. Holder only. |
 | POST | `/api/twenty/phones/:id/release` | Back to `IDLE`. Holder only unless `force`. |
 | GET | `/api/twenty/meta/:object` | SELECT options, from the Twenty metadata API. |
-| POST | `/api/setup/twenty` | Idempotent schema bootstrap. |
+| POST | `/api/setup/twenty` | Creates whatever the schema manifest has that the workspace lacks. |
+| GET | `/api/setup/twenty/status` | Every manifest object and field, with `exists`. |
 | GET | `/api/calls` | Newest first. |
 | GET | `/api/calls/:id/audio` | 302 to a freshly resolved Telnyx mp3. |
 | POST | `/api/calls/:id/record` | `record_start` with transcription. Needs `telnyxCallId`. |
@@ -954,7 +1136,8 @@ Full index with descriptions: [docs/README.md](docs/README.md).
 **Run it**
 
 - [Quick start](docs/quick-start.md)
-- [Setup reference](SETUP.md)
+- [Setup reference](SETUP.md) - `setup.sh`, the schema command, the demo seed
+- [Screenshots](docs/screenshots/README.md) - every page and tab
 - [Design system](docs/design-system.md) - the scale, primitives and shared pipelines every screen uses
 - [SIP providers](docs/sip-providers.md)
 
@@ -985,28 +1168,24 @@ Full index with descriptions: [docs/README.md](docs/README.md).
 bunx lefthook install     # once, after cloning
 ```
 
-Three pre-push gates, each a plain `node scripts/check-*.mjs` with no
-dependencies:
+Three gates, cheapest first. All of them are plain `node scripts/*.mjs` or the
+repo's own build and test commands; [CONTRIBUTING.md](CONTRIBUTING.md) has the
+full table and the bypass variable for each.
 
-| Check | Fails when |
+| Gate | Runs |
 |---|---|
-| `check-docs.mjs` | a documented file is missing, a diagram is unlisted, a diagram is invalid Mermaid, the README does not embed it, or a relative link is broken |
-| `check-scope.mjs` | anything outside the application's scope is tracked in git |
-| `check-no-emojis.mjs` | an emoji appears in a tracked file |
-| `check-secrets.mjs` | a credential is committed: a JWT, a private key, a cloud or provider key, or a connection string with a real password |
+| pre-commit | the branch name, the staged code on the TypeScript AST (naming, layout, dead buttons, hidden toggle state, hard-coded pipeline values), the design system, no emojis, no monospace, no fully rounded corners, no credentials, and `bun.lock` with any dependency change |
+| commit-msg | Conventional Commits, header at most 72 characters |
+| pre-push | every file against the code rules, types in all three packages, every unit test, the production build, the CRUD failure map, the docs and diagrams, and the scope check |
 
-Run them by hand any time:
+Run any of them by hand:
 
 ```bash
+node scripts/check-code.mjs
+node scripts/run-tests.mjs
 bun run check:docs
-bun run check:scope
-bun run check:secrets
-node scripts/check-no-emojis.mjs
-node scripts/test-diagram-lint.mjs
+bunx lefthook run pre-push
 ```
-
-Bypass an emergency with `SKIP_DOCS_CHECK=1`, `SKIP_SCOPE_CHECK=1`,
-`SKIP_EMOJI_CHECK=1`, or `SKIP_SECRET_CHECK=1`.
 
 ## License
 
