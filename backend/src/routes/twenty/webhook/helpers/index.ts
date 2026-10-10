@@ -1,2 +1,2 @@
-export * from "./is-new-lead-event.js";
-export * from "./verify-signature.js";
+export * from "./isNewLeadEvent.js";
+export * from "./verifySignature.js";

@@ -1,1 +1,1 @@
-export * from "./extract-bark-key.js";
+export * from "./extractBarkKey.js";

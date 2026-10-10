@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { frontendStatusToTwenty as leadToTwenty, twentyStatusToFrontend } from "./map-lead.js";
-import { frontendStatusToTwenty as prospectToTwenty } from "../../prospects/helpers/map-prospect.js";
+import { frontendStatusToTwenty as leadToTwenty, twentyStatusToFrontend } from "./mapLead.js";
+import { frontendStatusToTwenty as prospectToTwenty } from "../../prospects/helpers/mapProspect.js";
 
 const STATUSES = ["new", "contacted", "interested", "callback", "converted", "not_interested", "do_not_contact"];
 

@@ -1,2 +1,2 @@
-export * from "./get-server-url.js";
-export * from "./redact-key.js";
+export * from "./getServerUrl.js";
+export * from "./redactKey.js";

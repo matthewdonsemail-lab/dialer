@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { callResultMachine } from "@dialer/shared";
 import { listTwenty, createTwenty, updateTwenty } from "../../../lib/twenty/client/index.js";
 import { analyzeCallTranscript, isAiConfigured } from "../../../lib/ai/analysis/index.js";
 import { createLogger } from "../../../lib/logger/index.js";
@@ -136,7 +137,7 @@ async function handleRecordingSaved(p: any): Promise<string> {
   const created = await createTwenty<AgencyCall>('agencyCalls', {
     name: `INBOUND ${p?.from ?? "unknown"} ${new Date().toISOString().slice(0, 16).replace("T", " ")}`,
     direction: "INBOUND",
-    status: "COMPLETED",
+    status: callResultMachine.state("COMPLETED"),
     fromNumber: p?.from ?? "",
     toNumber: p?.to ?? "",
     telnyxCallId: callControlId,

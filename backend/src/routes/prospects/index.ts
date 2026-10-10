@@ -3,10 +3,10 @@ import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, getTwenty, fetchTwenty } from "../../lib/twenty/client/index.js";
 import { twentyGraphqlClient } from "../../lib/twenty/graphql/index.js";
 import { contactTypes, idList } from "./helpers/query.js";
-import { leadGqlQuery, pageWindow, prospectGqlQuery } from "./helpers/query-gql.js";
+import { leadGqlQuery, pageWindow, prospectGqlQuery } from "./helpers/queryGql.js";
 import { mapLeadToFrontend } from "../leads/helpers/index.js";
 import { guardContactStatus } from "../../lib/pipelines/index.js";
-import { checkSmsRoute, onPageSent, toE164 } from "@dialer/shared";
+import { checkSmsRoute, offerMachine, onPageSent, toE164 } from "@dialer/shared";
 import { frameAllowed, framingHeaders, prospectPageUrl } from "../../lib/website/index.js";
 import { createLogger } from "../../lib/logger/index.js";
 import { resolveActor } from "../../lib/twenty/actor/index.js";
@@ -649,7 +649,7 @@ router.post("/:id/ensure-offer", async (req: AuthRequest, res) => {
         blocknote: null,
         markdown: `Answer a few quick questions and book your free consultation call.`,
       },
-      status: "ACTIVE",
+      status: offerMachine.state("ACTIVE"),
       industryId: twentyValue || undefined,
       videoMode: "PROSPECT",
     });

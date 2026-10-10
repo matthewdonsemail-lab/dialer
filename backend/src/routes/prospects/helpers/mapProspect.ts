@@ -1,6 +1,6 @@
 import type { AgencyProspect } from "../types.js";
 import { additionalPhones } from "../../../lib/twenty/contactValues/index.js";
-import { selectValue } from "./select-value.js";
+import { selectValue } from "./selectValue.js";
 
 // Status mappings. Pure data.
 const STATUS_MAP: Record<string, string> = {

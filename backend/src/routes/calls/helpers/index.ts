@@ -1,2 +1,2 @@
-export * from "./map-call.js";
-export * from "./split-status.js";
+export * from "./mapCall.js";
+export * from "./splitStatus.js";

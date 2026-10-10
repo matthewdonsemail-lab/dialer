@@ -1,1 +1,1 @@
-export * from "./map-campaign.js";
+export * from "./mapCampaign.js";

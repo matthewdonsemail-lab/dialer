@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compactValue, mapActivity } from "./map-activity.js";
+import { compactValue, mapActivity } from "./mapActivity.js";
 
 test("composite values stay structured instead of becoming cut-off JSON", () => {
   const phones = { primaryPhoneNumber: "5702355822", primaryPhoneCallingCode: "+1", additionalPhones: [] };

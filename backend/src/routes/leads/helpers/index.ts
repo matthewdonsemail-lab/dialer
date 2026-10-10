@@ -1,2 +1,2 @@
-export * from "./map-lead.js";
-export * from "./call-counts.js";
+export * from "./mapLead.js";
+export * from "./callCounts.js";

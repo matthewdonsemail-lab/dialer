@@ -1,1 +1,1 @@
-export * from "./map-activity.js";
+export * from "./mapActivity.js";

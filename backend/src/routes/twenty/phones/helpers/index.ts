@@ -1,1 +1,1 @@
-export * from "./map-phone.js";
+export * from "./mapPhone.js";

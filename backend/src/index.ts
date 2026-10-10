@@ -36,14 +36,14 @@ import callCampaignRoutes from "./routes/callCampaigns/index.js";
 import peopleRoutes from "./routes/people/index.js";
 import audioSessionRoutes from "./routes/audioSessions/index.js";
 import twentyWebhookRouter from "./routes/twenty/webhook/index.js";
-import { callLogsRouter } from "./routes/call-logs/index.js";
+import { callLogsRouter } from "./routes/callLogs/index.js";
 import callsRouter from "./routes/calls/index.js";
 import webhooksRouter from "./routes/telnyx/webhook/index.js";
 import { profilesRouter } from "./routes/profiles/index.js";
 import notifyRouter from "./routes/notify/index.js";
 import adminRoutes from "./routes/admin/index.js";
 import { createLogger } from "./lib/logger/index.js";
-import { clientIp } from "./lib/client-ip/index.js";
+import { clientIp } from "./lib/clientIp/index.js";
 
 const log = createLogger('server');
 const app = express();

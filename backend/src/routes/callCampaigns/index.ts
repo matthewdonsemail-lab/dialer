@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { callCampaignMachine } from "@dialer/shared";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { createTwenty, deleteTwenty, listTwentyAll, updateTwenty } from "../../lib/twenty/client/index.js";
 import { resolveActor } from "../../lib/twenty/actor/index.js";
@@ -50,7 +51,7 @@ router.post("/", async (req: AuthRequest, res) => {
       "callCampaigns",
       {
         name,
-        status: "ACTIVE",
+        status: callCampaignMachine.initial,
         contactIds: JSON.stringify(contactIds),
         createdByMemberId: req.workspaceMemberId ?? "",
         ownerName: req.memberName || req.userFullName || req.userEmail || "",
@@ -75,8 +76,8 @@ router.patch("/:id", async (req: AuthRequest, res) => {
     patch.name = name;
   }
   if (req.body?.status !== undefined) {
-    const status = String(req.body.status).toUpperCase();
-    if (!CAMPAIGN_STATUSES.includes(status as any)) {
+    const status = callCampaignMachine.parse(req.body.status);
+    if (!status || !CAMPAIGN_STATUSES.includes(status)) {
       res.status(400).json({ error: `Status must be one of ${CAMPAIGN_STATUSES.join(", ")}.` });
       return;
     }

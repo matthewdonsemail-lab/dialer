@@ -1,4 +1,4 @@
-import { toTwentyEmail, toTwentyPhone } from "../leads/helpers/map-lead.js";
+import { toTwentyEmail, toTwentyPhone } from "../leads/helpers/mapLead.js";
 
 /** agencyPerson as Twenty returns it. */
 export interface AgencyPersonRecord {

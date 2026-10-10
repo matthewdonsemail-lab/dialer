@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitStatus } from "./split-status.js";
+import { splitStatus } from "./splitStatus.js";
 
 test("system results stay in status", () => {
   assert.deepEqual(splitStatus("IN_PROGRESS"), { status: "IN_PROGRESS" });

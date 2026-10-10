@@ -1,1 +1,1 @@
-export * from "./map-script.js";
+export * from "./mapScript.js";
