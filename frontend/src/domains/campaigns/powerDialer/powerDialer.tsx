@@ -7,6 +7,7 @@ import { useCalls } from "@/domains/calls/data";
 import { useUpdateCallCampaign } from "@/domains/campaigns/data";
 import { campaignProgress, type CampaignCall } from "@/domains/campaigns/stats";
 import { useDialer } from "@/domains/dialer/provider";
+import { MODE_INFO, planFor, useDialingSettings, type DialingMode } from "@/domains/dialer/dialing";
 
 interface Session {
   campaign: CallCampaign;
@@ -17,6 +18,8 @@ interface Session {
 
 export interface QueueView {
   campaignName: string;
+  /** The dialing mode this session runs in (Settings -> Dialing). */
+  mode: DialingMode;
   position: number;
   total: number;
   current: ContactRow | null;
@@ -93,6 +96,7 @@ function PowerDialerDriver({
   onQueue: (q: QueueView | null) => void;
 }) {
   const dialer = useDialer();
+  const { mode, leaveVoicemail } = useDialingSettings();
   const { success, warning, error: toastError } = useToast();
   const { data: calls } = useCalls();
   const updateCampaign = useUpdateCallCampaign();
@@ -139,8 +143,8 @@ function PowerDialerDriver({
   }, [advance, dialer]);
 
   useEffect(() => {
-    onQueue({ campaignName: campaign.name, position, total: order.length, current, next, skip, end });
-  }, [onQueue, campaign.name, position, order.length, current, next, skip, end]);
+    onQueue({ campaignName: campaign.name, mode, position, total: order.length, current, next, skip, end });
+  }, [onQueue, campaign.name, mode, position, order.length, current, next, skip, end]);
 
   // Dial each contact once, as soon as it is looked up and the dialer is free.
   // Without a free line it waits, and dials once one is picked in the dock.
@@ -170,9 +174,14 @@ function PowerDialerDriver({
         campaignId: (current.campaign_id as string | null | undefined) ?? null,
         country: (current.country as string | null | undefined) ?? null,
       },
-      { saveLabel: "Save & next", onSaved: advance },
+      {
+        saveLabel: "Save & next",
+        onSaved: advance,
+        // The dialing mode decides what happens around this call (Settings -> Dialing).
+        plan: { ...planFor(mode), leaveVoicemail },
+      },
     );
-  }, [current, currentId, state, line, dial, advance, warning]);
+  }, [current, currentId, state, line, dial, advance, warning, mode, leaveVoicemail]);
 
   return null;
 }
