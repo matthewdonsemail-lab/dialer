@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lastOutcomes, outcomeCounts } from "./lastOutcomes.js";
+import { lastOutcomes, outcomeCounts, recencyOrder } from "./lastOutcomes.js";
 
 test("the newest call per contact decides its last outcome", () => {
   const last = lastOutcomes([
@@ -11,4 +11,9 @@ test("the newest call per contact decides its last outcome", () => {
   ]);
   assert.deepEqual([...last.entries()], [["a", "INTERESTED"], ["b", "NO_ANSWER"]]);
   assert.deepEqual(outcomeCounts(last), { INTERESTED: 1, NO_ANSWER: 1 });
+});
+
+test("recency order lists the newest-called first, or the oldest-called first", () => {
+  assert.deepEqual(recencyOrder(["a", "b", "c"], "desc"), ["a", "b", "c"]);
+  assert.deepEqual(recencyOrder(["a", "b", "c"], "asc"), ["c", "b", "a"]);
 });

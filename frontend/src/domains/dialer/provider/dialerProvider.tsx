@@ -10,6 +10,9 @@ import { useCalls } from "@/domains/calls/data";
 import { api } from "@/domains/api/client";
 import { DIAL_COOLDOWN_HOURS, isWithinCooldown, lastDialTo, recordStatusForOutcome } from "@/domains/calls/disposition";
 import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/domains/app/config";
+import { effectiveRingSeconds, machineResult, shouldAutoWrapEnd, type CallPlan } from "@/domains/dialer/dialing";
+import { AnswerScreen, REAL_SCREEN_DEPS, type MachineResult, type ScreenPhase } from "@/domains/dialer/screening";
+import { loadVoicemail } from "@/domains/dialer/voicemail";
 import { classifyFailure, getSipConfig, isSipConfigured, sipLog, type ClassifiedFailure } from "@/domains/dialer/sip";
 import { CallLifecycle } from "@/domains/dialer/lifecycle";
 import { attachRemoteMedia, getMicStream, loadSip, sendSessionDtmf, startAgent, type SipAgent } from "@/domains/dialer/sip";
@@ -37,6 +40,8 @@ export interface DialOptions {
   saveLabel?: string;
   /** Runs after the summary is saved (the power dialer advances here). */
   onSaved?: (outcome: string) => void;
+  /** Power-dialing rules from the dialing mode; absent for ordinary calls. */
+  plan?: CallPlan & { leaveVoicemail: boolean };
 }
 
 export interface DialerLine {
@@ -95,6 +100,10 @@ interface DialerValue {
   saving: boolean;
   /** The live sip.js session, if any. */
   session: any;
+  /** Answer Boost is listening to who picked up (or leaving a voicemail); null otherwise. */
+  screen: ScreenPhase | null;
+  /** A beep was heard soon after connecting: this may be a voicemail. */
+  suspectVoicemail: boolean;
   // actions
   dial: (target: DialTarget, options?: DialOptions) => Promise<void>;
   dialAnyway: () => void;
@@ -182,6 +191,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const [registered, setRegistered] = useState(false);
   const [saving, setSaving] = useState(false);
   const [options, setOptions] = useState<DialOptions>({});
+  const [screen, setScreen] = useState<ScreenPhase | null>(null);
+  const [suspectVoicemail, setSuspectVoicemail] = useState(false);
 
   const { data: recentCallRows } = useCalls();
   const recentCalls = useMemo(() => recentCallRows ?? [], [recentCallRows]);
@@ -203,6 +214,16 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   // operator presses "Dial anyway"; `skip` lists the checks already confirmed.
   const overrideRef = useRef<{ target: DialTarget; options: DialOptions; skip: Set<"cooldown" | "abroad"> } | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  // Read by timers and SIP callbacks that outlive the render that made them.
+  const optionsRef = useRef<DialOptions>({});
+  optionsRef.current = options;
+  const targetRef = useRef<DialTarget | null>(null);
+  targetRef.current = target;
+  const screenRef = useRef<AnswerScreen | null>(null);
+  /** A person is on the line (or no screening is running): the call counts as answered. */
+  const humanConnectedRef = useRef(false);
+  /** finishCall -> commitSummary, which is defined further down. */
+  const commitRef = useRef<((outcome: string, notes: string) => Promise<void>) | null>(null);
 
   const setCallState = useCallback((next: CallState) => {
     stateRef.current = next;
@@ -284,8 +305,34 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ---- helpers ----
-  const finishCall = useCallback((finalOutcome?: string) => {
+  /** How long this call rings: Answer Boost never rings for less than 35 seconds. */
+  const ringSeconds = useCallback(
+    () => effectiveRingSeconds(optionsRef.current.plan?.screenAnswers ? "boost" : "standard", getUnansweredTimeoutSeconds()),
+    [],
+  );
+
+  /** Enable or silence what the other side hears from us (the microphone track). */
+  const setSenderAudio = useCallback((session: any, on: boolean) => {
+    const pc: RTCPeerConnection | undefined = session?.sessionDescriptionHandler?.peerConnection;
+    pc?.getSenders().forEach((sender) => {
+      if (sender.track?.kind === "audio") sender.track.enabled = on;
+    });
+  }, []);
+
+  const stopScreening = useCallback(() => {
+    screenRef.current?.stop();
+    screenRef.current = null;
+    setScreen(null);
+  }, []);
+
+  /**
+   * `unattended`: nobody was on the line (it rang out, was declined, or a
+   * machine hung up). In Advanced and Answer Boost that is logged as No
+   * answer and the power dialer moves on with no clicks.
+   */
+  const finishCall = useCallback((finalOutcome?: string, finishOpts: { unattended?: boolean } = {}) => {
     clearUnanswered();
+    stopScreening();
     const lc = lifecycleRef.current;
     lc?.stopHeartbeat();
     const o = finalOutcome ?? outcomeRef.current;
@@ -295,7 +342,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setHeld(false);
     setCallState("ended");
     void lc?.finalize(o, durationRef.current);
-  }, [clearUnanswered, setCallState]);
+    if (shouldAutoWrapEnd(optionsRef.current.plan, { unattended: !!finishOpts.unattended, humanConnected: humanConnectedRef.current })) {
+      setTimeout(() => void commitRef.current?.("no_answer", ""), 0);
+    }
+  }, [clearUnanswered, setCallState, stopScreening]);
 
   const failLoud = useCallback(async (f: ClassifiedFailure) => {
     const lc = lifecycleRef.current;
@@ -311,6 +361,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     lifecycleRef.current = null;
     sessionRef.current = null;
     establishedRef.current = false;
+    humanConnectedRef.current = false;
+    if (remoteAudioRef.current) remoteAudioRef.current.muted = false;
+    screenRef.current?.stop();
+    screenRef.current = null;
+    setScreen(null);
+    setSuspectVoicemail(false);
     bridgeLegRef.current = null;
     lastSipStatusRef.current = null;
     iceFailedRef.current = false;
@@ -328,9 +384,63 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setCallState("idle");
   }, [setCallState]);
 
+  /** A person picked up (or detection could not tell): connect the operator. */
+  const connectHuman = useCallback((session: any, reason: string) => {
+    humanConnectedRef.current = true;
+    sipLog.info("app", `answer screening: connecting you (${reason})`);
+    setSenderAudio(session, true);
+    if (remoteAudioRef.current) remoteAudioRef.current.muted = false;
+    // The call clock starts when you are connected, not while it was being checked.
+    setDuration(0);
+    setOutcome("connected");
+    setCallState("active");
+  }, [setCallState, setSenderAudio]);
+
+  /** A machine picked up: it is already hung up on or has your voicemail; log it and move on. */
+  const handleMachine = useCallback((session: any, result: MachineResult) => {
+    const r = machineResult(result);
+    sipLog.info("app", `answering machine: ${result.left ? "left your voicemail" : "skipped"}`, { failed: !!result.failed });
+    try { session.bye(); } catch { try { session.dispose?.(); } catch { /* gone */ } }
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+    finishCall(r.outcome);
+    if (optionsRef.current.plan?.autoWrapMachines) setTimeout(() => void commitRef.current?.(r.outcome, r.note), 0);
+    else setNotesState(r.note);
+  }, [finishCall]);
+
+  /** Answer Boost: the line is open, but the operator hears nothing until a person is confirmed. */
+  const beginScreening = useCallback((session: any) => {
+    const plan = optionsRef.current.plan;
+    humanConnectedRef.current = false;
+    setSenderAudio(session, false);
+    // Silent until a person is confirmed: mute the speaker element before any audio reaches it.
+    if (remoteAudioRef.current) remoteAudioRef.current.muted = true;
+    attachRemoteMedia(session, remoteAudioRef.current, () => { iceFailedRef.current = true; });
+    lifecycleRef.current?.setPhoneActive();
+    void lifecycleRef.current?.startRecording(setRecWarning);
+    const screenNow = new AnswerScreen(
+      session,
+      {
+        onPhase: setScreen,
+        onHuman: (reason) => connectHuman(session, reason),
+        onMachine: (result) => handleMachine(session, result),
+        onLateBeep: () => setSuspectVoicemail(true),
+        loadRecording: async () => (plan?.leaveVoicemail ? ((await loadVoicemail())?.blob ?? null) : null),
+      },
+      REAL_SCREEN_DEPS,
+    );
+    screenRef.current = screenNow;
+    screenNow.start();
+  }, [connectHuman, handleMachine, setSenderAudio]);
+
   const onEstablished = useCallback((session: any) => {
     clearUnanswered();
     establishedRef.current = true;
+    if (optionsRef.current.plan?.screenAnswers && !SIMULATE_CALLS) {
+      beginScreening(session);
+      return;
+    }
+    humanConnectedRef.current = true;
+    if (remoteAudioRef.current) remoteAudioRef.current.muted = false;
     // An open media path is not proof a human answered (IVR and voicemail
     // open it too): default to `connected` and let the operator pick.
     setOutcome("connected");
@@ -338,7 +448,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     lifecycleRef.current?.setPhoneActive();
     attachRemoteMedia(session, remoteAudioRef.current, () => { iceFailedRef.current = true; });
     void lifecycleRef.current?.startRecording(setRecWarning);
-  }, [clearUnanswered, setCallState]);
+  }, [beginScreening, clearUnanswered, setCallState]);
 
   // ---- outbound ----
   const startPhoneAudio = useCallback(async (lc: CallLifecycle) => {
@@ -375,13 +485,14 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     const lineDown = bridge.status === "ended" || bridge.status === "failed";
     if (bridge.contactLegId === leg && bridge.contactState === "answered" && stateRef.current !== "active") {
       establishedRef.current = true;
+      humanConnectedRef.current = true;
       setOutcome("connected");
       setCallState("active");
       lifecycleRef.current?.setPhoneActive();
     }
     if ((bridge.contactLegId === leg && bridge.contactState === "ended") || lineDown) {
       bridgeLegRef.current = null;
-      finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
+      finishCall(establishedRef.current ? outcomeRef.current : "no_answer", { unattended: !establishedRef.current });
     }
   }, [audioBridge.session, finishCall, setCallState]);
 
@@ -441,7 +552,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         if (s === SessionState.Establishing) setCallState("ringing");
         if (s === SessionState.Established) onEstablished(inviter);
         if (s === SessionState.Terminated) {
-          if (stateRef.current === "ended") return;
+          // A finished call's session reports Terminated a moment after it was hung up, by which time
+          // the power dialer may already be on the next call: only the current call's session counts.
+          if (lifecycleRef.current !== lc || stateRef.current === "ended") return;
+          let failed = false;
           if (!establishedRef.current) {
             const f = classifyFailure({
               sipStatusCode: lastSipStatusRef.current,
@@ -451,9 +565,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
             if (f.kind !== "UNKNOWN" && lastSipStatusRef.current && lastSipStatusRef.current >= 400 && lastSipStatusRef.current !== 486 && lastSipStatusRef.current !== 487) {
               lc.lastFailure = f;
               setFailure(f);
+              failed = true;
             }
           }
-          finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
+          // A real failure stops the power dialer for you to see; a call that
+          // simply rang out, was declined, or hung up before a person was on it moves on.
+          finishCall(establishedRef.current ? outcomeRef.current : "no_answer", { unattended: !failed && !humanConnectedRef.current });
         }
       });
       // requestDelegate is the documented path for INVITE responses in
@@ -472,9 +589,11 @@ export function DialerProvider({ children }: { children: ReactNode }) {
           },
           onProgress: (response: any) => {
             const code = response?.message?.statusCode;
+            // Answer Boost: whoever picks up must not hear the operator until a person is confirmed.
+            if (optionsRef.current.plan?.screenAnswers) setSenderAudio(inviter, false);
             if ((code === 180 || code === 183) && !rangRef.current) {
               rangRef.current = true;
-              startUnanswered(getUnansweredTimeoutSeconds());
+              startUnanswered(ringSeconds());
             }
           },
           onReject: (response: any) => {
@@ -489,7 +608,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       // Terminated listener then does the normal finalize. The ringing time
       // is counted from the first ring (see onProgress), so carrier setup
       // does not eat into it; this backstop covers a call that never rings.
-      if (!rangRef.current) startUnanswered(getUnansweredTimeoutSeconds() + 15);
+      if (!rangRef.current) startUnanswered(ringSeconds() + 15);
       lc.startHeartbeat(HEARTBEAT_INTERVAL_MS, () => isLive(stateRef.current));
     } catch (err: any) {
       // Hung up before the INVITE went out: sip.js rejects the pending offer
@@ -501,7 +620,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       sipLog.error("invite", `dial path threw: ${err?.message || err}`);
       await failLoud(classifyFailure({ sipStatusCode: lastSipStatusRef.current, wsUrl: cfg.wsUrl }));
     }
-  }, [ensureAgent, failLoud, finishCall, microphoneId, onEstablished, setCallState, clearUnanswered]);
+  }, [ensureAgent, failLoud, finishCall, microphoneId, onEstablished, setCallState, clearUnanswered, ringSeconds, setSenderAudio]);
 
   const dial = useCallback(async (next: DialTarget, opts: DialOptions = {}) => {
     setIsOpen(true);
@@ -668,7 +787,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     const { SessionState } = await loadSip();
     call.session.stateChange.addListener((s: string) => {
       if (s === SessionState.Established) onEstablished(call.session);
-      if (s === SessionState.Terminated && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
+      if (s === SessionState.Terminated && lifecycleRef.current === lc && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
     });
     try {
       await call.session.accept({
@@ -723,11 +842,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
    * number release, contact status and a refetch (8+ Twenty requests in a
    * row) before the queue advanced. Failures still toast.
    */
-  const saveSummary = useCallback(async () => {
+  const commitSummary = useCallback(async (o: string, n: string) => {
     const lc = lifecycleRef.current;
-    const t = target;
-    const o = outcome;
-    const n = notes;
+    const t = targetRef.current;
     const status = recordStatusForOutcome(o);
 
     // Show the result in every loaded contact list right away.
@@ -746,7 +863,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const after = options.onSaved;
+    const after = optionsRef.current.onSaved;
     resetCall();
     after?.(o);
 
@@ -775,7 +892,11 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       );
     })();
     await work;
-  }, [target, outcome, notes, options, queryClient, resetCall, toastError]);
+  }, [queryClient, resetCall, toastError]);
+  commitRef.current = commitSummary;
+
+  /** "Done": save the outcome and notes the operator picked. */
+  const saveSummary = useCallback(() => commitSummary(outcome, notes), [commitSummary, outcome, notes]);
 
   const discardSummary = useCallback(() => {
     void lifecycleRef.current?.release();
@@ -827,6 +948,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     saveLabel: options.saveLabel ?? "Done",
     saving,
     session: sessionRef.current,
+    screen,
+    suspectVoicemail,
     dial,
     dialAnyway,
     hangup,
@@ -838,7 +961,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     saveSummary,
     discardSummary,
   }), [isOpen, pinned, setPinned, lines, line, setLineId, registered, phoneAudio, state, target, direction, duration, muted, held,
-    outcome, notes, setNotes, notesSaved, notesError, failure, cooldownNotice, recWarning, incoming, options.saveLabel, saving,
+    outcome, notes, setNotes, notesSaved, notesError, failure, cooldownNotice, recWarning, incoming, options.saveLabel, saving, screen, suspectVoicemail,
     dial, dialAnyway, hangup, mute, hold, sendDtmf, accept, decline, saveSummary, discardSummary]);
 
   return (

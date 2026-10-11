@@ -30,3 +30,8 @@ export function outcomeCounts(last: Map<string, string>): Record<string, number>
   for (const outcome of last.values()) out[outcome] = (out[outcome] ?? 0) + 1;
   return out;
 }
+
+/** Contact ids (given newest call first) ordered most recently called first ("desc") or least recently called first ("asc"). Pure. */
+export function recencyOrder(newestFirst: string[], dir: "asc" | "desc"): string[] {
+  return dir === "asc" ? [...newestFirst].reverse() : [...newestFirst];
+}

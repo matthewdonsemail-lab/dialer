@@ -4,7 +4,7 @@ import { listTwenty, listTwentyAll, createTwenty, updateTwenty, deleteTwenty, ge
 import { twentyGraphqlClient } from "../../lib/twenty/graphql/index.js";
 import { contactTypes, idList } from "./helpers/query.js";
 import { leadGqlQuery, pageWindow, prospectGqlQuery, type IdScope } from "./helpers/queryGql.js";
-import { lastCallIndex, NEVER_CALLED, outcomeCounts } from "../../lib/twenty/lastCall/index.js";
+import { lastCallIndex, NEVER_CALLED, outcomeCounts, recencyOrder } from "../../lib/twenty/lastCall/index.js";
 import { mapLeadToFrontend } from "../leads/helpers/index.js";
 import { guardContactStatus } from "../../lib/pipelines/index.js";
 import { checkSmsRoute, offerMachine, onPageSent, toE164 } from "@dialer/shared";
@@ -115,9 +115,6 @@ router.get("/page", async (req, res) => {
         scope = { in: ids };
       }
     }
-    const pq = types.prospects ? prospectGqlQuery(params, scope) : null;
-    const lq = types.leads ? leadGqlQuery(params, scope) : null;
-
     const fetchSlice = async (object: "agencyProspects" | "agencyLeads", q: { filter?: unknown; orderBy: unknown }, node: object, first: number, skip: number) => {
       const r: any = await client.query({
         [object]: { __args: { first: Math.max(1, first), offset: skip, orderBy: q.orderBy, ...(q.filter ? { filter: q.filter } : {}) }, totalCount: true, edges: { node } },
@@ -125,38 +122,99 @@ router.get("/page", async (req, res) => {
       return { rows: (r?.[object]?.edges ?? []).map((e: any) => e.node), total: r?.[object]?.totalCount ?? 0 };
     };
 
-    // Totals first (1-row queries), so the table can size its scroll area.
-    const [pTotal, lTotal] = await Promise.all([
-      pq ? fetchSlice("agencyProspects", pq, { id: true }, 1, 0).then((r) => r.total) : Promise.resolve(0),
-      // Leads are a bonus to the prospect list: if Twenty rejects the lead query, show prospects alone.
-      lq
-        ? fetchSlice("agencyLeads", lq, { id: true }, 1, 0)
-            .then((r) => r.total)
-            .catch((err) => {
-              log.info(`Lead query skipped: ${err.message}`);
-              return 0;
-            })
-        : Promise.resolve(0),
-    ]);
+    /** The window [skipRows, skipRows + take) of the contacts matching `scope`, in the table's sort. */
+    const walk = async (idScope: IdScope | undefined, skipRows: number, take: number) => {
+      if (idScope?.in && idScope.in.length === 0) return { rows: [] as any[], pTotal: 0, lTotal: 0 };
+      const pq = types.prospects ? prospectGqlQuery(params, idScope) : null;
+      const lq = types.leads ? leadGqlQuery(params, idScope) : null;
+      // Totals first (1-row queries), so the table can size its scroll area.
+      const [pTotal, lTotal] = await Promise.all([
+        pq ? fetchSlice("agencyProspects", pq, { id: true }, 1, 0).then((r) => r.total) : Promise.resolve(0),
+        // Leads are a bonus to the prospect list: if Twenty rejects the lead query, show prospects alone.
+        lq
+          ? fetchSlice("agencyLeads", lq, { id: true }, 1, 0)
+              .then((r) => r.total)
+              .catch((err) => {
+                log.info(`Lead query skipped: ${err.message}`);
+                return 0;
+              })
+          : Promise.resolve(0),
+      ]);
+      const sources = [
+        pq && pTotal > 0 ? { object: "agencyProspects" as const, q: pq, node: PROSPECT_NODE, total: pTotal, type: "prospect", map: mapProspectListItem } : null,
+        lq && lTotal > 0 ? { object: "agencyLeads" as const, q: lq, node: LEAD_NODE, total: lTotal, type: "lead", map: (r: any) => mapLeadToFrontend(r) } : null,
+      ].filter((x): x is NonNullable<typeof x> => !!x);
+      if (params.sort === "contact_type" && params.dir === "desc") sources.reverse();
 
-    const sources = [
-      pq && pTotal > 0 ? { object: "agencyProspects" as const, q: pq, node: PROSPECT_NODE, total: pTotal, type: "prospect", map: mapProspectListItem } : null,
-      lq && lTotal > 0 ? { object: "agencyLeads" as const, q: lq, node: LEAD_NODE, total: lTotal, type: "lead", map: (r: any) => mapLeadToFrontend(r) } : null,
-    ].filter((x): x is NonNullable<typeof x> => !!x);
-    if (params.sort === "contact_type" && params.dir === "desc") sources.reverse();
-
-    // Walk the window [offset, offset + limit) across the sources in order.
-    let rows: any[] = [];
-    let skip = offset;
-    for (const src of sources) {
-      if (rows.length >= limit) break;
-      if (skip >= src.total) {
-        skip -= src.total;
-        continue;
+      // Walk the window across the sources in order.
+      let out: any[] = [];
+      let skip = skipRows;
+      for (const src of sources) {
+        if (out.length >= take || take <= 0) break;
+        if (skip >= src.total) {
+          skip -= src.total;
+          continue;
+        }
+        const slice = await fetchSlice(src.object, src.q, src.node, take - out.length, skip);
+        out = out.concat(slice.rows.map((r: any) => ({ ...src.map(r), type: src.type })));
+        skip = 0;
       }
-      const slice = await fetchSlice(src.object, src.q, src.node, limit - rows.length, skip);
-      rows = rows.concat(slice.rows.map((r: any) => ({ ...src.map(r), type: src.type })));
-      skip = 0;
+      return { rows: out, pTotal, lTotal };
+    };
+
+    let rows: any[] = [];
+    let pTotal = 0;
+    let lTotal = 0;
+    if (params.sort === "last_activity") {
+      // Most (or least) recently called first; contacts never called always come last. Twenty cannot
+      // sort by a call's time, so order the matching called contacts by the call index (newest first).
+      const newestFirst = [...(await lastCallIndex()).keys()];
+      const calledIds = scope?.in ?? (scope?.notIn ? [] : newestFirst);
+      const tailScope: IdScope | undefined = scope?.notIn ? scope : scope?.in ? { in: [] } : { notIn: newestFirst };
+      const matched = new Set<string>();
+      const calledCount = { prospect: 0, lead: 0 };
+      if (calledIds.length) {
+        const ids = { in: calledIds };
+        const queries = [
+          types.prospects ? { object: "agencyProspects" as const, type: "prospect" as const, q: prospectGqlQuery(params, ids) } : null,
+          types.leads ? { object: "agencyLeads" as const, type: "lead" as const, q: leadGqlQuery(params, ids) } : null,
+        ];
+        for (const src of queries) {
+          if (!src?.q) continue;
+          for (let skip = 0; ; skip += 200) {
+            const slice = await fetchSlice(src.object, src.q, { id: true }, 200, skip).catch(() => ({ rows: [] as any[] }));
+            for (const n of slice.rows) {
+              matched.add(n.id);
+              calledCount[src.type]++;
+            }
+            if (slice.rows.length < 200) break;
+          }
+        }
+      }
+      const called = recencyOrder(newestFirst.filter((id) => matched.has(id)), params.dir === "asc" ? "asc" : "desc");
+      const windowIds = called.slice(offset, offset + limit);
+      if (windowIds.length) {
+        const byId = { in: windowIds };
+        const [ps, ls] = await Promise.all([
+          types.prospects ? fetchSlice("agencyProspects", { orderBy: [{ id: "AscNullsFirst" }], filter: { id: byId } }, PROSPECT_NODE, windowIds.length, 0) : null,
+          types.leads ? fetchSlice("agencyLeads", { orderBy: [{ id: "AscNullsFirst" }], filter: { id: byId } }, LEAD_NODE, windowIds.length, 0).catch(() => null) : null,
+        ]);
+        const found = [
+          ...(ps?.rows ?? []).map((r: any) => ({ ...mapProspectListItem(r), type: "prospect" })),
+          ...(ls?.rows ?? []).map((r: any) => ({ ...mapLeadToFrontend(r), type: "lead" })),
+        ];
+        const position = new Map(windowIds.map((id, i) => [id, i]));
+        rows = found.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+      }
+      const tail = await walk(tailScope, Math.max(0, offset - called.length), limit - rows.length);
+      rows = rows.concat(tail.rows);
+      pTotal = tail.pTotal + calledCount.prospect;
+      lTotal = tail.lTotal + calledCount.lead;
+    } else {
+      const w = await walk(scope, offset, limit);
+      rows = w.rows;
+      pTotal = w.pTotal;
+      lTotal = w.lTotal;
     }
 
     // Last call per contact in this window: one request, not per row.

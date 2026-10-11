@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `./scripts/setup.sh`: install, env files, schema check, `--apply`, `--seed`
 - AST commit checks (naming, layout, dead buttons, toggle state, pipeline
   values), Conventional Commits, branch names, and a full pre-push gate
+- Dialing modes (Standard, Advanced, Answer Boost) in Settings → Dialing:
+  Answer Boost listens to who answers, skips answering machines or leaves your
+  recorded voicemail, and connects you only to a person; a voicemail recorder
+  (see [docs/dialing-modes.md](docs/dialing-modes.md))
+- Contacts table: pages of 20, 50 or 100 contacts with Prev, Next and page
+  numbers, and a sortable Last activity column (newest or oldest call first)
 
 ### Changed (October 2026)
 - Whole repo moved to a camelCase `domains/<domain>/<primitive>` layout

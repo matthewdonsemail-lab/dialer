@@ -1,8 +1,10 @@
 import React, { useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { BarChart3, Check, Clock, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, Sun, Timer, User, type IconComponent } from "@/domains/ui/icons";
+import { BarChart3, Check, Clock, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, Sun, Timer, User, Voicemail, type IconComponent } from "@/domains/ui/icons";
 import { InfoTip, TipCard, type TipSpec } from "@/domains/ui/infoTip";
 import { AudioSourceSettings } from "@/domains/dialer/audio";
+import { DialingModeSettings, VoicemailSettings } from "@/domains/dialer/dialingSettings";
+import { MODE_INFO, useDialingSettings } from "@/domains/dialer/dialing";
 import { SectionTitle } from "@/domains/ui/sectionTitle";
 import { TabBar, type TabDef } from "@/domains/ui/tabBar";
 import { ReportCard } from "@/domains/reports/parts";
@@ -132,9 +134,10 @@ function ThemePreview({ dark }: { dark: boolean }) {
   );
 }
 
-type SettingsTab = "appearance" | "audio" | "reports" | "account";
+type SettingsTab = "appearance" | "dialing" | "audio" | "reports" | "account";
 const SETTINGS_TABS: TabDef<SettingsTab>[] = [
   { key: "appearance", label: "Appearance", icon: Palette },
+  { key: "dialing", label: "Dialing", icon: PhoneOutgoing },
   { key: "audio", label: "Audio Source", icon: Headphones },
   { key: "reports", label: "Reports", icon: BarChart3 },
   { key: "account", label: "Account", icon: User },
@@ -149,6 +152,7 @@ export function SettingsPage() {
   const { mode, setMode } = useTheme();
   const { dailyCallGoal, setDailyCallGoal, conversationSeconds, setConversationSeconds } = useReportSettings();
   const { user } = useAuth();
+  const { mode: dialingMode } = useDialingSettings();
   const navigate = useNavigate();
   const [tab, setTab] = usePersistedState<SettingsTab>("settings-tab", "appearance");
   // Card grids fill whole rows (3 themes: 3 x 1 or 1 x 3, never 2 + 1).
@@ -168,7 +172,7 @@ export function SettingsPage() {
           as="h1"
           title="Settings"
           pill="Saved on this browser"
-          info={{ title: "Settings", icon: Palette, what: "Appearance, audio source, report goals and your account.", use: "Changes save as you make them." }}
+          info={{ title: "Settings", icon: Palette, what: "Appearance, dialing mode and voicemail, audio source, report goals and your account.", use: "Changes save as you make them." }}
         />
       </div>
 
@@ -221,6 +225,36 @@ export function SettingsPage() {
               })}
             </div>
           </ReportCard>
+        )}
+
+        {tab === "dialing" && (
+          <>
+            <ReportCard
+              title="Dialing mode"
+              unit={MODE_INFO[dialingMode].label}
+              tip={{
+                title: "Dialing mode",
+                icon: PhoneOutgoing,
+                what: "How the power dialer moves through a campaign.",
+                formula: ["Standard", "→", "Advanced", "→", "Answer Boost"],
+                use: "Standard stops after every call. Advanced skips unanswered calls. Answer Boost also skips answering machines. Machine detection is not perfect: it can occasionally connect you to a machine, and when it cannot tell it connects you rather than risk dropping a person.",
+              }}
+            >
+              <DialingModeSettings />
+            </ReportCard>
+            <ReportCard
+              title="Outbound voicemail"
+              unit="Answer Boost"
+              tip={{
+                title: "Outbound voicemail",
+                icon: Voicemail,
+                what: "The message Answer Boost leaves when an answering machine picks up. Recorded here, kept on this browser.",
+                use: "Without one, machines are skipped without leaving a message.",
+              }}
+            >
+              <VoicemailSettings />
+            </ReportCard>
+          </>
         )}
 
         {tab === "audio" && (
