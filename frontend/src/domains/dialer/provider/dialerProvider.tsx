@@ -143,7 +143,8 @@ interface DialerValue {
   sendDtmf: (tone: string) => void;
   accept: () => Promise<void>;
   decline: () => void;
-  saveSummary: () => Promise<void>;
+  /** Saves the call; `outcome` saves that disposition without waiting for it to be set first. */
+  saveSummary: (outcome?: string) => Promise<void>;
   discardSummary: () => void;
 }
 
@@ -1113,11 +1114,12 @@ export function DialerProvider({ children }: { children: ReactNode }) {
    * number release, contact status and a refetch (8+ Twenty requests in a
    * row) before the queue advanced. Failures still toast.
    */
-  const saveSummary = useCallback(async () => {
-    const work = recordResult(lifecycleRef.current, target, outcome, notes);
+  const saveSummary = useCallback(async (picked?: string) => {
+    const o = picked ?? outcome;
+    const work = recordResult(lifecycleRef.current, target, o, notes);
     const after = options.onSaved;
     resetCall();
-    after?.(outcome);
+    after?.(o);
     await work;
   }, [target, outcome, notes, options, recordResult, resetCall]);
 

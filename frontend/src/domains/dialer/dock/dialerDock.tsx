@@ -123,16 +123,6 @@ export function DialerTopButton() {
 type SidePanel = { kind: "script" } | { kind: "contact"; contactType: "prospect" | "lead"; contactId: string } | null;
 const SideContext = createContext<{ side: SidePanel; setSide: (s: SidePanel) => void }>({ side: null, setSide: () => {} });
 
-/** Seconds the dock counts down before it dials the next contact on its own. */
-const AUTO_QUEUE_SECONDS = 5;
-
-/** The next contact in the Contacts list, waiting out the countdown. */
-interface QueuedCall {
-  rows: ContactRow[];
-  index: number;
-  left: number;
-}
-
 /** A person is called as their company (where calls and history are kept); without one they cannot be dialled. */
 const rowRecord = (r: ContactRow) =>
   r.type === "person" ? (r.prospectId ? { type: "prospect" as const, id: r.prospectId } : null) : { type: r.type, id: r.id };
@@ -150,23 +140,21 @@ const rowTarget = (r: ContactRow) => {
 };
 
 /**
- * Auto-queue next call: with it on, saving a call dialled from the Contacts
- * list counts down and dials the next contact in that list. Off, saving just
- * returns to the list as before.
+ * Auto-queue next call: with it on, picking a disposition on a call dialled
+ * from the Contacts list saves it and dials the next contact in that list
+ * straight away. Off, the disposition waits for Done and saving returns to
+ * the list as before.
  */
 const AutoQueueContext = createContext<{
-  queued: QueuedCall | null;
-  /** Dials rows[index], queueing the one after it when the call is saved. */
+  /** Dials rows[index]; with auto-queue on, the next contact follows once the call is saved. */
   dialFromList: (rows: ContactRow[], index: number) => void;
-  callNow: () => void;
-  cancel: () => void;
   /** The switch itself, owned by the dock so a save always reads the latest value. */
   on: boolean;
   setOn: (on: boolean) => void;
   /** Lines that ring at once when dialling from the list (Calling from menu). */
   lineCount: number;
   setLineCount: (n: number) => void;
-}>({ queued: null, dialFromList: () => {}, callNow: () => {}, cancel: () => {}, on: false, setOn: () => {}, lineCount: 1, setLineCount: () => {} });
+}>({ dialFromList: () => {}, on: false, setOn: () => {}, lineCount: 1, setLineCount: () => {} });
 
 /** Opens (or, when it is already showing, closes) a contact beside the dock. */
 function useContactSide() {
@@ -191,7 +179,6 @@ export function DialerDock() {
   const autoQueueRef = useRef(autoQueue);
   autoQueueRef.current = autoQueue;
   const { info: toastInfo } = useToast();
-  const [queued, setQueued] = useState<QueuedCall | null>(null);
   const [linesWanted, setLineCount] = usePersistedState("dialer-parallel-lines", 1);
   const lineCount = Math.max(1, Math.min(linesWanted, dialer.maxLines));
   const lineCountRef = useRef(lineCount);
@@ -199,7 +186,6 @@ export function DialerDock() {
   const dialRef = useRef(dialer.dialMany);
   dialRef.current = dialer.dialMany;
   const dialFromList = useCallback((rows: ContactRow[], index: number) => {
-    setQueued(null);
     if (!rows[index] || !rowTarget(rows[index]).phone) return;
     // How far down the list this call (or batch of lines) went; the next one starts after it.
     let consumed = 1;
@@ -212,40 +198,19 @@ export function DialerDock() {
           toastInfo("End of the list", "No more contacts with a number in this list.");
           return;
         }
-        setQueued({ rows, index: next, left: AUTO_QUEUE_SECONDS });
+        dialFromList(rows, next);
       },
     });
   }, [toastInfo]);
-  // Count down while the dock is free; anything else taking the line cancels it.
-  useEffect(() => {
-    if (!queued) return;
-    if (state !== "idle" || dialer.cooldownNotice) {
-      setQueued(null);
-      return;
-    }
-    if (queued.left <= 0) {
-      dialFromList(queued.rows, queued.index);
-      return;
-    }
-    const t = setTimeout(() => setQueued((q) => (q ? { ...q, left: q.left - 1 } : q)), 1000);
-    return () => clearTimeout(t);
-  }, [queued, state, dialer.cooldownNotice, dialFromList]);
-  // Turning the switch off stops a countdown already running.
-  useEffect(() => {
-    if (!autoQueue) setQueued(null);
-  }, [autoQueue]);
   const autoQueueValue = useMemo(
     () => ({
-      queued,
       dialFromList,
-      callNow: () => setQueued((q) => (q ? { ...q, left: 0 } : q)),
-      cancel: () => setQueued(null),
       on: autoQueue,
       setOn: setAutoQueue,
       lineCount,
       setLineCount,
     }),
-    [queued, dialFromList, autoQueue, setAutoQueue, lineCount, setLineCount],
+    [dialFromList, autoQueue, setAutoQueue, lineCount, setLineCount],
   );
 
   // Unpinned: a click outside closes it (menus portal out, so skip those).
@@ -275,19 +240,7 @@ export function DialerDock() {
   }, [targetType, targetId]);
 
   if (!isOpen) {
-    if (!isLive(state) && !queued) return null;
-    if (queued) {
-      // Minimised while the next call counts down: the dock reopens to show it.
-      return (
-        <button
-          onClick={open}
-          className="fixed top-12 right-4 z-[55] h-8 px-3 rounded-[8px] bg-[var(--ods-brand-600)] text-white text-[13px] font-semibold tabular-nums inline-flex items-center gap-2 shadow-[0_8px_24px_rgba(0,0,0,0.2)]"
-        >
-          <SkipForward className="w-3.5 h-3.5" />
-          Next call in {queued.left}s
-        </button>
-      );
-    }
+    if (!isLive(state)) return null;
     // Minimised mid-call: a timer pill that reopens the dock.
     return (
       <button
@@ -463,7 +416,6 @@ function IdleView() {
   ];
   return (
     <>
-      <NextCallBanner />
       {cooldownNotice && target && (
         <div className="m-3 mb-0 p-3 rounded-[10px] border border-amber-500/30 bg-amber-500/10 text-[13px]">
           <div className="font-semibold">{target.name}</div>
@@ -493,33 +445,6 @@ function IdleView() {
   );
 }
 
-/** The countdown to the next contact in the list, with Call now and Cancel. */
-function NextCallBanner() {
-  const { queued, callNow, cancel, lineCount } = useContext(AutoQueueContext);
-  const r = queued ? queued.rows[queued.index] : null;
-  if (!queued || !r) return null;
-  const name = contactName(r) ?? r.phone ?? "Unknown";
-  // With several lines, the batch is roughly the next contacts with a number (skips are decided at dial time).
-  const batch = queued.rows.slice(queued.index).filter((x) => !!x.phone).slice(0, lineCount);
-  return (
-    <div role="status" className="m-3 mb-0 p-3 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] text-[13px]">
-      <div className="text-[12px] text-[var(--ods-text-tertiary)]">
-        {batch.length > 1 ? `Next ${batch.length} lines in ${queued.left}s` : `Next call in ${queued.left}s`}
-      </div>
-      <div className="font-semibold truncate">{batch.length > 1 ? batch.map((x) => contactName(x) ?? x.phone).join(", ") : name}</div>
-      {batch.length <= 1 && <div className="text-[12px] tabular-nums text-[var(--ods-text-secondary)] truncate">{[r.phone, r.company].filter(Boolean).join(" · ")}</div>}
-      <div className="mt-2 flex gap-2">
-        <button onClick={callNow} className={BTN_PRIMARY}>
-          <Phone className="w-3.5 h-3.5" /> Call now
-        </button>
-        <button onClick={cancel} className={BTN_SECONDARY}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /** The Auto-queue next call switch, in the call summary and the dialer settings. */
 function AutoQueueSwitch() {
   const { on, setOn } = useContext(AutoQueueContext);
@@ -528,7 +453,7 @@ function AutoQueueSwitch() {
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-semibold text-[var(--ods-text-primary)]">Auto-queue next call</div>
         <p className="text-[12px] text-[var(--ods-text-tertiary)]">
-          After you save a call from the Contacts list, the next contact in that list is dialled after {AUTO_QUEUE_SECONDS} seconds.
+          Picking a disposition saves the call and dials the next contact in the Contacts list straight away.
         </p>
       </div>
       <button
@@ -1334,6 +1259,7 @@ function NotesField() {
 
 function SummaryView() {
   const d = useDialer();
+  const { on: autoQueue } = useContext(AutoQueueContext);
   const chosen = dispositionFor(d.outcome);
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1354,7 +1280,9 @@ function SummaryView() {
             return (
               <button
                 key={opt.value}
-                onClick={() => d.setOutcome(opt.value)}
+                // With auto-queue on, the disposition is the last click: it saves and the next call starts.
+                onClick={() => (autoQueue ? void d.saveSummary(opt.value) : d.setOutcome(opt.value))}
+                disabled={d.saving}
                 aria-pressed={selected}
                 className={`h-9 px-2.5 rounded-md border text-[13px] font-semibold flex items-center gap-2 text-left transition ${
                   selected

@@ -268,7 +268,7 @@ export function SettingsPage() {
               on={autoQueue}
               setOn={setAutoQueue}
               label="Auto-queue next call"
-              description="After you save a call from the dock's Contacts list, the next contact in that list is dialled after a 5 second countdown you can cancel."
+              description="Picking a disposition saves the call and dials the next contact in the dock's Contacts list straight away."
               icon={SkipForward}
             />
           </ReportCard>
