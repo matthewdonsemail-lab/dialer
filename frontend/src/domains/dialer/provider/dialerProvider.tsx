@@ -46,6 +46,8 @@ interface Leg {
   session: any;
   timer: ReturnType<typeof setTimeout> | null;
   done: boolean;
+  /** The line that answered first and became the call. */
+  won: boolean;
 }
 
 export type CallState = "idle" | "connecting" | "ringing" | "active" | "on_hold" | "ended";
@@ -577,6 +579,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       } as any);
       sessionRef.current = inviter;
       inviter.stateChange.addListener((s: string) => {
+        // A call already saved (or replaced by the next dial) can still report
+        // Terminated late; acting on it put the dock back on "Call ended" with
+        // no contact ("Unknown"), or ended the next call.
+        if (lifecycleRef.current !== lc) return;
         if (s === SessionState.Establishing) setCallState("ringing");
         if (s === SessionState.Established) onEstablished(inviter);
         if (s === SessionState.Terminated) {
@@ -783,6 +789,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       return;
     }
     winnerRef.current = leg;
+    leg.won = true;
     leg.status = "answered";
     if (leg.timer) clearTimeout(leg.timer);
     lifecycleRef.current = leg.lc;
@@ -830,7 +837,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       const cancelAfter = (seconds: number) => {
         if (leg.timer) clearTimeout(leg.timer);
         leg.timer = setTimeout(() => {
-          if (leg.done || winnerRef.current === leg) return;
+          if (leg.done || leg.won) return;
           sipLog.warn("session", `no answer from ${leg.target.phone} after ${seconds}s, cancelling the line`);
           try { inviter.cancel()?.catch?.(() => {}); } catch { /* already ending */ }
         }, seconds * 1000);
@@ -844,8 +851,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         }
         if (s === SessionState.Established) legAnswered(leg, inviter);
         if (s === SessionState.Terminated) {
-          if (winnerRef.current === leg) {
-            if (stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
+          if (leg.won) {
+            // Only while it is still the call: once saved, a late Terminated must not log it again.
+            if (lifecycleRef.current === leg.lc && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
             return;
           }
           closeLeg(leg, "no_answer");
@@ -878,7 +886,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         });
       // Backstop for a line that never rings; ringing restarts it at the ring time.
       cancelAfter(getUnansweredTimeoutSeconds() + 15);
-      leg.lc.startHeartbeat(HEARTBEAT_INTERVAL_MS, () => !leg.done && (winnerRef.current !== leg || isLive(stateRef.current)));
+      leg.lc.startHeartbeat(HEARTBEAT_INTERVAL_MS, () => (leg.won ? lifecycleRef.current === leg.lc && isLive(stateRef.current) : !leg.done));
     }
     sipLog.info("invite", `${batch.length} lines dialling at once`);
   }, [closeLeg, ensureAgent, finishCall, legAnswered, microphoneId, publishLegs, setCallState, toastError]);
@@ -944,6 +952,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         session: null,
         timer: null,
         done: false,
+        won: false,
         lc: new CallLifecycle({
           direction: "outbound",
           fromNumber: from.phoneNumber,
@@ -1086,6 +1095,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setCallState("connecting");
     const { SessionState } = await loadSip();
     call.session.stateChange.addListener((s: string) => {
+      // As for outbound: a late event from a call already saved changes nothing.
+      if (lifecycleRef.current !== lc) return;
       if (s === SessionState.Established) onEstablished(call.session);
       if (s === SessionState.Terminated && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
     });
