@@ -83,7 +83,12 @@ export interface DataColumn<T> {
  * server (from `state`).
  */
 export interface ServerPaging<T = unknown> {
+  /** Rows in the list shown now (the current page when paged). */
   total: number | null;
+  /** All matching rows, for the count beside the title when the list is paged; defaults to `total`. */
+  count?: number | null;
+  /** Changes when the page changes, so the rows scroll back to the top. */
+  pageKey?: string | number;
   /** The row at an index, or undefined while it is loading. */
   rowAt: (index: number) => T | undefined;
   /** Called (debounced) with the first and last row index in view, overscan included. */
@@ -128,10 +133,17 @@ interface DataTableProps<T> {
   selection?: {
     onDelete: (ids: string[]) => void | Promise<void>;
     actions?: (ids: string[], clear: () => void) => ReactNode;
+    /**
+     * Adds a Select all button. In a paged table the rows on screen are only a few of the matches,
+     * so this fetches the ids of every row matching the current search and filters.
+     */
+    selectAll?: () => Promise<string[]>;
   };
   emptyMessage: ReactNode;
   /** Clears the page's own filters; called with the table's when "Clear filters" is used. */
   onClearFilters?: () => void;
+  /** A bar under the rows, e.g. the page controls. The rows scroll above it, so it never covers them. */
+  footer?: ReactNode;
 }
 
 const CELL = "h-9 px-3 border-b border-r first:border-l border-[var(--ods-border)] whitespace-nowrap overflow-hidden text-ellipsis text-[13px]";
@@ -182,6 +194,7 @@ export function DataTable<T>({
   emptyMessage,
   onClearFilters,
   server,
+  footer,
 }: DataTableProps<T>) {
   const { tableId, search, setSearch, sort, setSort, columnFilters, setColumnFilter } = state;
   const pinnedKey = columns[0]?.key;
@@ -370,7 +383,7 @@ export function DataTable<T>({
   }, [onRange, firstRow, lastRow]);
 
   // A new search / filter / sort starts back at the top.
-  const queryKey = JSON.stringify([search, columnFilters, sort]);
+  const queryKey = JSON.stringify([search, columnFilters, sort, server?.pageKey]);
   useEffect(() => {
     if (server && scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [queryKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -379,6 +392,16 @@ export function DataTable<T>({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const allSelected = shownRows.length > 0 && shownRows.every((r) => selectedIds.has(getRowId(r)));
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(shownRows.map(getRowId)));
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectEverything = async () => {
+    if (!selection?.selectAll) return;
+    setSelectingAll(true);
+    try {
+      setSelectedIds(new Set(await selection.selectAll()));
+    } finally {
+      setSelectingAll(false);
+    }
+  };
   const toggleRow = (id: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -546,19 +569,21 @@ export function DataTable<T>({
               selecting
                 ? `${selectedIds.size} selected`
                 : // Count unknown while the first load is in flight: a placeholder, never a misleading "0".
-                  (server ? server.total == null : loading)
+                  (server ? (server.count ?? server.total) == null : loading)
                   ? <Skeleton className="h-3 w-6" />
                   : server
-                    ? server.total!.toLocaleString()
+                    ? (server.count ?? server.total)!.toLocaleString()
                     : String(shownRows.length)
             } info={info} />
         </div>
         {selecting ? (
           <div className="flex items-center gap-2">
-          {selection!.actions?.(
-            shownRows.map(getRowId).filter((id) => selectedIds.has(id)),
-            () => setSelectedIds(new Set()),
+          {selection!.selectAll && (server?.count ?? server?.total ?? 0) > selectedIds.size && (
+            <ToolbarButton onClick={selectEverything} disabled={selectingAll}>
+              {selectingAll ? "Selecting…" : `Select all ${(server?.count ?? server?.total ?? 0).toLocaleString()}`}
+            </ToolbarButton>
           )}
+          {selection!.actions?.([...selectedIds], () => setSelectedIds(new Set()))}
           <RecordIndexCommandMenu
             selectedCount={selectedIds.size}
             onClear={() => setSelectedIds(new Set())}
@@ -570,6 +595,11 @@ export function DataTable<T>({
           </div>
         ) : (
           <div className="flex items-center gap-2">
+            {selection?.selectAll && (server?.count ?? server?.total ?? 0) > 0 && (
+              <ToolbarButton onClick={selectEverything} disabled={selectingAll}>
+                {selectingAll ? "Selecting…" : "Select all"}
+              </ToolbarButton>
+            )}
             <div className="relative shrink-0">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--ods-text-tertiary)] pointer-events-none" />
               <input
@@ -749,6 +779,7 @@ export function DataTable<T>({
           )}
         </DndContext>
       </div>
+      {footer}
     </div>
   );
 }

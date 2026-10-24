@@ -13,7 +13,8 @@ import { useToast } from "@/domains/ui/toast";
 import { ActionsMenu } from "@/domains/ui/menu";
 import { TwentyFieldLink } from "@/domains/twenty/fieldLink";
 import { Chip } from "@/domains/ui/chip";
-import { DataTable, ToolbarButton, useDataTable, type DataColumn } from "@/domains/ui/table";
+import { DataTable, TablePager, ToolbarButton, parsePageSize, useDataTable, type DataColumn } from "@/domains/ui/table";
+import { usePersistedState } from "@/domains/app/persistedState";
 import type { HeaderFilterOption } from "@/domains/ui/table";
 import { CampaignModal } from "@/domains/campaigns/campaignModal";
 import { ScriptsModal } from "@/domains/scripts/workspace";
@@ -32,6 +33,7 @@ import {
   useContactFacets,
   useContactWindow,
   useUpdateContact,
+  contactsApi,
   type ContactQuery,
   type ContactRow,
   type ContactRowType,
@@ -54,7 +56,7 @@ const PROSPECT_FIELD_FOR_KEY: Record<string, string | null> = {
 };
 
 /** Columns the server can sort by (see backend prospects/helpers/query.ts). */
-const SERVER_SORTABLE = new Set(["name", "company", "phone", "status", "state", "city", "country", "industry", "contact_type"]);
+const SERVER_SORTABLE = new Set(["last_activity", "name", "company", "phone", "status", "state", "city", "country", "industry", "contact_type"]);
 
 /** Twenty coldCallStatus -> app status (a blank status reads as New). */
 const TWENTY_STATUS: Record<string, string> = {
@@ -212,17 +214,28 @@ export function ProspectPage() {
     sort: sort?.key,
     dir: sort?.direction,
   };
-  // Rows on screen, reported by the table; only those windows are fetched.
+  // One page of rows at a time (20, 50 or 100), with Prev / Next under the table. Only the
+  // rows on screen within the page are fetched; the page offset is added to the window.
+  const [savedSize, setPageSize] = usePersistedState("prospects-page-size", 50);
+  const pageSize = parsePageSize(savedSize);
+  const [page, setPage] = useState(0);
   const [range, setRange] = useState<[number, number]>([0, 60]);
   const onRangeChange = useCallback((first: number, last: number) => setRange([first, last]), []);
-  const contacts = useContactWindow(query, range);
+  // A new search, filter, sort or page size starts back on the first page.
+  const queryKey = JSON.stringify([query, pageSize]);
+  useEffect(() => setPage(0), [queryKey]);
+  const windowRange: [number, number] = [page * pageSize + range[0], page * pageSize + Math.min(range[1], pageSize - 1)];
+  const contacts = useContactWindow(query, windowRange);
   const rows = contacts.loaded;
   const total = contacts.total;
+  const pageRows = total == null ? null : Math.max(0, Math.min(pageSize, total - page * pageSize));
+  const rowAt = useCallback((i: number) => contacts.rowAt(page * pageSize + i), [contacts.rowAt, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateProspect = useUpdateContact("prospect");
   const updateLead = useUpdateContact("lead");
   const [showForm, setShowForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; type: ContactRowType } | null>(null);
+  const [bulkDelete, setBulkDelete] = useState<string[] | null>(null);
   const [syncing, setSyncing] = useState(false);
   // Call campaigns (WAVV-style): the phone button opens them; with contacts
   // selected it first creates a campaign from the selection.
@@ -237,7 +250,25 @@ export function ProspectPage() {
       queryClient.invalidateQueries({ queryKey: ["contacts-facets"] }),
     ]);
 
-  const typeOf = useMemo(() => new Map(rows.map((r) => [r.id, r.type])), [rows]);
+  // Types of the contacts picked with Select all (most are on pages that are not loaded).
+  const [pickedTypes, setPickedTypes] = useState<Map<string, ContactRowType>>(new Map());
+  // And the company of each person picked that way (campaigns dial the company).
+  const [pickedCompanies, setPickedCompanies] = useState<Map<string, string | null>>(new Map());
+  const typeOf = useMemo(() => new Map<string, ContactRowType>([...pickedTypes, ...rows.map((r) => [r.id, r.type] as const)]), [rows, pickedTypes]);
+
+  /** Select all: every contact matching the current search and filters, across all pages. */
+  async function selectAllMatching(): Promise<string[]> {
+    try {
+      const { ids, truncated } = await contactsApi.ids(query);
+      setPickedTypes(new Map(ids.map((c) => [c.id, c.type])));
+      setPickedCompanies(new Map(ids.filter((c) => c.type === "person").map((c) => [c.id, c.prospectId ?? null])));
+      if (truncated) toastWarning("Selection capped", `Only the first ${ids.length.toLocaleString()} contacts were selected. Narrow the filters to pick the rest.`);
+      return ids.map((c) => c.id);
+    } catch (err) {
+      toastError("Contacts not selected", describeError(err).detail);
+      return [];
+    }
+  }
 
   async function removeContacts(ids: string[]) {
     await Promise.all(
@@ -300,7 +331,7 @@ export function ProspectPage() {
   /** Selected prospects -> new campaign named after the current date and time, shown in the campaign window. */
   async function startCampaignFrom(ids: string[], clearSelection: () => void) {
     // Campaigns dial prospects: a selected person brings in their company.
-    const companyOf = new Map(rows.filter((r) => r.type === "person").map((r) => [r.id, r.prospectId ?? null]));
+    const companyOf = new Map([...pickedCompanies, ...rows.filter((r) => r.type === "person").map((r) => [r.id, r.prospectId ?? null] as const)]);
     const prospectIds = [...new Set(ids.map((id) => (typeOf.get(id) === "person" ? companyOf.get(id) : typeOf.get(id) === "lead" ? null : id)).filter((x): x is string => !!x))];
     if (prospectIds.length === 0) {
       toastWarning("No prospects selected", "Call campaigns dial prospects; leads can be called from their own page.");
@@ -401,6 +432,21 @@ export function ProspectPage() {
         );
       },
     },
+    {
+      key: "last_activity",
+      label: "Last activity",
+      type: "custom",
+      width: 150,
+      // Sorted by the server (newest or oldest call first); contacts never called always come last.
+      value: (r) => r.lastCall?.at ?? null,
+      text: (r) => (r.lastCall?.at ? timeAgo(r.lastCall.at) : "Never"),
+      render: (r) =>
+        r.lastCall?.at ? (
+          <span title={new Date(r.lastCall.at).toLocaleString()}>{timeAgo(r.lastCall.at)}</span>
+        ) : (
+          <span className="text-[12px] text-[var(--ods-text-tertiary)]">Never</span>
+        ),
+    },
     { key: "state", label: "State", type: "text", width: 110, value: (r) => r.state, headerExtra: fieldLink("state"), filterable: true },
     { key: "city", label: "City", type: "text", width: 120, value: (r) => r.city, headerExtra: fieldLink("city"), filterable: true },
     {
@@ -428,6 +474,7 @@ export function ProspectPage() {
       <DataTable
         state={table}
         title="All Contacts"
+        footer={<TablePager page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={setPageSize} />}
         info={{
           title: "All Contacts",
           icon: Users,
@@ -443,8 +490,10 @@ export function ProspectPage() {
         loading={contacts.initialLoading}
         getRowId={(r) => r.id}
         server={{
-          total,
-          rowAt: contacts.rowAt,
+          total: pageRows,
+          count: total,
+          pageKey: page,
+          rowAt,
           onRangeChange,
           facets: {
             status: asHeaderOptions(statusFilterOptions),
@@ -462,7 +511,8 @@ export function ProspectPage() {
           for (const key of ["status", "country", "contact_type", "assigned_to", "industry", "company", "state", "city", "last_call", "name", "phone"]) setColumnFilter(key, ALL);
         }}
         selection={{
-          onDelete: handleBulkDelete,
+          selectAll: selectAllMatching,
+          onDelete: (ids) => setBulkDelete(ids),
           actions: (ids, clear) => (
             <ToolbarButton primary onClick={() => startCampaignFrom(ids, clear)} disabled={createCampaign.isPending}>
               <PhoneCall className="w-3.5 h-3.5" />
@@ -535,6 +585,20 @@ export function ProspectPage() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!bulkDelete}
+        title="Delete Contacts"
+        message={`Delete ${bulkDelete?.length.toLocaleString()} contact${bulkDelete?.length === 1 ? "" : "s"}? This action cannot be undone.`}
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          const ids = bulkDelete ?? [];
+          setBulkDelete(null);
+          void handleBulkDelete(ids);
+        }}
+        onCancel={() => setBulkDelete(null)}
+      />
 
       <ConfirmDialog
         open={!!deleteConfirm}
