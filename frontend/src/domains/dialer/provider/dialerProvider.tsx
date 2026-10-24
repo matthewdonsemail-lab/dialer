@@ -8,7 +8,7 @@ import { useAudioSettings } from "@/domains/dialer/audio";
 import { usePersistedState } from "@/domains/app/persistedState";
 import { useCalls } from "@/domains/calls/data";
 import { api } from "@/domains/api/client";
-import { DIAL_COOLDOWN_HOURS, isWithinCooldown, lastDialTo, recordStatusForOutcome } from "@/domains/calls/disposition";
+import { DIAL_COOLDOWN_HOURS, isWithinCooldown, lastDialTo, mapOutcomeToCallStatus, recordStatusForOutcome } from "@/domains/calls/disposition";
 import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/domains/app/config";
 import { classifyFailure, getSipConfig, isSipConfigured, sipLog, type ClassifiedFailure } from "@/domains/dialer/sip";
 import { CallLifecycle } from "@/domains/dialer/lifecycle";
@@ -18,6 +18,37 @@ import { pickCallLine } from "@/domains/dialer/route";
 /** Explicit opt-in only (?simulate=1): simulated calls never happen silently. */
 export const SIMULATE_CALLS =
   typeof window !== "undefined" && new URLSearchParams(window.location.search).get("simulate") === "1";
+/** ?simulate=1&nobody=1: simulated parallel lines all ring out, to try the no-answer path. */
+const SIMULATE_NOBODY = SIMULATE_CALLS && new URLSearchParams(window.location.search).get("nobody") === "1";
+
+/**
+ * Most numbers one member dials at once. Each line is its own outbound call
+ * on Telnyx, so the batch stays well inside the account's concurrent-call
+ * limit and its 20 calls per second per SIP username.
+ */
+export const MAX_PARALLEL_LINES = 5;
+
+export type LegStatus = "dialing" | "ringing" | "answered" | "no_answer" | "failed";
+
+/** One line of a parallel dial, as the dock shows it. */
+export interface DialLeg {
+  name: string;
+  phone: string;
+  fromNumber: string;
+  status: LegStatus;
+}
+
+/** A parallel line inside the provider: one contact, one claimed number, one INVITE. */
+interface Leg {
+  target: DialTarget;
+  lc: CallLifecycle;
+  status: LegStatus;
+  session: any;
+  timer: ReturnType<typeof setTimeout> | null;
+  done: boolean;
+  /** The line that answered first and became the call. */
+  won: boolean;
+}
 
 export type CallState = "idle" | "connecting" | "ringing" | "active" | "on_hold" | "ended";
 
@@ -95,8 +126,18 @@ interface DialerValue {
   saving: boolean;
   /** The live sip.js session, if any. */
   session: any;
+  /** The lines of a parallel dial while they ring; empty for a single call. */
+  legs: DialLeg[];
+  /** How many lines can ring at once: free numbers, at most MAX_PARALLEL_LINES (1 on phone audio). */
+  maxLines: number;
   // actions
   dial: (target: DialTarget, options?: DialOptions) => Promise<void>;
+  /**
+   * Rings up to `count` contacts at once, each from its own free number; the
+   * first to answer is connected and the rest hang up. Returns how many of
+   * `candidates` it went through (skipped ones included).
+   */
+  dialMany: (candidates: DialTarget[], count: number, options?: DialOptions) => number;
   dialAnyway: () => void;
   hangup: () => void;
   mute: () => void;
@@ -104,7 +145,8 @@ interface DialerValue {
   sendDtmf: (tone: string) => void;
   accept: () => Promise<void>;
   decline: () => void;
-  saveSummary: () => Promise<void>;
+  /** Saves the call; `outcome` saves that disposition without waiting for it to be set first. */
+  saveSummary: (outcome?: string) => Promise<void>;
   discardSummary: () => void;
 }
 
@@ -203,6 +245,16 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   // operator presses "Dial anyway"; `skip` lists the checks already confirmed.
   const overrideRef = useRef<{ target: DialTarget; options: DialOptions; skip: Set<"cooldown" | "abroad"> } | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  // Parallel lines: every leg of the batch, the one that answered, and
+  // whether the operator stopped the batch (then nothing queues after it).
+  const legsRef = useRef<Leg[]>([]);
+  const winnerRef = useRef<Leg | null>(null);
+  const stoppedRef = useRef(false);
+  const batchOptionsRef = useRef<DialOptions>({});
+  const [legs, setLegs] = useState<DialLeg[]>([]);
+  const publishLegs = useCallback(() => {
+    setLegs(legsRef.current.map((l) => ({ name: l.target.name, phone: l.target.phone, fromNumber: l.lc.ctx.fromNumber, status: l.status })));
+  }, []);
 
   const setCallState = useCallback((next: CallState) => {
     stateRef.current = next;
@@ -325,8 +377,97 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setFailure(null);
     setRecWarning(null);
     setOptions({});
+    legsRef.current = [];
+    winnerRef.current = null;
+    setLegs([]);
     setCallState("idle");
   }, [setCallState]);
+
+  // ---- results ----
+  // The last call's number release, still in flight after "Done": the next
+  // dial waits for it so it never claims a number the old call still holds.
+  const pendingReleaseRef = useRef<Promise<unknown> | null>(null);
+
+  /**
+   * Write one finished call: show it in every loaded contact list at once,
+   * then free the number, write the disposition and the contact's status in
+   * the background. The summary uses it, and so does every parallel line
+   * that rang out.
+   */
+  /**
+   * One refetch round after a burst of saves (parallel lines finish several
+   * at once). Each round costs many Twenty requests, and Twenty allows about
+   * 100 a minute for the whole workspace.
+   */
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refetchSoon = useCallback(() => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => {
+      refetchTimer.current = null;
+      ["calls", "twentyPhones", "contacts-page", "dialer-contact-search", "prospect", "leads", "contacts-facets", "record-activity"].forEach((key) =>
+        queryClient.invalidateQueries({ queryKey: [key] }),
+      );
+    }, 1500);
+  }, [queryClient]);
+
+  const recordResult = useCallback((lc: CallLifecycle | null, t: DialTarget | null, o: string, n: string) => {
+    const status = recordStatusForOutcome(o);
+
+    // Show the result in every loaded contact list right away.
+    if (t?.contactId) {
+      const at = new Date().toISOString();
+      // A person row is called as its company, so it matches on prospectId.
+      const isCalled = (row: any) => row?.id === t.contactId || (row?.type === "person" && row?.prospectId === t.contactId);
+      const patch = (row: any) =>
+        isCalled(row) ? { ...row, ...(status ? { status } : {}), lastCall: { id: lc?.callId ?? "pending", status: String(o).toUpperCase(), at } } : row;
+      queryClient.setQueriesData({ queryKey: ["contacts-page"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
+      queryClient.setQueriesData({ queryKey: ["dialer-contact-search"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
+      // A dock list this contact no longer matches drops it now: Never called,
+      // another Last call result, or a Status it has just left. Waiting for
+      // the refetch left called contacts on screen (and Twenty's rate limit
+      // can fail that refetch).
+      const callStatus = mapOutcomeToCallStatus(o);
+      for (const [key, page] of queryClient.getQueriesData<any>({ queryKey: ["dialer-contact-search"] })) {
+        const q = (key as unknown[])[1] as { lastCall?: string; status?: string[] } | undefined;
+        const gone =
+          (q?.lastCall && (q.lastCall === "__never" || q.lastCall !== callStatus)) ||
+          (status && q?.status?.length && !q.status.includes(status));
+        const left = gone && page?.rows ? page.rows.filter((r: any) => !isCalled(r)) : null;
+        if (left && left.length < page.rows.length) {
+          queryClient.setQueryData(key, { ...page, rows: left, totalCount: Math.max(0, (page.totalCount ?? 0) - (page.rows.length - left.length)) });
+        }
+      }
+    }
+
+    // The number first, on its own: the next dial waits for this and nothing else.
+    const release = (lc?.release() ?? Promise.resolve()).catch(() => {});
+    // Parallel lines release several numbers at once: the next dial waits for all of them.
+    const before = pendingReleaseRef.current;
+    const pending = before ? Promise.all([before, release]) : release;
+    pendingReleaseRef.current = pending;
+    void pending.then(() => {
+      if (pendingReleaseRef.current === pending) pendingReleaseRef.current = null;
+    });
+    return (async () => {
+      await release;
+      if (lc && !lc.ctx.simulated) {
+        try {
+          await lc.wrapUp(o, n);
+        } catch (err) {
+          toastError("Disposition not saved", `${describeError(err).detail} The hangup-time result is still on the call.`);
+        }
+      } else {
+        await lc?.release();
+      }
+      // The disposition decides what the contact becomes (lib/call-outcome).
+      if (status && t?.contactId && !SIMULATE_CALLS) {
+        const update = t.contactType === "lead" ? api.leads.update(t.contactId, { status }) : api.prospects.update(t.contactId, { status });
+        // A pipeline refusal (e.g. the contact is Converted) is expected: say why.
+        await update.catch((err) => toastError("Contact status not updated", `The call was saved. ${describeError(err).detail}`));
+      }
+      refetchSoon();
+    })();
+  }, [queryClient, refetchSoon, toastError]);
 
   const onEstablished = useCallback((session: any) => {
     clearUnanswered();
@@ -438,6 +579,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       } as any);
       sessionRef.current = inviter;
       inviter.stateChange.addListener((s: string) => {
+        // A call already saved (or replaced by the next dial) can still report
+        // Terminated late; acting on it put the dock back on "Call ended" with
+        // no contact ("Unknown"), or ended the next call.
+        if (lifecycleRef.current !== lc) return;
         if (s === SessionState.Establishing) setCallState("ringing");
         if (s === SessionState.Established) onEstablished(inviter);
         if (s === SessionState.Terminated) {
@@ -592,8 +737,291 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     void dial(pending.target, pending.options);
   }, [dial]);
 
+  // ---- parallel lines ----
+  // Each line claims its own number (409 when another member holds it), so
+  // members dialling different lists at the same time never share a number,
+  // and each line keeps its claim fresh with its own heartbeat.
+  const maxLines = phoneAudio ? 1 : Math.max(1, Math.min(MAX_PARALLEL_LINES, lines.length));
+
+  /** Nobody answered (or the operator stopped): every line is logged, the dock is free. */
+  const endBatch = useCallback(() => {
+    const stopped = stoppedRef.current;
+    const after = stopped ? undefined : batchOptionsRef.current.onSaved;
+    const count = legsRef.current.length;
+    resetCall();
+    if (!stopped) toastInfo("No one answered", `${count} lines rang out. Each is logged as No answer.`);
+    after?.("no_answer");
+  }, [resetCall, toastInfo]);
+
+  /** A line that did not become the call: log it as No answer and free its number. */
+  const closeLeg = useCallback((leg: Leg, outcome: "no_answer" | "failed") => {
+    if (leg.done) return;
+    leg.done = true;
+    if (leg.timer) clearTimeout(leg.timer);
+    leg.lc.stopHeartbeat();
+    leg.status = outcome;
+    // A line stopped before its call row existed was never dialled: only free its number.
+    if (leg.lc.callId || leg.lc.ctx.simulated) void leg.lc.finalize(outcome, 0).then(() => recordResult(leg.lc, leg.target, outcome, ""));
+    else void leg.lc.release();
+    if (!legsRef.current.includes(leg)) return;
+    publishLegs();
+    if (!winnerRef.current && legsRef.current.every((l) => l.done)) endBatch();
+  }, [endBatch, publishLegs, recordResult]);
+
+  /** Hang up a line that is still ringing (or answered second). */
+  const hangLeg = useCallback((leg: Leg) => {
+    const session = leg.session;
+    if (!session) return closeLeg(leg, "no_answer");
+    try {
+      if (leg.status === "answered") session.bye();
+      else session.cancel();
+    } catch {
+      // Already ending: its Terminated listener closes the line.
+    }
+  }, [closeLeg]);
+
+  /** The first line to answer becomes the call; every other line hangs up. */
+  const legAnswered = useCallback((leg: Leg, session: any) => {
+    if (winnerRef.current) {
+      sipLog.warn("session", `a second line answered (${leg.target.phone}); hanging it up`);
+      leg.status = "answered";
+      hangLeg(leg);
+      return;
+    }
+    winnerRef.current = leg;
+    leg.won = true;
+    leg.status = "answered";
+    if (leg.timer) clearTimeout(leg.timer);
+    lifecycleRef.current = leg.lc;
+    sessionRef.current = session;
+    setTarget(leg.target);
+    for (const other of legsRef.current) if (other !== leg && !other.done) hangLeg(other);
+    publishLegs();
+    if (session) onEstablished(session);
+  }, [hangLeg, onEstablished, publishLegs]);
+
+  const startLegs = useCallback(async (batch: Leg[]) => {
+    const cfg = getSipConfig();
+    const stop = (f: ClassifiedFailure) => {
+      stoppedRef.current = true;
+      setFailure(f);
+      toastError(`Call failed: ${f.title}`, `${f.detail} Fix: ${f.hint}`);
+      batch.forEach((l) => closeLeg(l, "failed"));
+    };
+    if (!isSipConfigured()) return stop(classifyFailure({ notConfigured: true }));
+    const agent = await ensureAgent();
+    if (stoppedRef.current) return;
+    if (!agent) return stop(classifyFailure({ timedOut: true, wsUrl: cfg.wsUrl }));
+    try {
+      const probeStream = await getMicStream(microphoneId);
+      probeStream.getTracks().forEach((t) => t.stop());
+    } catch {
+      return stop(classifyFailure({ micDenied: true }));
+    }
+    const { UserAgent, Inviter, SessionState } = await loadSip();
+    for (const leg of batch) {
+      if (stoppedRef.current || leg.done) continue;
+      const uri = UserAgent.makeURI(`sip:${leg.lc.ctx.toNumber}@${agent.domain}`);
+      if (!uri) {
+        closeLeg(leg, "failed");
+        continue;
+      }
+      const callerId = leg.lc.ctx.fromNumber || cfg.callerId;
+      const inviter = new Inviter(agent.ua, uri, {
+        sessionDescriptionHandlerOptions: {
+          constraints: { audio: microphoneId ? { deviceId: { exact: microphoneId } } : true, video: false },
+        },
+        extraHeaders: callerId ? [`P-Asserted-Identity: <sip:${callerId}@${agent.domain}>`] : [],
+      } as any);
+      leg.session = inviter;
+      const cancelAfter = (seconds: number) => {
+        if (leg.timer) clearTimeout(leg.timer);
+        leg.timer = setTimeout(() => {
+          if (leg.done || leg.won) return;
+          sipLog.warn("session", `no answer from ${leg.target.phone} after ${seconds}s, cancelling the line`);
+          try { inviter.cancel()?.catch?.(() => {}); } catch { /* already ending */ }
+        }, seconds * 1000);
+      };
+      let rang = false;
+      inviter.stateChange.addListener((s: string) => {
+        if (s === SessionState.Establishing && leg.status === "dialing") {
+          leg.status = "ringing";
+          publishLegs();
+          if (stateRef.current === "connecting") setCallState("ringing");
+        }
+        if (s === SessionState.Established) legAnswered(leg, inviter);
+        if (s === SessionState.Terminated) {
+          if (leg.won) {
+            // Only while it is still the call: once saved, a late Terminated must not log it again.
+            if (lifecycleRef.current === leg.lc && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
+            return;
+          }
+          closeLeg(leg, "no_answer");
+        }
+      });
+      inviter
+        .invite({
+          requestDelegate: {
+            onAccept: (response: any) => {
+              const ccid = response?.message?.getHeader?.("X-Telnyx-Call-Control-ID");
+              if (ccid) leg.lc.telnyxCallControlId = String(ccid);
+              if (ccid && winnerRef.current === leg) void leg.lc.startRecording(setRecWarning);
+            },
+            onProgress: (response: any) => {
+              const code = response?.message?.statusCode;
+              if ((code === 180 || code === 183) && !rang) {
+                rang = true;
+                cancelAfter(getUnansweredTimeoutSeconds());
+              }
+            },
+            onReject: (response: any) => {
+              sipLog.error("invite", `line ${leg.lc.ctx.fromNumber} -> ${leg.target.phone} rejected: ${response?.message?.statusCode ?? ""} ${response?.message?.reasonPhrase ?? ""}`.trim());
+            },
+          },
+        } as any)
+        .catch((err: any) => {
+          if (stoppedRef.current || leg.done) return;
+          sipLog.error("invite", `line ${leg.target.phone} threw: ${err?.message || err}`);
+          closeLeg(leg, "failed");
+        });
+      // Backstop for a line that never rings; ringing restarts it at the ring time.
+      cancelAfter(getUnansweredTimeoutSeconds() + 15);
+      leg.lc.startHeartbeat(HEARTBEAT_INTERVAL_MS, () => (leg.won ? lifecycleRef.current === leg.lc && isLive(stateRef.current) : !leg.done));
+    }
+    sipLog.info("invite", `${batch.length} lines dialling at once`);
+  }, [closeLeg, ensureAgent, finishCall, legAnswered, microphoneId, publishLegs, setCallState, toastError]);
+
+  const dialMany = useCallback((candidates: DialTarget[], count: number, opts: DialOptions = {}): number => {
+    if (count <= 1 || phoneAudio) {
+      const first = candidates.findIndex((c) => c.phone);
+      if (first >= 0) void dial(candidates[first], opts);
+      return first < 0 ? candidates.length : first + 1;
+    }
+    setIsOpen(true);
+    if (isLive(stateRef.current)) {
+      toastWarning("Already on a call", "Hang up first, then dial the next numbers.");
+      return 0;
+    }
+    // One free number per line, local to each contact where there is one.
+    const free = lines.filter((l) => (l.callState ?? "IDLE") === "IDLE");
+    const used = new Set<string>();
+    const plan: Array<{ target: DialTarget; from: DialerLine }> = [];
+    const skipped: string[] = [];
+    let consumed = 0;
+    for (const c of candidates) {
+      if (plan.length >= Math.min(count, MAX_PARALLEL_LINES)) break;
+      const available = free.filter((l) => !used.has(l.id));
+      if (!available.length) break;
+      consumed++;
+      if (!c.phone) continue;
+      if (!SIMULATE_CALLS && isWithinCooldown(recentCalls, c.phone)) {
+        skipped.push(`${c.name} (called in the last ${DIAL_COOLDOWN_HOURS}h)`);
+        continue;
+      }
+      const preferred = available.find((l) => l.id === line?.id) ?? available[0];
+      const route = pickCallLine(available, preferred, { number: c.phone, country: c.country });
+      if (route.abroad || !route.line) {
+        skipped.push(`${c.name} (no free number in ${route.toName ?? "their country"})`);
+        continue;
+      }
+      used.add(route.line.id);
+      plan.push({ target: c, from: route.line });
+    }
+    if (skipped.length) toastInfo(`Skipped ${skipped.length}`, skipped.join(", "));
+    if (plan.length === 0) {
+      toastWarning("Nothing to dial", free.length ? "No contact left in this list can be dialled." : "No free number to call from.");
+      return consumed;
+    }
+    if (plan.length === 1) {
+      void dial(plan[0].target, opts);
+      return consumed;
+    }
+
+    void (async () => {
+      overrideRef.current = null;
+      setCooldownNotice(null);
+      sipLog.clear();
+      if (lifecycleRef.current && stateRef.current === "ended") void lifecycleRef.current.release();
+      resetCall();
+      stoppedRef.current = false;
+      batchOptionsRef.current = opts;
+      setOptions(opts);
+      const batch: Leg[] = plan.map(({ target: t, from }) => ({
+        target: t,
+        status: "dialing",
+        session: null,
+        timer: null,
+        done: false,
+        won: false,
+        lc: new CallLifecycle({
+          direction: "outbound",
+          fromNumber: from.phoneNumber,
+          toNumber: t.phone,
+          phoneId: from.id,
+          member,
+          prospectId: t.contactType === "prospect" ? t.contactId : null,
+          leadId: t.contactType === "lead" ? t.contactId : null,
+          simulated: SIMULATE_CALLS,
+        }),
+      }));
+      legsRef.current = batch;
+      publishLegs();
+      setCallState("connecting");
+      if (pendingReleaseRef.current) await pendingReleaseRef.current;
+      const claims = await Promise.all(batch.map((l) => l.lc.claim()));
+      const held = batch.filter((_, i) => !claims[i].ok);
+      if (held.length) toastWarning(`${held.length} number${held.length === 1 ? "" : "s"} in use`, "Another member took it first; the other lines still dial.");
+      const live = batch.filter((_, i) => claims[i].ok);
+      if (legsRef.current !== batch) {
+        // Hung up while claiming: give the numbers back.
+        live.forEach((l) => void l.lc.release());
+        return;
+      }
+      legsRef.current = live;
+      if (!live.length) {
+        resetCall();
+        return;
+      }
+      publishLegs();
+      sipLog.info("app", "parallel dial requested", { lines: live.map((l) => `${l.lc.ctx.fromNumber} -> ${l.target.phone}`) });
+      await Promise.all(live.map((l) => l.lc.ensureRow()));
+      queryClient.invalidateQueries({ queryKey: ["twentyPhones"] });
+      if (legsRef.current !== live) return;
+      if (SIMULATE_CALLS) {
+        sipLog.warn("app", "SIMULATED parallel lines (?simulate=1) — no SIP traffic");
+        setTimeout(() => {
+          if (legsRef.current !== live) return;
+          live.forEach((l) => { if (!l.done) l.status = "ringing"; });
+          publishLegs();
+          if (stateRef.current === "connecting") setCallState("ringing");
+        }, 1500);
+        setTimeout(() => {
+          if (legsRef.current !== live || stateRef.current !== "ringing") return;
+          if (SIMULATE_NOBODY) return live.forEach((l) => closeLeg(l, "no_answer"));
+          const answering = live.find((l) => !l.done);
+          if (!answering) return;
+          establishedRef.current = true;
+          legAnswered(answering, null);
+          setOutcome("connected");
+          setCallState("active");
+        }, 4000);
+        return;
+      }
+      await startLegs(live);
+    })();
+    return consumed;
+  }, [closeLeg, dial, legAnswered, line, lines, member, phoneAudio, publishLegs, queryClient, recentCalls, resetCall, setCallState, startLegs, toastInfo, toastWarning]);
+
   // ---- in-call controls ----
   const hangup = useCallback(() => {
+    if (legsRef.current.length && !winnerRef.current) {
+      // Every line still ringing: stop them all, log each as No answer, queue nothing.
+      stoppedRef.current = true;
+      const ringing = legsRef.current.filter((l) => !l.done);
+      if (!ringing.length) return endBatch();
+      ringing.forEach(hangLeg);
+      return;
+    }
     if (bridgeLegRef.current && audioBridge.session) {
       // Phone audio: drop the contact; the operator's line stays up.
       bridgeLegRef.current = null;
@@ -613,7 +1041,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     }
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
-  }, [audioBridge.session, finishCall]);
+  }, [audioBridge.session, endBatch, finishCall, hangLeg]);
 
   const mute = useCallback(() => {
     const pc: RTCPeerConnection | undefined = sessionRef.current?.sessionDescriptionHandler?.peerConnection;
@@ -667,6 +1095,8 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setCallState("connecting");
     const { SessionState } = await loadSip();
     call.session.stateChange.addListener((s: string) => {
+      // As for outbound: a late event from a call already saved changes nothing.
+      if (lifecycleRef.current !== lc) return;
       if (s === SessionState.Established) onEstablished(call.session);
       if (s === SessionState.Terminated && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
     });
@@ -713,69 +1143,20 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   }, [notes, notesSaved]);
 
   // ---- summary ----
-  // The last call's number release, still in flight after "Done": the next
-  // dial waits for it so it never claims a number the old call still holds.
-  const pendingReleaseRef = useRef<Promise<unknown> | null>(null);
-
   /**
    * "Done": the dock moves on at once and the writes finish in the
    * background. Saving used to await the call update, recording reconcile,
    * number release, contact status and a refetch (8+ Twenty requests in a
    * row) before the queue advanced. Failures still toast.
    */
-  const saveSummary = useCallback(async () => {
-    const lc = lifecycleRef.current;
-    const t = target;
-    const o = outcome;
-    const n = notes;
-    const status = recordStatusForOutcome(o);
-
-    // Show the result in every loaded contact list right away.
-    if (t?.contactId) {
-      const at = new Date().toISOString();
-      const patch = (row: any) =>
-        row?.id === t.contactId ? { ...row, ...(status ? { status } : {}), lastCall: { id: lc?.callId ?? "pending", status: String(o).toUpperCase(), at } } : row;
-      queryClient.setQueriesData({ queryKey: ["contacts-page"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
-      queryClient.setQueriesData({ queryKey: ["dialer-contact-search"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
-      // A list of contacts never called no longer includes this one.
-      for (const [key, page] of queryClient.getQueriesData<any>({ queryKey: ["dialer-contact-search"] })) {
-        const q = (key as unknown[])[1] as { lastCall?: string } | undefined;
-        if (q?.lastCall === "__never" && page?.rows) {
-          queryClient.setQueryData(key, { ...page, rows: page.rows.filter((r: any) => r.id !== t.contactId), totalCount: Math.max(0, (page.totalCount ?? 1) - 1) });
-        }
-      }
-    }
-
+  const saveSummary = useCallback(async (picked?: string) => {
+    const o = picked ?? outcome;
+    const work = recordResult(lifecycleRef.current, target, o, notes);
     const after = options.onSaved;
     resetCall();
     after?.(o);
-
-    // The number first, on its own: the next dial waits for this and nothing else.
-    const release = (lc?.release() ?? Promise.resolve()).catch(() => {});
-    pendingReleaseRef.current = release;
-    const work = (async () => {
-      await release;
-      if (lc && !lc.ctx.simulated) {
-        try {
-          await lc.wrapUp(o, n);
-        } catch (err) {
-          toastError("Disposition not saved", `${describeError(err).detail} The hangup-time result is still on the call.`);
-        }
-      } else {
-        await lc?.release();
-      }
-      // The disposition decides what the contact becomes (lib/call-outcome).
-      if (status && t?.contactId && !SIMULATE_CALLS) {
-        const update = t.contactType === "lead" ? api.leads.update(t.contactId, { status }) : api.prospects.update(t.contactId, { status });
-        // A pipeline refusal (e.g. the contact is Converted) is expected: say why.
-        await update.catch((err) => toastError("Contact status not updated", `The call was saved. ${describeError(err).detail}`));
-      }
-      ["calls", "twentyPhones", "contacts-page", "prospect", "leads", "contacts-facets", "record-activity"].forEach((key) =>
-        queryClient.invalidateQueries({ queryKey: [key] }),
-      );
-    })();
     await work;
-  }, [target, outcome, notes, options, queryClient, resetCall, toastError]);
+  }, [target, outcome, notes, options, recordResult, resetCall]);
 
   const discardSummary = useCallback(() => {
     void lifecycleRef.current?.release();
@@ -786,7 +1167,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
 
   // Tab closed mid-call: React cleanup never runs, so flush with keepalive.
   useEffect(() => {
-    const onHide = () => lifecycleRef.current?.flushOnHide(outcomeRef.current, durationRef.current);
+    const onHide = () => {
+      lifecycleRef.current?.flushOnHide(outcomeRef.current, durationRef.current);
+      for (const leg of legsRef.current) if (!leg.done && leg !== winnerRef.current) leg.lc.flushOnHide("no_answer", 0);
+    };
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
   }, []);
@@ -827,7 +1211,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     saveLabel: options.saveLabel ?? "Done",
     saving,
     session: sessionRef.current,
+    legs,
+    maxLines,
     dial,
+    dialMany,
     dialAnyway,
     hangup,
     mute,
@@ -839,7 +1226,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     discardSummary,
   }), [isOpen, pinned, setPinned, lines, line, setLineId, registered, phoneAudio, state, target, direction, duration, muted, held,
     outcome, notes, setNotes, notesSaved, notesError, failure, cooldownNotice, recWarning, incoming, options.saveLabel, saving,
-    dial, dialAnyway, hangup, mute, hold, sendDtmf, accept, decline, saveSummary, discardSummary]);
+    legs, maxLines, dial, dialMany, dialAnyway, hangup, mute, hold, sendDtmf, accept, decline, saveSummary, discardSummary]);
 
   return (
     <DialerContext.Provider value={value}>

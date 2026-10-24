@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/domains/ui/button";
 import { buttonClass } from "@/domains/ui/button";
 import { inputClass } from "@/domains/ui/input";
@@ -55,8 +55,10 @@ import { DockContactPanel } from "@/domains/dialer/contactPanel";
 import { regionOfCountry } from "@dialer/shared";
 import { countryCode, countryName } from "@/domains/country/lookup";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disposition";
-import { isLive, useDialer, type CallState } from "@/domains/dialer/provider";
+import { isLive, useDialer, type CallState, type LegStatus } from "@/domains/dialer/provider";
 import { useAuth } from "@/domains/auth/provider";
+import { useToast } from "@/domains/ui/toast";
+import { describeError } from "@/domains/feedback/describeError";
 import { useAccountFilters } from "./useAccountFilters";
 
 // Buttons and inputs come from the design primitives (docs/design-system.md).
@@ -122,6 +124,39 @@ export function DialerTopButton() {
 type SidePanel = { kind: "script" } | { kind: "contact"; contactType: "prospect" | "lead"; contactId: string } | null;
 const SideContext = createContext<{ side: SidePanel; setSide: (s: SidePanel) => void }>({ side: null, setSide: () => {} });
 
+/** A person is called as their company (where calls and history are kept); without one they cannot be dialled. */
+const rowRecord = (r: ContactRow) =>
+  r.type === "person" ? (r.prospectId ? { type: "prospect" as const, id: r.prospectId } : null) : { type: r.type, id: r.id };
+
+const rowTarget = (r: ContactRow) => {
+  const record = rowRecord(r);
+  return {
+    contactType: record?.type ?? null,
+    contactId: record?.id ?? null,
+    phone: record ? ((r.phone as string | null) ?? "") : "",
+    name: contactName(r) ?? "Unknown",
+    campaignId: (r.campaign_id as string | null) ?? null,
+    country: (r.country as string | undefined) ?? null,
+  };
+};
+
+/**
+ * Auto-queue next call: with it on, picking a disposition on a call dialled
+ * from the Contacts list saves it and dials the next contact in that list
+ * straight away. Off, the disposition waits for Done and saving returns to
+ * the list as before.
+ */
+const AutoQueueContext = createContext<{
+  /** Dials rows[index]; with auto-queue on, the next contact follows once the call is saved. */
+  dialFromList: (rows: ContactRow[], index: number) => void;
+  /** The switch itself, owned by the dock so a save always reads the latest value. */
+  on: boolean;
+  setOn: (on: boolean) => void;
+  /** Lines that ring at once when dialling from the list (Calling from menu). */
+  lineCount: number;
+  setLineCount: (n: number) => void;
+}>({ dialFromList: () => {}, on: false, setOn: () => {}, lineCount: 1, setLineCount: () => {} });
+
 /** Opens (or, when it is already showing, closes) a contact beside the dock. */
 function useContactSide() {
   const { side, setSide } = useContext(SideContext);
@@ -139,6 +174,45 @@ export function DialerDock() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [side, setSide] = useState<SidePanel>(null);
   const scriptOpen = side?.kind === "script";
+
+  // ---- auto-queue next call ----
+  const [autoQueue, setAutoQueue] = usePersistedState("dialer-auto-queue", false);
+  const autoQueueRef = useRef(autoQueue);
+  autoQueueRef.current = autoQueue;
+  const { info: toastInfo } = useToast();
+  const [linesWanted, setLineCount] = usePersistedState("dialer-parallel-lines", 1);
+  const lineCount = Math.max(1, Math.min(linesWanted, dialer.maxLines));
+  const lineCountRef = useRef(lineCount);
+  lineCountRef.current = lineCount;
+  const dialRef = useRef(dialer.dialMany);
+  dialRef.current = dialer.dialMany;
+  const dialFromList = useCallback((rows: ContactRow[], index: number) => {
+    if (!rows[index] || !rowTarget(rows[index]).phone) return;
+    // How far down the list this call (or batch of lines) went; the next one starts after it.
+    let consumed = 1;
+    consumed = dialRef.current(rows.slice(index).map(rowTarget), lineCountRef.current, {
+      // Read at save time, so the switch can be flipped during the call.
+      onSaved: () => {
+        if (!autoQueueRef.current) return;
+        const next = rows.findIndex((x, i) => i >= index + Math.max(1, consumed) && !!rowTarget(x).phone);
+        if (next < 0) {
+          toastInfo("End of the list", "No more contacts with a number in this list.");
+          return;
+        }
+        dialFromList(rows, next);
+      },
+    });
+  }, [toastInfo]);
+  const autoQueueValue = useMemo(
+    () => ({
+      dialFromList,
+      on: autoQueue,
+      setOn: setAutoQueue,
+      lineCount,
+      setLineCount,
+    }),
+    [dialFromList, autoQueue, setAutoQueue, lineCount, setLineCount],
+  );
 
   // Unpinned: a click outside closes it (menus portal out, so skip those).
   useEffect(() => {
@@ -187,6 +261,7 @@ export function DialerDock() {
   else body = <IdleView />;
 
   return (
+    <AutoQueueContext.Provider value={autoQueueValue}>
     <SideContext.Provider value={{ side, setSide }}>
     <div
       ref={ref}
@@ -217,6 +292,7 @@ export function DialerDock() {
       {!settingsOpen && state !== "idle" && <NowPlaying compact />}
     </div>
     </SideContext.Provider>
+    </AutoQueueContext.Provider>
   );
 }
 
@@ -233,15 +309,17 @@ function DockHeader({
   onSettings: () => void;
   onClose: () => void;
 }) {
-  const { lines, line, setLine, state } = useDialer();
+  const { lines, line, setLine, state, maxLines } = useDialer();
+  const { lineCount, setLineCount } = useContext(AutoQueueContext);
   const locked = state !== "idle";
+  const LINES = "lines:";
   return (
     <div className="h-12 shrink-0 px-3 flex items-center gap-2 border-b border-[var(--ods-border)]">
       <div className="flex-1 min-w-0">
         <div className="text-[12px] font-medium text-[var(--ods-text-tertiary)] leading-none mb-0.5">Calling from</div>
         <SelectMenu
           value={line?.id ?? null}
-          onChange={setLine}
+          onChange={(v) => (v.startsWith(LINES) ? setLineCount(Number(v.slice(LINES.length))) : setLine(v))}
           disabled={locked || lines.length === 0}
           width={260}
           sections={[
@@ -254,6 +332,18 @@ function DockHeader({
                 hint: l.callState !== "IDLE" ? "in use" : undefined,
               })),
             },
+            {
+              title: "Lines at once",
+              options: Array.from({ length: maxLines }, (_, i) => i + 1).map((n) => ({
+                value: `${LINES}${n}`,
+                label: n === 1 ? "1 line" : `${n} lines`,
+                description:
+                  n === 1
+                    ? "One call at a time from the number above."
+                    : `Rings ${n} contacts from the Contacts list at once, each from its own number. The first to answer is put through; the others hang up.`,
+                icon: n === lineCount ? <Check className="w-3.5 h-3.5 text-[var(--ods-brand-600)]" /> : undefined,
+              })),
+            },
           ]}
           triggerTitle={locked ? "Change the number between calls" : "Choose the number you call from"}
           triggerClassName="max-w-full inline-flex items-center gap-1.5 text-[14px] font-semibold tabular-nums disabled:opacity-70"
@@ -261,6 +351,7 @@ function DockHeader({
             <>
               {line && <CountryFlag code={countryCode(line.countryCode)} />}
               <span className="truncate">{line?.phoneNumber ?? "No free number"}</span>
+              {lineCount > 1 && <span className="shrink-0 text-[12px] font-medium text-[var(--ods-brand-600)]">· {lineCount} lines</span>}
               {!locked && lines.length > 0 && <ChevronDown className="w-3 h-3 opacity-60" />}
             </>
           }
@@ -352,6 +443,30 @@ function IdleView() {
         <TabBar tabs={tabs} value={shown} onChange={setTab} />
       </div>
     </>
+  );
+}
+
+/** The Auto-queue next call switch, in the call summary and the dialer settings. */
+function AutoQueueSwitch() {
+  const { on, setOn } = useContext(AutoQueueContext);
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-semibold text-[var(--ods-text-primary)]">Auto-queue next call</div>
+        <p className="text-[12px] text-[var(--ods-text-tertiary)]">
+          Picking a disposition saves the call and dials the next contact in the Contacts list straight away.
+        </p>
+      </div>
+      <button
+        role="switch"
+        aria-checked={on}
+        aria-label="Auto-queue next call"
+        onClick={() => setOn(!on)}
+        className={`relative mt-1 h-5 w-9 shrink-0 rounded-md transition-colors ${on ? "bg-[var(--ods-brand-600)]" : "bg-[var(--ods-border-strong)]"}`}
+      >
+        <span className={`absolute top-0.5 h-4 w-4 rounded-md bg-white shadow transition-[left] ${on ? "left-[18px]" : "left-0.5"}`} />
+      </button>
+    </div>
   );
 }
 
@@ -601,12 +716,14 @@ function SavedFiltersMenu({ account, filtered }: { account: ReturnType<typeof us
 }
 
 function ContactsTab() {
-  const { dial, lines, line } = useDialer();
+  const { lines, line } = useDialer();
+  const { dialFromList } = useContext(AutoQueueContext);
   const navigate = useNavigate();
   const contactSide = useContactSide();
   const [more, setMore] = usePersistedState("dialer-contact-more-filters", false);
-  const [q, setQ] = useState("");
-  const [debounced, setDebounced] = useState("");
+  // Kept like the filters: the tab remounts after every call.
+  const [q, setQ] = usePersistedState("dialer-contact-q", "");
+  const [debounced, setDebounced] = useState(() => q.trim());
   const [saved, setFilters] = usePersistedState<DockFilters>("dialer-contact-filters", DOCK_FILTERS);
   const f = { ...DOCK_FILTERS, ...saved };
   const set = (patch: Partial<DockFilters>) => setFilters({ ...f, ...patch } as DockFilters);
@@ -711,12 +828,13 @@ function ContactsTab() {
     leadSource: f.leadSource !== "all" ? [f.leadSource] : undefined,
     offer: f.offer !== "all" ? [f.offer] : undefined,
   };
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, error, refetch } = useQuery({
     queryKey: ["dialer-contact-search", query],
     queryFn: () => contactsApi.page(query, 0),
     staleTime: 30_000,
   });
-  const rows: ContactRow[] = (data?.rows ?? []).slice(0, 25);
+  const all: ContactRow[] = data?.rows ?? [];
+  const rows = all.slice(0, 25);
   const total = data?.totalCount ?? rows.length;
   const filtered = (Object.keys(DOCK_FILTERS) as (keyof DockFilters)[]).some((k) => f[k] !== "all");
   return (
@@ -765,13 +883,21 @@ function ContactsTab() {
       </div>
       {!data && isFetching ? (
         <ListSkeleton />
+      ) : !data && error ? (
+        // Not "no contacts match": the list did not load (often Twenty's rate limit when many calls are saved at once).
+        <div className="p-6 text-center text-[13px] text-[var(--ods-text-tertiary)] space-y-2">
+          <p>Contacts did not load. {describeError(error).detail}</p>
+          <button onClick={() => void refetch()} className={BTN_SECONDARY}>
+            Try again
+          </button>
+        </div>
       ) : rows.length === 0 ? (
         <Empty text={debounced ? `No contacts match "${debounced}".` : filtered ? "No contacts match these filters." : "No contacts yet."} />
       ) : (
-        rows.map((r) => {
+        rows.map((r, index) => {
           const name = contactName(r) ?? "Unknown";
           // A person is called, shown and opened as their company: that is where calls and history are kept.
-          const record = r.type === "person" ? (r.prospectId ? { type: "prospect" as const, id: r.prospectId } : null) : { type: r.type, id: r.id };
+          const record = rowRecord(r);
           const route = r.phone ? pickCallLine(lines, line, { number: r.phone, country: r.country as string | undefined }) : null;
           const toName = route?.toName ?? "";
           return (
@@ -785,11 +911,7 @@ function ContactsTab() {
                 r.type === "person" ? [r.jobTitle, r.company].filter(Boolean).join(" at ") : r.company,
                 r.assignedToId && facets?.names?.member?.[r.assignedToId] ? `Assigned to ${facets.names.member[r.assignedToId]}` : null,
               ].filter(Boolean).join(" · ")}
-              onClick={() =>
-                r.phone &&
-                record &&
-                void dial({ contactType: record.type, contactId: record.id, phone: r.phone, name, campaignId: (r.campaign_id as string | null) ?? null, country: (r.country as string | undefined) ?? null })
-              }
+              onClick={() => dialFromList(all, index)}
               trailing={
                 <span className="flex items-center gap-1.5 shrink-0">
                   <button
@@ -1002,6 +1124,7 @@ function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onTog
   const who = d.target?.contactType && d.target.contactId ? { type: d.target.contactType, id: d.target.contactId } : null;
   const [panel, setPanel] = useState<"none" | "keypad" | "notes">("none");
   const connected = d.state === "active" || d.state === "on_hold";
+  if (d.legs.length > 1 && !d.legs.some((l) => l.status === "answered")) return <LinesView />;
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <CallHeader />
@@ -1056,6 +1179,56 @@ function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onTog
   );
 }
 
+const LEG_LABEL: Record<LegStatus, string> = {
+  dialing: "Calling",
+  ringing: "Ringing",
+  answered: "Answered",
+  no_answer: "No answer",
+  failed: "Failed",
+};
+const LEG_DOT: Record<LegStatus, string> = {
+  dialing: "bg-sky-500",
+  ringing: "bg-sky-500",
+  answered: "bg-emerald-500",
+  no_answer: "bg-gray-400",
+  failed: "bg-red-500",
+};
+
+/** Several lines ringing at once: who each line is calling, from which number, and how far it got. */
+function LinesView() {
+  const d = useDialer();
+  const ringing = d.legs.filter((l) => l.status === "dialing" || l.status === "ringing").length;
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+        <span className="text-[15px] font-semibold">Ringing {ringing} of {d.legs.length} lines</span>
+        <Chip icon={Clock}>
+          <span className="tabular-nums">{formatDuration(d.duration)}</span>
+        </Chip>
+      </div>
+      <p className="px-4 pb-2 text-[12px] text-[var(--ods-text-tertiary)]">The first to answer is put through; the other lines hang up.</p>
+      <div className="py-1">
+        {d.legs.map((l) => (
+          <div key={`${l.phone}-${l.fromNumber}`} className="flex items-center gap-2.5 px-4 py-2">
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-medium truncate">{l.name || l.phone}</span>
+              <span className="block text-[12px] text-[var(--ods-text-tertiary)] truncate tabular-nums">
+                {l.phone} · from {l.fromNumber}
+              </span>
+            </span>
+            <Chip dot={LEG_DOT[l.status]}>{LEG_LABEL[l.status]}</Chip>
+          </div>
+        ))}
+      </div>
+      <div className="p-4">
+        <button onClick={d.hangup} className="w-full h-11 rounded-md bg-red-600 hover:bg-red-700 text-white text-[14px] font-semibold flex items-center justify-center gap-2">
+          <PhoneOff className="w-4 h-4" /> Stop all lines
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NotesField() {
   const { notes, setNotes, notesSaved, notesError, retryNotes } = useDialer();
   return (
@@ -1095,6 +1268,7 @@ function NotesField() {
 
 function SummaryView() {
   const d = useDialer();
+  const { on: autoQueue } = useContext(AutoQueueContext);
   const chosen = dispositionFor(d.outcome);
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1115,7 +1289,9 @@ function SummaryView() {
             return (
               <button
                 key={opt.value}
-                onClick={() => d.setOutcome(opt.value)}
+                // With auto-queue on, the disposition is the last click: it saves and the next call starts.
+                onClick={() => (autoQueue ? void d.saveSummary(opt.value) : d.setOutcome(opt.value))}
+                disabled={d.saving}
                 aria-pressed={selected}
                 className={`h-9 px-2.5 rounded-md border text-[13px] font-semibold flex items-center gap-2 text-left transition ${
                   selected
@@ -1133,6 +1309,9 @@ function SummaryView() {
       </div>
       <div className="px-4 pt-3">
         <NotesField />
+      </div>
+      <div className="px-4 pt-3">
+        <AutoQueueSwitch />
       </div>
       <div className="p-4 grid grid-cols-[1fr_auto] gap-2">
         <button onClick={() => void d.saveSummary()} disabled={d.saving || d.outcome === "connected"} className={BTN_PRIMARY} title={d.outcome === "connected" ? "Pick a disposition first" : undefined}>
@@ -1168,6 +1347,7 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
           this browser.
         </p>
         <RingTimeSetting />
+        <AutoQueueSwitch />
         <AudioSourceSettings />
       </div>
     </div>
