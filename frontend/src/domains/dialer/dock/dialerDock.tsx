@@ -55,7 +55,7 @@ import { DockContactPanel } from "@/domains/dialer/contactPanel";
 import { regionOfCountry } from "@dialer/shared";
 import { countryCode, countryName } from "@/domains/country/lookup";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disposition";
-import { isLive, useDialer, type CallState } from "@/domains/dialer/provider";
+import { isLive, useDialer, type CallState, type LegStatus } from "@/domains/dialer/provider";
 import { useAuth } from "@/domains/auth/provider";
 import { useToast } from "@/domains/ui/toast";
 import { useAccountFilters } from "./useAccountFilters";
@@ -142,7 +142,7 @@ const rowTarget = (r: ContactRow) => {
   return {
     contactType: record?.type ?? null,
     contactId: record?.id ?? null,
-    phone: record ? (r.phone as string) : "",
+    phone: record ? ((r.phone as string | null) ?? "") : "",
     name: contactName(r) ?? "Unknown",
     campaignId: (r.campaign_id as string | null) ?? null,
     country: (r.country as string | undefined) ?? null,
@@ -163,7 +163,10 @@ const AutoQueueContext = createContext<{
   /** The switch itself, owned by the dock so a save always reads the latest value. */
   on: boolean;
   setOn: (on: boolean) => void;
-}>({ queued: null, dialFromList: () => {}, callNow: () => {}, cancel: () => {}, on: false, setOn: () => {} });
+  /** Lines that ring at once when dialling from the list (Calling from menu). */
+  lineCount: number;
+  setLineCount: (n: number) => void;
+}>({ queued: null, dialFromList: () => {}, callNow: () => {}, cancel: () => {}, on: false, setOn: () => {}, lineCount: 1, setLineCount: () => {} });
 
 /** Opens (or, when it is already showing, closes) a contact beside the dock. */
 function useContactSide() {
@@ -189,17 +192,22 @@ export function DialerDock() {
   autoQueueRef.current = autoQueue;
   const { info: toastInfo } = useToast();
   const [queued, setQueued] = useState<QueuedCall | null>(null);
-  const dialRef = useRef(dialer.dial);
-  dialRef.current = dialer.dial;
+  const [linesWanted, setLineCount] = usePersistedState("dialer-parallel-lines", 1);
+  const lineCount = Math.max(1, Math.min(linesWanted, dialer.maxLines));
+  const lineCountRef = useRef(lineCount);
+  lineCountRef.current = lineCount;
+  const dialRef = useRef(dialer.dialMany);
+  dialRef.current = dialer.dialMany;
   const dialFromList = useCallback((rows: ContactRow[], index: number) => {
     setQueued(null);
-    const target = rows[index] ? rowTarget(rows[index]) : null;
-    if (!target?.phone) return;
-    void dialRef.current(target, {
+    if (!rows[index] || !rowTarget(rows[index]).phone) return;
+    // How far down the list this call (or batch of lines) went; the next one starts after it.
+    let consumed = 1;
+    consumed = dialRef.current(rows.slice(index).map(rowTarget), lineCountRef.current, {
       // Read at save time, so the switch can be flipped during the call.
       onSaved: () => {
         if (!autoQueueRef.current) return;
-        const next = rows.findIndex((x, i) => i > index && !!rowTarget(x).phone);
+        const next = rows.findIndex((x, i) => i >= index + Math.max(1, consumed) && !!rowTarget(x).phone);
         if (next < 0) {
           toastInfo("End of the list", "No more contacts with a number in this list.");
           return;
@@ -234,8 +242,10 @@ export function DialerDock() {
       cancel: () => setQueued(null),
       on: autoQueue,
       setOn: setAutoQueue,
+      lineCount,
+      setLineCount,
     }),
-    [queued, dialFromList, autoQueue, setAutoQueue],
+    [queued, dialFromList, autoQueue, setAutoQueue, lineCount, setLineCount],
   );
 
   // Unpinned: a click outside closes it (menus portal out, so skip those).
@@ -345,15 +355,17 @@ function DockHeader({
   onSettings: () => void;
   onClose: () => void;
 }) {
-  const { lines, line, setLine, state } = useDialer();
+  const { lines, line, setLine, state, maxLines } = useDialer();
+  const { lineCount, setLineCount } = useContext(AutoQueueContext);
   const locked = state !== "idle";
+  const LINES = "lines:";
   return (
     <div className="h-12 shrink-0 px-3 flex items-center gap-2 border-b border-[var(--ods-border)]">
       <div className="flex-1 min-w-0">
         <div className="text-[12px] font-medium text-[var(--ods-text-tertiary)] leading-none mb-0.5">Calling from</div>
         <SelectMenu
           value={line?.id ?? null}
-          onChange={setLine}
+          onChange={(v) => (v.startsWith(LINES) ? setLineCount(Number(v.slice(LINES.length))) : setLine(v))}
           disabled={locked || lines.length === 0}
           width={260}
           sections={[
@@ -366,6 +378,18 @@ function DockHeader({
                 hint: l.callState !== "IDLE" ? "in use" : undefined,
               })),
             },
+            {
+              title: "Lines at once",
+              options: Array.from({ length: maxLines }, (_, i) => i + 1).map((n) => ({
+                value: `${LINES}${n}`,
+                label: n === 1 ? "1 line" : `${n} lines`,
+                description:
+                  n === 1
+                    ? "One call at a time from the number above."
+                    : `Rings ${n} contacts from the Contacts list at once, each from its own number. The first to answer is put through; the others hang up.`,
+                icon: n === lineCount ? <Check className="w-3.5 h-3.5 text-[var(--ods-brand-600)]" /> : undefined,
+              })),
+            },
           ]}
           triggerTitle={locked ? "Change the number between calls" : "Choose the number you call from"}
           triggerClassName="max-w-full inline-flex items-center gap-1.5 text-[14px] font-semibold tabular-nums disabled:opacity-70"
@@ -373,6 +397,7 @@ function DockHeader({
             <>
               {line && <CountryFlag code={countryCode(line.countryCode)} />}
               <span className="truncate">{line?.phoneNumber ?? "No free number"}</span>
+              {lineCount > 1 && <span className="shrink-0 text-[12px] font-medium text-[var(--ods-brand-600)]">· {lineCount} lines</span>}
               {!locked && lines.length > 0 && <ChevronDown className="w-3 h-3 opacity-60" />}
             </>
           }
@@ -470,15 +495,19 @@ function IdleView() {
 
 /** The countdown to the next contact in the list, with Call now and Cancel. */
 function NextCallBanner() {
-  const { queued, callNow, cancel } = useContext(AutoQueueContext);
+  const { queued, callNow, cancel, lineCount } = useContext(AutoQueueContext);
   const r = queued ? queued.rows[queued.index] : null;
   if (!queued || !r) return null;
   const name = contactName(r) ?? r.phone ?? "Unknown";
+  // With several lines, the batch is roughly the next contacts with a number (skips are decided at dial time).
+  const batch = queued.rows.slice(queued.index).filter((x) => !!x.phone).slice(0, lineCount);
   return (
     <div role="status" className="m-3 mb-0 p-3 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] text-[13px]">
-      <div className="text-[12px] text-[var(--ods-text-tertiary)]">Next call in {queued.left}s</div>
-      <div className="font-semibold truncate">{name}</div>
-      <div className="text-[12px] tabular-nums text-[var(--ods-text-secondary)] truncate">{[r.phone, r.company].filter(Boolean).join(" · ")}</div>
+      <div className="text-[12px] text-[var(--ods-text-tertiary)]">
+        {batch.length > 1 ? `Next ${batch.length} lines in ${queued.left}s` : `Next call in ${queued.left}s`}
+      </div>
+      <div className="font-semibold truncate">{batch.length > 1 ? batch.map((x) => contactName(x) ?? x.phone).join(", ") : name}</div>
+      {batch.length <= 1 && <div className="text-[12px] tabular-nums text-[var(--ods-text-secondary)] truncate">{[r.phone, r.company].filter(Boolean).join(" · ")}</div>}
       <div className="mt-2 flex gap-2">
         <button onClick={callNow} className={BTN_PRIMARY}>
           <Phone className="w-3.5 h-3.5" /> Call now
@@ -1161,6 +1190,7 @@ function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onTog
   const who = d.target?.contactType && d.target.contactId ? { type: d.target.contactType, id: d.target.contactId } : null;
   const [panel, setPanel] = useState<"none" | "keypad" | "notes">("none");
   const connected = d.state === "active" || d.state === "on_hold";
+  if (d.legs.length > 1 && !d.legs.some((l) => l.status === "answered")) return <LinesView />;
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <CallHeader />
@@ -1209,6 +1239,56 @@ function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onTog
       <div className="p-4">
         <button onClick={d.hangup} className="w-full h-11 rounded-md bg-red-600 hover:bg-red-700 text-white text-[14px] font-semibold flex items-center justify-center gap-2">
           <PhoneOff className="w-4 h-4" /> End call
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const LEG_LABEL: Record<LegStatus, string> = {
+  dialing: "Calling",
+  ringing: "Ringing",
+  answered: "Answered",
+  no_answer: "No answer",
+  failed: "Failed",
+};
+const LEG_DOT: Record<LegStatus, string> = {
+  dialing: "bg-sky-500",
+  ringing: "bg-sky-500",
+  answered: "bg-emerald-500",
+  no_answer: "bg-gray-400",
+  failed: "bg-red-500",
+};
+
+/** Several lines ringing at once: who each line is calling, from which number, and how far it got. */
+function LinesView() {
+  const d = useDialer();
+  const ringing = d.legs.filter((l) => l.status === "dialing" || l.status === "ringing").length;
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+        <span className="text-[15px] font-semibold">Ringing {ringing} of {d.legs.length} lines</span>
+        <Chip icon={Clock}>
+          <span className="tabular-nums">{formatDuration(d.duration)}</span>
+        </Chip>
+      </div>
+      <p className="px-4 pb-2 text-[12px] text-[var(--ods-text-tertiary)]">The first to answer is put through; the other lines hang up.</p>
+      <div className="py-1">
+        {d.legs.map((l) => (
+          <div key={`${l.phone}-${l.fromNumber}`} className="flex items-center gap-2.5 px-4 py-2">
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-medium truncate">{l.name || l.phone}</span>
+              <span className="block text-[12px] text-[var(--ods-text-tertiary)] truncate tabular-nums">
+                {l.phone} · from {l.fromNumber}
+              </span>
+            </span>
+            <Chip dot={LEG_DOT[l.status]}>{LEG_LABEL[l.status]}</Chip>
+          </div>
+        ))}
+      </div>
+      <div className="p-4">
+        <button onClick={d.hangup} className="w-full h-11 rounded-md bg-red-600 hover:bg-red-700 text-white text-[14px] font-semibold flex items-center justify-center gap-2">
+          <PhoneOff className="w-4 h-4" /> Stop all lines
         </button>
       </div>
     </div>
