@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/domains/ui/button";
 import { buttonClass } from "@/domains/ui/button";
 import { inputClass } from "@/domains/ui/input";
@@ -57,6 +57,7 @@ import { countryCode, countryName } from "@/domains/country/lookup";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disposition";
 import { isLive, useDialer, type CallState } from "@/domains/dialer/provider";
 import { useAuth } from "@/domains/auth/provider";
+import { useToast } from "@/domains/ui/toast";
 import { useAccountFilters } from "./useAccountFilters";
 
 // Buttons and inputs come from the design primitives (docs/design-system.md).
@@ -122,6 +123,49 @@ export function DialerTopButton() {
 type SidePanel = { kind: "script" } | { kind: "contact"; contactType: "prospect" | "lead"; contactId: string } | null;
 const SideContext = createContext<{ side: SidePanel; setSide: (s: SidePanel) => void }>({ side: null, setSide: () => {} });
 
+/** Seconds the dock counts down before it dials the next contact on its own. */
+const AUTO_QUEUE_SECONDS = 5;
+
+/** The next contact in the Contacts list, waiting out the countdown. */
+interface QueuedCall {
+  rows: ContactRow[];
+  index: number;
+  left: number;
+}
+
+/** A person is called as their company (where calls and history are kept); without one they cannot be dialled. */
+const rowRecord = (r: ContactRow) =>
+  r.type === "person" ? (r.prospectId ? { type: "prospect" as const, id: r.prospectId } : null) : { type: r.type, id: r.id };
+
+const rowTarget = (r: ContactRow) => {
+  const record = rowRecord(r);
+  return {
+    contactType: record?.type ?? null,
+    contactId: record?.id ?? null,
+    phone: record ? (r.phone as string) : "",
+    name: contactName(r) ?? "Unknown",
+    campaignId: (r.campaign_id as string | null) ?? null,
+    country: (r.country as string | undefined) ?? null,
+  };
+};
+
+/**
+ * Auto-queue next call: with it on, saving a call dialled from the Contacts
+ * list counts down and dials the next contact in that list. Off, saving just
+ * returns to the list as before.
+ */
+const AutoQueueContext = createContext<{
+  queued: QueuedCall | null;
+  /** Dials rows[index], queueing the one after it when the call is saved. */
+  dialFromList: (rows: ContactRow[], index: number) => void;
+  callNow: () => void;
+  cancel: () => void;
+}>({ queued: null, dialFromList: () => {}, callNow: () => {}, cancel: () => {} });
+
+function useAutoQueueSetting() {
+  return usePersistedState("dialer-auto-queue", false);
+}
+
 /** Opens (or, when it is already showing, closes) a contact beside the dock. */
 function useContactSide() {
   const { side, setSide } = useContext(SideContext);
@@ -139,6 +183,59 @@ export function DialerDock() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [side, setSide] = useState<SidePanel>(null);
   const scriptOpen = side?.kind === "script";
+
+  // ---- auto-queue next call ----
+  const [autoQueue] = useAutoQueueSetting();
+  const autoQueueRef = useRef(autoQueue);
+  autoQueueRef.current = autoQueue;
+  const { info: toastInfo } = useToast();
+  const [queued, setQueued] = useState<QueuedCall | null>(null);
+  const dialRef = useRef(dialer.dial);
+  dialRef.current = dialer.dial;
+  const dialFromList = useCallback((rows: ContactRow[], index: number) => {
+    setQueued(null);
+    const target = rows[index] ? rowTarget(rows[index]) : null;
+    if (!target?.phone) return;
+    void dialRef.current(target, {
+      // Read at save time, so the switch can be flipped during the call.
+      onSaved: () => {
+        if (!autoQueueRef.current) return;
+        const next = rows.findIndex((x, i) => i > index && !!rowTarget(x).phone);
+        if (next < 0) {
+          toastInfo("End of the list", "No more contacts with a number in this list.");
+          return;
+        }
+        setQueued({ rows, index: next, left: AUTO_QUEUE_SECONDS });
+      },
+    });
+  }, [toastInfo]);
+  // Count down while the dock is free; anything else taking the line cancels it.
+  useEffect(() => {
+    if (!queued) return;
+    if (state !== "idle" || dialer.cooldownNotice) {
+      setQueued(null);
+      return;
+    }
+    if (queued.left <= 0) {
+      dialFromList(queued.rows, queued.index);
+      return;
+    }
+    const t = setTimeout(() => setQueued((q) => (q ? { ...q, left: q.left - 1 } : q)), 1000);
+    return () => clearTimeout(t);
+  }, [queued, state, dialer.cooldownNotice, dialFromList]);
+  // Turning the switch off stops a countdown already running.
+  useEffect(() => {
+    if (!autoQueue) setQueued(null);
+  }, [autoQueue]);
+  const autoQueueValue = useMemo(
+    () => ({
+      queued,
+      dialFromList,
+      callNow: () => setQueued((q) => (q ? { ...q, left: 0 } : q)),
+      cancel: () => setQueued(null),
+    }),
+    [queued, dialFromList],
+  );
 
   // Unpinned: a click outside closes it (menus portal out, so skip those).
   useEffect(() => {
@@ -167,7 +264,19 @@ export function DialerDock() {
   }, [targetType, targetId]);
 
   if (!isOpen) {
-    if (!isLive(state)) return null;
+    if (!isLive(state) && !queued) return null;
+    if (queued) {
+      // Minimised while the next call counts down: the dock reopens to show it.
+      return (
+        <button
+          onClick={open}
+          className="fixed top-12 right-4 z-[55] h-8 px-3 rounded-[8px] bg-[var(--ods-brand-600)] text-white text-[13px] font-semibold tabular-nums inline-flex items-center gap-2 shadow-[0_8px_24px_rgba(0,0,0,0.2)]"
+        >
+          <SkipForward className="w-3.5 h-3.5" />
+          Next call in {queued.left}s
+        </button>
+      );
+    }
     // Minimised mid-call: a timer pill that reopens the dock.
     return (
       <button
@@ -187,6 +296,7 @@ export function DialerDock() {
   else body = <IdleView />;
 
   return (
+    <AutoQueueContext.Provider value={autoQueueValue}>
     <SideContext.Provider value={{ side, setSide }}>
     <div
       ref={ref}
@@ -217,6 +327,7 @@ export function DialerDock() {
       {!settingsOpen && state !== "idle" && <NowPlaying compact />}
     </div>
     </SideContext.Provider>
+    </AutoQueueContext.Provider>
   );
 }
 
@@ -326,6 +437,7 @@ function IdleView() {
   ];
   return (
     <>
+      <NextCallBanner />
       {cooldownNotice && target && (
         <div className="m-3 mb-0 p-3 rounded-[10px] border border-amber-500/30 bg-amber-500/10 text-[13px]">
           <div className="font-semibold">{target.name}</div>
@@ -352,6 +464,53 @@ function IdleView() {
         <TabBar tabs={tabs} value={shown} onChange={setTab} />
       </div>
     </>
+  );
+}
+
+/** The countdown to the next contact in the list, with Call now and Cancel. */
+function NextCallBanner() {
+  const { queued, callNow, cancel } = useContext(AutoQueueContext);
+  const r = queued ? queued.rows[queued.index] : null;
+  if (!queued || !r) return null;
+  const name = contactName(r) ?? r.phone ?? "Unknown";
+  return (
+    <div role="status" className="m-3 mb-0 p-3 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-secondary)] text-[13px]">
+      <div className="text-[12px] text-[var(--ods-text-tertiary)]">Next call in {queued.left}s</div>
+      <div className="font-semibold truncate">{name}</div>
+      <div className="text-[12px] tabular-nums text-[var(--ods-text-secondary)] truncate">{[r.phone, r.company].filter(Boolean).join(" · ")}</div>
+      <div className="mt-2 flex gap-2">
+        <button onClick={callNow} className={BTN_PRIMARY}>
+          <Phone className="w-3.5 h-3.5" /> Call now
+        </button>
+        <button onClick={cancel} className={BTN_SECONDARY}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The Auto-queue next call switch, in the call summary and the dialer settings. */
+function AutoQueueSwitch() {
+  const [on, setOn] = useAutoQueueSetting();
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-semibold text-[var(--ods-text-primary)]">Auto-queue next call</div>
+        <p className="text-[12px] text-[var(--ods-text-tertiary)]">
+          After you save a call from the Contacts list, the next contact in that list is dialled after {AUTO_QUEUE_SECONDS} seconds.
+        </p>
+      </div>
+      <button
+        role="switch"
+        aria-checked={on}
+        aria-label="Auto-queue next call"
+        onClick={() => setOn(!on)}
+        className={`relative mt-1 h-5 w-9 shrink-0 rounded-md transition-colors ${on ? "bg-[var(--ods-brand-600)]" : "bg-[var(--ods-border-strong)]"}`}
+      >
+        <span className={`absolute top-0.5 h-4 w-4 rounded-md bg-white shadow transition-[left] ${on ? "left-[18px]" : "left-0.5"}`} />
+      </button>
+    </div>
   );
 }
 
@@ -601,12 +760,14 @@ function SavedFiltersMenu({ account, filtered }: { account: ReturnType<typeof us
 }
 
 function ContactsTab() {
-  const { dial, lines, line } = useDialer();
+  const { lines, line } = useDialer();
+  const { dialFromList } = useContext(AutoQueueContext);
   const navigate = useNavigate();
   const contactSide = useContactSide();
   const [more, setMore] = usePersistedState("dialer-contact-more-filters", false);
-  const [q, setQ] = useState("");
-  const [debounced, setDebounced] = useState("");
+  // Kept like the filters: the tab remounts after every call.
+  const [q, setQ] = usePersistedState("dialer-contact-q", "");
+  const [debounced, setDebounced] = useState(() => q.trim());
   const [saved, setFilters] = usePersistedState<DockFilters>("dialer-contact-filters", DOCK_FILTERS);
   const f = { ...DOCK_FILTERS, ...saved };
   const set = (patch: Partial<DockFilters>) => setFilters({ ...f, ...patch } as DockFilters);
@@ -716,7 +877,8 @@ function ContactsTab() {
     queryFn: () => contactsApi.page(query, 0),
     staleTime: 30_000,
   });
-  const rows: ContactRow[] = (data?.rows ?? []).slice(0, 25);
+  const all: ContactRow[] = data?.rows ?? [];
+  const rows = all.slice(0, 25);
   const total = data?.totalCount ?? rows.length;
   const filtered = (Object.keys(DOCK_FILTERS) as (keyof DockFilters)[]).some((k) => f[k] !== "all");
   return (
@@ -768,10 +930,10 @@ function ContactsTab() {
       ) : rows.length === 0 ? (
         <Empty text={debounced ? `No contacts match "${debounced}".` : filtered ? "No contacts match these filters." : "No contacts yet."} />
       ) : (
-        rows.map((r) => {
+        rows.map((r, index) => {
           const name = contactName(r) ?? "Unknown";
           // A person is called, shown and opened as their company: that is where calls and history are kept.
-          const record = r.type === "person" ? (r.prospectId ? { type: "prospect" as const, id: r.prospectId } : null) : { type: r.type, id: r.id };
+          const record = rowRecord(r);
           const route = r.phone ? pickCallLine(lines, line, { number: r.phone, country: r.country as string | undefined }) : null;
           const toName = route?.toName ?? "";
           return (
@@ -785,11 +947,7 @@ function ContactsTab() {
                 r.type === "person" ? [r.jobTitle, r.company].filter(Boolean).join(" at ") : r.company,
                 r.assignedToId && facets?.names?.member?.[r.assignedToId] ? `Assigned to ${facets.names.member[r.assignedToId]}` : null,
               ].filter(Boolean).join(" · ")}
-              onClick={() =>
-                r.phone &&
-                record &&
-                void dial({ contactType: record.type, contactId: record.id, phone: r.phone, name, campaignId: (r.campaign_id as string | null) ?? null, country: (r.country as string | undefined) ?? null })
-              }
+              onClick={() => dialFromList(all, index)}
               trailing={
                 <span className="flex items-center gap-1.5 shrink-0">
                   <button
@@ -1134,6 +1292,9 @@ function SummaryView() {
       <div className="px-4 pt-3">
         <NotesField />
       </div>
+      <div className="px-4 pt-3">
+        <AutoQueueSwitch />
+      </div>
       <div className="p-4 grid grid-cols-[1fr_auto] gap-2">
         <button onClick={() => void d.saveSummary()} disabled={d.saving || d.outcome === "connected"} className={BTN_PRIMARY} title={d.outcome === "connected" ? "Pick a disposition first" : undefined}>
           {d.saving ? "Saving…" : d.saveLabel}
@@ -1168,6 +1329,7 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
           this browser.
         </p>
         <RingTimeSetting />
+        <AutoQueueSwitch />
         <AudioSourceSettings />
       </div>
     </div>
