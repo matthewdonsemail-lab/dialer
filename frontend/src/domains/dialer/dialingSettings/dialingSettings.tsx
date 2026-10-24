@@ -32,8 +32,9 @@ const clock = (ms: number) => formatClock(ms / 1000);
  * Settings -> Dialing: the dialing mode, what Answer Boost does with
  * machines, and how long a call rings. Shared by the Settings page and the
  * dialer's own settings sheet, so there is one place to change it.
+ * `stacked` lays the modes out as rows in one column, for the narrow dock.
  */
-export function DialingModeSettings() {
+export function DialingModeSettings({ stacked = false }: { stacked?: boolean }) {
   const { mode, setMode, leaveVoicemail, setLeaveVoicemail } = useDialingSettings();
   const { source: audioSource } = useAudioSettings();
   const { hasRecording, loaded } = useVoicemailMeta();
@@ -43,7 +44,7 @@ export function DialingModeSettings() {
 
   return (
     <div className="space-y-4">
-      <div role="radiogroup" aria-label="Dialing mode" className="grid gap-3 sm:grid-cols-3">
+      <div role="radiogroup" aria-label="Dialing mode" className={stacked ? "grid gap-2" : "grid gap-3 sm:grid-cols-3"}>
         {DIALING_MODES.map((m) => {
           const info = MODE_INFO[m];
           const Icon = MODE_ICON[m];

@@ -1373,7 +1373,7 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
           Caller ID is the <b className="text-[var(--ods-text-primary)]">Calling from</b> number at the top. Audio below applies to every call on
           this browser.
         </p>
-        <DialingModeSettings />
+        <DialingModeSettings stacked />
         <AutoQueueSwitch />
         <VoicemailSettings />
         <AudioSourceSettings />
