@@ -8,7 +8,7 @@ import { useAudioSettings } from "@/domains/dialer/audio";
 import { usePersistedState } from "@/domains/app/persistedState";
 import { useCalls } from "@/domains/calls/data";
 import { api } from "@/domains/api/client";
-import { DIAL_COOLDOWN_HOURS, isWithinCooldown, lastDialTo, recordStatusForOutcome } from "@/domains/calls/disposition";
+import { DIAL_COOLDOWN_HOURS, isWithinCooldown, lastDialTo, mapOutcomeToCallStatus, recordStatusForOutcome } from "@/domains/calls/disposition";
 import { getUnansweredTimeoutSeconds, HEARTBEAT_INTERVAL_MS } from "@/domains/app/config";
 import { classifyFailure, getSipConfig, isSipConfigured, sipLog, type ClassifiedFailure } from "@/domains/dialer/sip";
 import { CallLifecycle } from "@/domains/dialer/lifecycle";
@@ -392,6 +392,22 @@ export function DialerProvider({ children }: { children: ReactNode }) {
    * the background. The summary uses it, and so does every parallel line
    * that rang out.
    */
+  /**
+   * One refetch round after a burst of saves (parallel lines finish several
+   * at once). Each round costs many Twenty requests, and Twenty allows about
+   * 100 a minute for the whole workspace.
+   */
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refetchSoon = useCallback(() => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => {
+      refetchTimer.current = null;
+      ["calls", "twentyPhones", "contacts-page", "dialer-contact-search", "prospect", "leads", "contacts-facets", "record-activity"].forEach((key) =>
+        queryClient.invalidateQueries({ queryKey: [key] }),
+      );
+    }, 1500);
+  }, [queryClient]);
+
   const recordResult = useCallback((lc: CallLifecycle | null, t: DialTarget | null, o: string, n: string) => {
     const status = recordStatusForOutcome(o);
 
@@ -402,10 +418,17 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         row?.id === t.contactId ? { ...row, ...(status ? { status } : {}), lastCall: { id: lc?.callId ?? "pending", status: String(o).toUpperCase(), at } } : row;
       queryClient.setQueriesData({ queryKey: ["contacts-page"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
       queryClient.setQueriesData({ queryKey: ["dialer-contact-search"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
-      // A list of contacts never called no longer includes this one.
+      // A dock list this contact no longer matches drops it now: Never called,
+      // another Last call result, or a Status it has just left. Waiting for
+      // the refetch left called contacts on screen (and Twenty's rate limit
+      // can fail that refetch).
+      const callStatus = mapOutcomeToCallStatus(o);
       for (const [key, page] of queryClient.getQueriesData<any>({ queryKey: ["dialer-contact-search"] })) {
-        const q = (key as unknown[])[1] as { lastCall?: string } | undefined;
-        if (q?.lastCall === "__never" && page?.rows) {
+        const q = (key as unknown[])[1] as { lastCall?: string; status?: string[] } | undefined;
+        const gone =
+          (q?.lastCall && (q.lastCall === "__never" || q.lastCall !== callStatus)) ||
+          (status && q?.status?.length && !q.status.includes(status));
+        if (gone && page?.rows?.some((r: any) => r.id === t.contactId)) {
           queryClient.setQueryData(key, { ...page, rows: page.rows.filter((r: any) => r.id !== t.contactId), totalCount: Math.max(0, (page.totalCount ?? 1) - 1) });
         }
       }
@@ -437,11 +460,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         // A pipeline refusal (e.g. the contact is Converted) is expected: say why.
         await update.catch((err) => toastError("Contact status not updated", `The call was saved. ${describeError(err).detail}`));
       }
-      ["calls", "twentyPhones", "contacts-page", "prospect", "leads", "contacts-facets", "record-activity"].forEach((key) =>
-        queryClient.invalidateQueries({ queryKey: [key] }),
-      );
+      refetchSoon();
     })();
-  }, [queryClient, toastError]);
+  }, [queryClient, refetchSoon, toastError]);
 
   const onEstablished = useCallback((session: any) => {
     clearUnanswered();

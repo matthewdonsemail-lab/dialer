@@ -58,6 +58,7 @@ import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disp
 import { isLive, useDialer, type CallState, type LegStatus } from "@/domains/dialer/provider";
 import { useAuth } from "@/domains/auth/provider";
 import { useToast } from "@/domains/ui/toast";
+import { describeError } from "@/domains/feedback/describeError";
 import { useAccountFilters } from "./useAccountFilters";
 
 // Buttons and inputs come from the design primitives (docs/design-system.md).
@@ -827,7 +828,7 @@ function ContactsTab() {
     leadSource: f.leadSource !== "all" ? [f.leadSource] : undefined,
     offer: f.offer !== "all" ? [f.offer] : undefined,
   };
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, error, refetch } = useQuery({
     queryKey: ["dialer-contact-search", query],
     queryFn: () => contactsApi.page(query, 0),
     staleTime: 30_000,
@@ -882,6 +883,14 @@ function ContactsTab() {
       </div>
       {!data && isFetching ? (
         <ListSkeleton />
+      ) : !data && error ? (
+        // Not "no contacts match": the list did not load (often Twenty's rate limit when many calls are saved at once).
+        <div className="p-6 text-center text-[13px] text-[var(--ods-text-tertiary)] space-y-2">
+          <p>Contacts did not load. {describeError(error).detail}</p>
+          <button onClick={() => void refetch()} className={BTN_SECONDARY}>
+            Try again
+          </button>
+        </div>
       ) : rows.length === 0 ? (
         <Empty text={debounced ? `No contacts match "${debounced}".` : filtered ? "No contacts match these filters." : "No contacts yet."} />
       ) : (
