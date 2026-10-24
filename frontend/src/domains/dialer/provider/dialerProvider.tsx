@@ -414,8 +414,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     // Show the result in every loaded contact list right away.
     if (t?.contactId) {
       const at = new Date().toISOString();
+      // A person row is called as its company, so it matches on prospectId.
+      const isCalled = (row: any) => row?.id === t.contactId || (row?.type === "person" && row?.prospectId === t.contactId);
       const patch = (row: any) =>
-        row?.id === t.contactId ? { ...row, ...(status ? { status } : {}), lastCall: { id: lc?.callId ?? "pending", status: String(o).toUpperCase(), at } } : row;
+        isCalled(row) ? { ...row, ...(status ? { status } : {}), lastCall: { id: lc?.callId ?? "pending", status: String(o).toUpperCase(), at } } : row;
       queryClient.setQueriesData({ queryKey: ["contacts-page"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
       queryClient.setQueriesData({ queryKey: ["dialer-contact-search"] }, (page: any) => (page?.rows ? { ...page, rows: page.rows.map(patch) } : page));
       // A dock list this contact no longer matches drops it now: Never called,
@@ -428,8 +430,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
         const gone =
           (q?.lastCall && (q.lastCall === "__never" || q.lastCall !== callStatus)) ||
           (status && q?.status?.length && !q.status.includes(status));
-        if (gone && page?.rows?.some((r: any) => r.id === t.contactId)) {
-          queryClient.setQueryData(key, { ...page, rows: page.rows.filter((r: any) => r.id !== t.contactId), totalCount: Math.max(0, (page.totalCount ?? 1) - 1) });
+        const left = gone && page?.rows ? page.rows.filter((r: any) => !isCalled(r)) : null;
+        if (left && left.length < page.rows.length) {
+          queryClient.setQueryData(key, { ...page, rows: left, totalCount: Math.max(0, (page.totalCount ?? 0) - (page.rows.length - left.length)) });
         }
       }
     }
