@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { BarChart3, Check, Clock, FlaskConical, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, Sun, Timer, User, type IconComponent } from "@/domains/ui/icons";
+import { BarChart3, Check, Clock, FlaskConical, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, SkipForward, Sun, Timer, User, type IconComponent } from "@/domains/ui/icons";
 import { InfoTip, TipCard, type TipSpec } from "@/domains/ui/infoTip";
 import { AudioSourceSettings } from "@/domains/dialer/audio";
 import { SectionTitle } from "@/domains/ui/sectionTitle";
@@ -133,9 +133,10 @@ function ThemePreview({ dark }: { dark: boolean }) {
   );
 }
 
-type SettingsTab = "appearance" | "audio" | "reports" | "experimental" | "account";
+type SettingsTab = "appearance" | "calling" | "audio" | "reports" | "experimental" | "account";
 const SETTINGS_TABS: TabDef<SettingsTab>[] = [
   { key: "appearance", label: "Appearance", icon: Palette },
+  { key: "calling", label: "Calling", icon: PhoneOutgoing },
   { key: "audio", label: "Audio Source", icon: Headphones },
   { key: "reports", label: "Reports", icon: BarChart3 },
   { key: "experimental", label: "Experimental", icon: FlaskConical },
@@ -148,8 +149,13 @@ const SETTINGS_TABS: TabDef<SettingsTab>[] = [
  * open straight on a tab.
  */
 /** One experimental feature: what it is and an on/off switch. */
-function ExperimentalToggle({ feature, label, description, icon: Icon }: { feature: ExperimentalFeature; label: string; description: string; icon: IconComponent }) {
+function ExperimentalToggle({ feature, label, description, icon }: { feature: ExperimentalFeature; label: string; description: string; icon: IconComponent }) {
   const [on, setOn] = useExperimental(feature);
+  return <SettingSwitch on={on} setOn={setOn} label={label} description={description} icon={icon} />;
+}
+
+/** A setting with what it does and an on/off switch. */
+function SettingSwitch({ on, setOn, label, description, icon: Icon }: { on: boolean; setOn: (on: boolean) => void; label: string; description: string; icon: IconComponent }) {
   return (
     <div className="flex items-start gap-3 rounded-[10px] border border-[var(--ods-border)] bg-[var(--ods-bg-primary)] p-3">
       <span className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center bg-[var(--ods-bg-tertiary)] text-[var(--ods-text-secondary)]">
@@ -178,6 +184,8 @@ export function SettingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = usePersistedState<SettingsTab>("settings-tab", "appearance");
+  // Same key as the dialer dock's switch, so both stay in step.
+  const [autoQueue, setAutoQueue] = usePersistedState("dialer-auto-queue", false);
   // Card grids fill whole rows (3 themes: 3 x 1 or 1 x 3, never 2 + 1).
   const themeGrid = useEvenColumns(THEME_OPTIONS.length, 200);
   const goalGrid = useEvenColumns(2, 260);
@@ -247,6 +255,22 @@ export function SettingsPage() {
                 );
               })}
             </div>
+          </ReportCard>
+        )}
+
+        {tab === "calling" && (
+          <ReportCard
+            title="Calling"
+            unit="Dialer dock"
+            tip={{ title: "Calling", icon: PhoneOutgoing, what: "How the dialer dock moves through a list of contacts.", use: "Also in the dock's settings and on the call summary. Applies to this browser." }}
+          >
+            <SettingSwitch
+              on={autoQueue}
+              setOn={setAutoQueue}
+              label="Auto-queue next call"
+              description="After you save a call from the dock's Contacts list, the next contact in that list is dialled after a 5 second countdown you can cancel."
+              icon={SkipForward}
+            />
           </ReportCard>
         )}
 
