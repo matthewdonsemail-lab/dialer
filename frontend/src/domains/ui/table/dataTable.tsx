@@ -133,6 +133,11 @@ interface DataTableProps<T> {
   selection?: {
     onDelete: (ids: string[]) => void | Promise<void>;
     actions?: (ids: string[], clear: () => void) => ReactNode;
+    /**
+     * Adds a Select all button. In a paged table the rows on screen are only a few of the matches,
+     * so this fetches the ids of every row matching the current search and filters.
+     */
+    selectAll?: () => Promise<string[]>;
   };
   emptyMessage: ReactNode;
   /** Clears the page's own filters; called with the table's when "Clear filters" is used. */
@@ -387,6 +392,16 @@ export function DataTable<T>({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const allSelected = shownRows.length > 0 && shownRows.every((r) => selectedIds.has(getRowId(r)));
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(shownRows.map(getRowId)));
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectEverything = async () => {
+    if (!selection?.selectAll) return;
+    setSelectingAll(true);
+    try {
+      setSelectedIds(new Set(await selection.selectAll()));
+    } finally {
+      setSelectingAll(false);
+    }
+  };
   const toggleRow = (id: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -563,10 +578,12 @@ export function DataTable<T>({
         </div>
         {selecting ? (
           <div className="flex items-center gap-2">
-          {selection!.actions?.(
-            shownRows.map(getRowId).filter((id) => selectedIds.has(id)),
-            () => setSelectedIds(new Set()),
+          {selection!.selectAll && (server?.count ?? server?.total ?? 0) > selectedIds.size && (
+            <ToolbarButton onClick={selectEverything} disabled={selectingAll}>
+              {selectingAll ? "Selecting…" : `Select all ${(server?.count ?? server?.total ?? 0).toLocaleString()}`}
+            </ToolbarButton>
           )}
+          {selection!.actions?.([...selectedIds], () => setSelectedIds(new Set()))}
           <RecordIndexCommandMenu
             selectedCount={selectedIds.size}
             onClear={() => setSelectedIds(new Set())}
@@ -578,6 +595,11 @@ export function DataTable<T>({
           </div>
         ) : (
           <div className="flex items-center gap-2">
+            {selection?.selectAll && (server?.count ?? server?.total ?? 0) > 0 && (
+              <ToolbarButton onClick={selectEverything} disabled={selectingAll}>
+                {selectingAll ? "Selecting…" : "Select all"}
+              </ToolbarButton>
+            )}
             <div className="relative shrink-0">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--ods-text-tertiary)] pointer-events-none" />
               <input

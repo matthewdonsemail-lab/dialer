@@ -85,6 +85,22 @@ router.get("/", async (_req, res) => {
 });
 
 /**
+ * Last call filter: the contacts whose newest call ended that way, or
+ * (Never called) every contact without a call. "none" = nothing can match.
+ */
+async function resolveLastCallScope(params: Record<string, unknown>): Promise<IdScope | undefined | "none"> {
+  const lastCall = typeof params.lastCall === "string" ? params.lastCall.trim() : "";
+  if (!lastCall) return undefined;
+  const index = await lastCallIndex();
+  if (lastCall === NEVER_CALLED) return { notIn: [...index.keys()] };
+  const ids = [...index.entries()].filter(([, outcome]) => outcome === lastCall).map(([id]) => id);
+  return ids.length === 0 ? "none" : { in: ids };
+}
+
+/** Most contacts a "select all" returns (a call campaign this size is already far more than one session dials). */
+const MAX_SELECT_ALL = 5000;
+
+/**
  * GET /api/prospects/page?offset=0&limit=50&q=&status=&country=&type=&sort=&dir=
  *
  * One window of contacts (prospects then leads, or leads first when the Type
@@ -102,19 +118,9 @@ router.get("/page", async (req, res) => {
 
     const PROSPECT_NODE = { __scalar: true, phoneNumber: { __scalar: true }, primaryPhone: { __scalar: true }, videoUrl: { __scalar: true } };
     const LEAD_NODE = { __scalar: true, email: { __scalar: true }, phone: { __scalar: true } };
-    // Last call filter: the contacts whose newest call ended that way, or
-    // (Never called) every contact without a call.
-    let scope: IdScope | undefined;
-    const lastCall = typeof params.lastCall === "string" ? params.lastCall.trim() : "";
-    if (lastCall) {
-      const index = await lastCallIndex();
-      if (lastCall === NEVER_CALLED) scope = { notIn: [...index.keys()] };
-      else {
-        const ids = [...index.entries()].filter(([, outcome]) => outcome === lastCall).map(([id]) => id);
-        if (ids.length === 0) return res.json({ offset, rows: [], totalCount: 0, counts: { prospect: 0, lead: 0 } });
-        scope = { in: ids };
-      }
-    }
+    const resolved = await resolveLastCallScope(params);
+    if (resolved === "none") return res.json({ offset, rows: [], totalCount: 0, counts: { prospect: 0, lead: 0 } });
+    const scope = resolved;
     const fetchSlice = async (object: "agencyProspects" | "agencyLeads", q: { filter?: unknown; orderBy: unknown }, node: object, first: number, skip: number) => {
       const r: any = await client.query({
         [object]: { __args: { first: Math.max(1, first), offset: skip, orderBy: q.orderBy, ...(q.filter ? { filter: q.filter } : {}) }, totalCount: true, edges: { node } },
@@ -249,6 +255,56 @@ router.get("/page", async (req, res) => {
   } catch (err: any) {
     log.error("Failed to page contacts:", err.message);
     res.status(500).json({ error: "Failed to fetch contacts from Twenty", details: err.message });
+  }
+});
+
+/**
+ * GET /api/prospects/ids?<same filters as /page>
+ *
+ * The id and type of EVERY contact matching the filters (not just the rows
+ * on screen), so "Select all" can reach contacts on other pages. Capped at
+ * MAX_SELECT_ALL; `truncated` says so.
+ */
+router.get("/ids", async (req, res) => {
+  try {
+    const params = req.query as Record<string, unknown>;
+    const types = contactTypes(params.type);
+    const resolved = await resolveLastCallScope(params);
+    if (resolved === "none") return res.json({ ids: [], truncated: false });
+    const client: any = twentyGraphqlClient();
+    const queries = [
+      types.prospects ? { object: "agencyProspects" as const, type: "prospect", q: prospectGqlQuery(params, resolved) } : null,
+      types.leads ? { object: "agencyLeads" as const, type: "lead", q: leadGqlQuery(params, resolved) } : null,
+    ];
+    const ids: { id: string; type: string }[] = [];
+    let truncated = false;
+    for (const src of queries) {
+      if (!src?.q) continue;
+      for (let skip = 0; ; skip += 200) {
+        if (ids.length >= MAX_SELECT_ALL) {
+          truncated = true;
+          break;
+        }
+        let nodes: any[];
+        try {
+          const r: any = await client.query({
+            [src.object]: { __args: { first: 200, offset: skip, orderBy: src.q.orderBy, ...(src.q.filter ? { filter: src.q.filter } : {}) }, edges: { node: { id: true } } },
+          });
+          nodes = (r?.[src.object]?.edges ?? []).map((e: any) => e.node);
+        } catch (err: any) {
+          // Leads are a bonus to the prospect list: if Twenty rejects the lead query, use prospects alone.
+          if (src.type === "prospect") throw err;
+          log.info(`Lead ids skipped: ${err.message}`);
+          break;
+        }
+        for (const n of nodes) ids.push({ id: n.id, type: src.type });
+        if (nodes.length < 200) break;
+      }
+    }
+    res.json({ ids: ids.slice(0, MAX_SELECT_ALL), truncated });
+  } catch (err: any) {
+    log.error("Failed to list contact ids:", err.message);
+    res.status(500).json({ error: "Failed to list contacts from Twenty", details: err.message });
   }
 });
 

@@ -243,6 +243,8 @@ export const api = {
   /** Paged contacts (prospects + leads); see lib/contacts.ts. */
   contacts: {
     page: (params: string) => request<unknown>(`/api/prospects/page?${params}`),
+    /** Every contact matching the filters (id and type), for "Select all". */
+    ids: (params: string) => request<{ ids: { id: string; type: "prospect" | "lead" }[]; truncated: boolean }>(`/api/prospects/ids?${params}`),
     facets: () => request<unknown>("/api/prospects/facets"),
     lookup: (ids: string[]) => request<unknown[]>(`/api/prospects/lookup?ids=${ids.map(encodeURIComponent).join(",")}`),
   },

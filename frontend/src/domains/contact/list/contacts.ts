@@ -105,6 +105,8 @@ function toParams(query: ContactQuery, offset = 0, limit = PAGE_SIZE): string {
 
 export const contactsApi = {
   page: (query: ContactQuery, offset: number) => api.contacts.page(toParams(query, offset)) as Promise<ContactPage>,
+  /** Every contact matching the query, not just one page. */
+  ids: (query: ContactQuery) => api.contacts.ids(toParams(query, 0, 1)),
   facets: () => api.contacts.facets() as Promise<ContactFacets>,
   lookup: (ids: string[]) => api.contacts.lookup(ids) as Promise<ContactRow[]>,
 };
