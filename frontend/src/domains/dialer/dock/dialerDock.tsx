@@ -160,11 +160,10 @@ const AutoQueueContext = createContext<{
   dialFromList: (rows: ContactRow[], index: number) => void;
   callNow: () => void;
   cancel: () => void;
-}>({ queued: null, dialFromList: () => {}, callNow: () => {}, cancel: () => {} });
-
-function useAutoQueueSetting() {
-  return usePersistedState("dialer-auto-queue", false);
-}
+  /** The switch itself, owned by the dock so a save always reads the latest value. */
+  on: boolean;
+  setOn: (on: boolean) => void;
+}>({ queued: null, dialFromList: () => {}, callNow: () => {}, cancel: () => {}, on: false, setOn: () => {} });
 
 /** Opens (or, when it is already showing, closes) a contact beside the dock. */
 function useContactSide() {
@@ -185,7 +184,7 @@ export function DialerDock() {
   const scriptOpen = side?.kind === "script";
 
   // ---- auto-queue next call ----
-  const [autoQueue] = useAutoQueueSetting();
+  const [autoQueue, setAutoQueue] = usePersistedState("dialer-auto-queue", false);
   const autoQueueRef = useRef(autoQueue);
   autoQueueRef.current = autoQueue;
   const { info: toastInfo } = useToast();
@@ -233,8 +232,10 @@ export function DialerDock() {
       dialFromList,
       callNow: () => setQueued((q) => (q ? { ...q, left: 0 } : q)),
       cancel: () => setQueued(null),
+      on: autoQueue,
+      setOn: setAutoQueue,
     }),
-    [queued, dialFromList],
+    [queued, dialFromList, autoQueue, setAutoQueue],
   );
 
   // Unpinned: a click outside closes it (menus portal out, so skip those).
@@ -492,7 +493,7 @@ function NextCallBanner() {
 
 /** The Auto-queue next call switch, in the call summary and the dialer settings. */
 function AutoQueueSwitch() {
-  const [on, setOn] = useAutoQueueSetting();
+  const { on, setOn } = useContext(AutoQueueContext);
   return (
     <div className="flex items-start gap-3">
       <div className="flex-1 min-w-0">
