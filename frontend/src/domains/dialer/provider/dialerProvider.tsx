@@ -170,6 +170,58 @@ export const isLive = (s: CallState) => LIVE.includes(s);
  * dock's open/pinned state, so a call keeps going while the operator moves
  * between pages. Pages and the power dialer start calls with `dial()`.
  */
+
+/**
+ * Computes which lines will call which candidates in a parallel batch.
+ * Guarantees:
+ * - Each line is used at most once in a batch (no number collisions).
+ * - Country/regional affinity is matched via pickCallLine.
+ * - Bounded by count and maxParallel (default MAX_PARALLEL_LINES = 5).
+ * - Accurately tracks candidates consumed from the list for auto-queue advancing.
+ */
+export function planParallelBatch(
+  candidates: DialTarget[],
+  lines: DialerLine[],
+  selectedLine: DialerLine | null,
+  count: number,
+  maxParallel = MAX_PARALLEL_LINES,
+): { plan: Array<{ target: DialTarget; from: DialerLine }>; consumed: number; skipped: string[] } {
+  const free = lines.filter((l) => (l.callState ?? "IDLE") === "IDLE");
+  const used = new Set<string>();
+  const plan: Array<{ target: DialTarget; from: DialerLine }> = [];
+  const skipped: string[] = [];
+  let consumed = 0;
+  for (const c of candidates) {
+    if (plan.length >= Math.min(count, maxParallel)) break;
+    const available = free.filter((l) => !used.has(l.id));
+    if (!available.length) break;
+    consumed++;
+    if (!c.phone) continue;
+    const preferred = available.find((l) => l.id === selectedLine?.id) ?? available[0];
+    const route = pickCallLine(available, preferred, { number: c.phone, country: c.country });
+    if (!route.line) {
+      skipped.push(`${c.name} (no free number)`);
+      continue;
+    }
+    used.add(route.line.id);
+    plan.push({ target: c, from: route.line });
+  }
+  return { plan, consumed, skipped };
+}
+
+/**
+ * Computes the next contact index for auto-queue advancing.
+ * Advances past consumed contacts, skipping any contact with no phone number.
+ * Returns -1 when the end of the list is reached.
+ */
+export function getNextQueueIndex(
+  rows: Array<{ phone?: string | null }>,
+  currentIndex: number,
+  consumed: number,
+): number {
+  return rows.findIndex((r, i) => i >= currentIndex + Math.max(1, consumed) && !!r.phone);
+}
+
 export function DialerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -374,6 +426,9 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     setFailure(null);
     setRecWarning(null);
     setOptions({});
+    for (const leg of legsRef.current) {
+      if (leg.timer) clearTimeout(leg.timer);
+    }
     legsRef.current = [];
     winnerRef.current = null;
     setLegs([]);
@@ -678,6 +733,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     if (lifecycleRef.current && stateRef.current === "ended") void lifecycleRef.current.release();
     resetCall();
     setTarget(next);
+    batchOptionsRef.current = opts;
     setOptions(opts);
     // "Calling…" from the click: claiming the number can take a few seconds when
     // Twenty is busy, and while the dock still looked idle every further click
@@ -896,31 +952,11 @@ export function DialerProvider({ children }: { children: ReactNode }) {
       toastWarning("Already on a call", "Hang up first, then dial the next numbers.");
       return 0;
     }
-    // One free number per line, local to each contact where there is one.
-    const free = lines.filter((l) => (l.callState ?? "IDLE") === "IDLE");
-    const used = new Set<string>();
-    const plan: Array<{ target: DialTarget; from: DialerLine }> = [];
-    const skipped: string[] = [];
-    let consumed = 0;
-    for (const c of candidates) {
-      if (plan.length >= Math.min(count, MAX_PARALLEL_LINES)) break;
-      const available = free.filter((l) => !used.has(l.id));
-      if (!available.length) break;
-      consumed++;
-      if (!c.phone) continue;
-      const preferred = available.find((l) => l.id === line?.id) ?? available[0];
-      const route = pickCallLine(available, preferred, { number: c.phone, country: c.country });
-      // Abroad with no number there: dialled from the preferred number, like a single call.
-      if (!route.line) {
-        skipped.push(`${c.name} (no free number)`);
-        continue;
-      }
-      used.add(route.line.id);
-      plan.push({ target: c, from: route.line });
-    }
+    const { plan, consumed, skipped } = planParallelBatch(candidates, lines, line, count, MAX_PARALLEL_LINES);
     if (skipped.length) toastInfo(`Skipped ${skipped.length}`, skipped.join(", "));
     if (plan.length === 0) {
-      toastWarning("Nothing to dial", free.length ? "No contact left in this list can be dialled." : "No free number to call from.");
+      const hasFree = lines.some((l) => (l.callState ?? "IDLE") === "IDLE");
+      toastWarning("Nothing to dial", hasFree ? "No contact left in this list can be dialled." : "No free number to call from.");
       return consumed;
     }
     if (plan.length === 1) {
@@ -1151,7 +1187,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   const saveSummary = useCallback(async (picked?: string) => {
     const o = picked ?? outcome;
     const work = recordResult(lifecycleRef.current, target, o, notes);
-    const after = options.onSaved;
+    const after = options.onSaved ?? batchOptionsRef.current.onSaved;
     resetCall();
     after?.(o);
     await work;

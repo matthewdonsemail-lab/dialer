@@ -52,7 +52,7 @@ import { DockContactPanel } from "@/domains/dialer/contactPanel";
 import { regionOfCountry } from "@dialer/shared";
 import { countryCode, countryName } from "@/domains/country/lookup";
 import { DISPOSITIONS, dispositionFor, outcomeLabel } from "@/domains/calls/disposition";
-import { isLive, useDialer, type CallState, type LegStatus } from "@/domains/dialer/provider";
+import { isLive, useDialer, getNextQueueIndex, type CallState, type LegStatus } from "@/domains/dialer/provider";
 import { useAuth } from "@/domains/auth/provider";
 import { useToast } from "@/domains/ui/toast";
 import { describeError } from "@/domains/feedback/describeError";
@@ -191,7 +191,7 @@ export function DialerDock() {
       // Read at save time, so the switch can be flipped during the call.
       onSaved: () => {
         if (!autoQueueRef.current) return;
-        const next = rows.findIndex((x, i) => i >= index + Math.max(1, consumed) && !!rowTarget(x).phone);
+        const next = getNextQueueIndex(rows.map(rowTarget), index, consumed);
         if (next < 0) {
           toastInfo("End of the list", "No more contacts with a number in this list.");
           return;
