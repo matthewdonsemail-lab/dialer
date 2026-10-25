@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { describeError } from "@/domains/feedback/describeError";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Mail, PhoneCall, RefreshCw, User, Users } from "@/domains/ui/icons";
+import { BookOpen, Mail, RefreshCw, User, Users } from "@/domains/ui/icons";
 import { api } from "@/domains/api/client";
 import { StatusSelect, type StatusOption } from "@/domains/ui/status";
 import { StatusFilterDropdown } from "@/domains/ui/status";
@@ -16,12 +16,8 @@ import { Chip } from "@/domains/ui/chip";
 import { DataTable, TablePager, ToolbarButton, parsePageSize, useDataTable, type DataColumn } from "@/domains/ui/table";
 import { usePersistedState } from "@/domains/app/persistedState";
 import type { HeaderFilterOption } from "@/domains/ui/table";
-import { CampaignModal } from "@/domains/campaigns/campaignModal";
 import { ScriptsModal } from "@/domains/scripts/workspace";
 import { DispositionBadge, DispositionIcon, dispositionMeta } from "@/domains/calls/disposition";
-import { defaultCampaignName, useCreateCallCampaign } from "@/domains/campaigns/data";
-import { usePowerDialer } from "@/domains/campaigns/powerDialer";
-import type { CallCampaign } from "@/domains/api/client";
 import { CountryBadge, CountryFlag } from "@/domains/country/badge";
 import { countryCode, countryName } from "@/domains/country/lookup";
 import { timeAgo } from "@/domains/admin/data";
@@ -237,12 +233,7 @@ export function ProspectPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; type: ContactRowType } | null>(null);
   const [bulkDelete, setBulkDelete] = useState<string[] | null>(null);
   const [syncing, setSyncing] = useState(false);
-  // Call campaigns (WAVV-style): the phone button opens them; with contacts
-  // selected it first creates a campaign from the selection.
-  const [campaignModal, setCampaignModal] = useState<{ open: boolean; campaignId?: string | null }>({ open: false });
   const [scriptsOpen, setScriptsOpen] = useState(false);
-  const createCampaign = useCreateCallCampaign();
-  const powerDialer = usePowerDialer();
 
   const refresh = () =>
     Promise.all([
@@ -252,8 +243,6 @@ export function ProspectPage() {
 
   // Types of the contacts picked with Select all (most are on pages that are not loaded).
   const [pickedTypes, setPickedTypes] = useState<Map<string, ContactRowType>>(new Map());
-  // And the company of each person picked that way (campaigns dial the company).
-  const [pickedCompanies, setPickedCompanies] = useState<Map<string, string | null>>(new Map());
   const typeOf = useMemo(() => new Map<string, ContactRowType>([...pickedTypes, ...rows.map((r) => [r.id, r.type] as const)]), [rows, pickedTypes]);
 
   /** Select all: every contact matching the current search and filters, across all pages. */
@@ -261,7 +250,6 @@ export function ProspectPage() {
     try {
       const { ids, truncated } = await contactsApi.ids(query);
       setPickedTypes(new Map(ids.map((c) => [c.id, c.type])));
-      setPickedCompanies(new Map(ids.filter((c) => c.type === "person").map((c) => [c.id, c.prospectId ?? null])));
       if (truncated) toastWarning("Selection capped", `Only the first ${ids.length.toLocaleString()} contacts were selected. Narrow the filters to pick the rest.`);
       return ids.map((c) => c.id);
     } catch (err) {
@@ -328,33 +316,6 @@ export function ProspectPage() {
     }
   }
 
-  /** Selected prospects -> new campaign named after the current date and time, shown in the campaign window. */
-  async function startCampaignFrom(ids: string[], clearSelection: () => void) {
-    // Campaigns dial prospects: a selected person brings in their company.
-    const companyOf = new Map([...pickedCompanies, ...rows.filter((r) => r.type === "person").map((r) => [r.id, r.prospectId ?? null] as const)]);
-    const prospectIds = [...new Set(ids.map((id) => (typeOf.get(id) === "person" ? companyOf.get(id) : typeOf.get(id) === "lead" ? null : id)).filter((x): x is string => !!x))];
-    if (prospectIds.length === 0) {
-      toastWarning("No prospects selected", "Call campaigns dial prospects; leads can be called from their own page.");
-      return;
-    }
-    try {
-      const created = await createCampaign.mutateAsync({ contactIds: prospectIds, name: defaultCampaignName() });
-      clearSelection();
-      setCampaignModal({ open: true, campaignId: created.id });
-      const leadsLeft = ids.filter((id) => typeOf.get(id) === "lead").length;
-      if (leadsLeft) success("Campaign created", `${leadsLeft} lead(s) were left out; campaigns dial prospects.`);
-    } catch (err) {
-      toastError("Campaign not created", describeError(err).detail);
-    }
-  }
-
-  /** Power dial: the floating dialer starts on top of this page; the screen stays put. */
-  function startDialing(campaign: CallCampaign) {
-    setCampaignModal({ open: false });
-    powerDialer.start(campaign);
-  }
-
-  // A person opens their company, where the People tab lists them.
   const open = (r: ContactRow) =>
     navigate(r.type === "lead" ? `/leads/${r.id}` : r.type === "person" ? (r.prospectId ? `/contacts/${r.prospectId}` : "/contacts") : `/contacts/${r.id}`);
   const fieldLink = (key: string) => <TwentyFieldLink objectName="agencyProspects" fieldName={PROSPECT_FIELD_FOR_KEY[key] ?? null} />;
@@ -513,12 +474,6 @@ export function ProspectPage() {
         selection={{
           selectAll: selectAllMatching,
           onDelete: (ids) => setBulkDelete(ids),
-          actions: (ids, clear) => (
-            <ToolbarButton primary onClick={() => startCampaignFrom(ids, clear)} disabled={createCampaign.isPending}>
-              <PhoneCall className="w-3.5 h-3.5" />
-              {createCampaign.isPending ? "Creating campaign…" : `Dial ${ids.length} selected`}
-            </ToolbarButton>
-          ),
         }}
         emptyMessage='No contacts yet. Click "Sync" to import from Twenty.'
         filters={
@@ -534,10 +489,6 @@ export function ProspectPage() {
             <ToolbarButton onClick={() => setScriptsOpen(true)}>
               <BookOpen className="w-3.5 h-3.5" />
               Scripts
-            </ToolbarButton>
-            <ToolbarButton onClick={() => setCampaignModal({ open: true })}>
-              <PhoneCall className="w-3.5 h-3.5" />
-              Campaigns
             </ToolbarButton>
             <ToolbarButton onClick={handleSyncFromTwenty} disabled={syncing}>
               <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
@@ -567,12 +518,6 @@ export function ProspectPage() {
       />
 
       <ScriptsModal open={scriptsOpen} onClose={() => setScriptsOpen(false)} />
-      <CampaignModal
-        open={campaignModal.open}
-        initialCampaignId={campaignModal.campaignId}
-        onClose={() => setCampaignModal({ open: false })}
-        onStartDialing={startDialing}
-      />
 
       {showForm && (
         <LeadForm

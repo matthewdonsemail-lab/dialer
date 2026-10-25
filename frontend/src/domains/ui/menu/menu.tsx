@@ -263,7 +263,7 @@ export function MenuRow({
       aria-disabled={option.disabled || undefined}
       onClick={option.disabled ? undefined : onSelect}
       tabIndex={-1}
-      title={option.disabled ? option.description : undefined}
+      title={option.disabled ? option.description : option.label}
       className={`ods-menu-item ${option.disabled ? "opacity-45 cursor-not-allowed" : ""} ${option.description ? "!items-start !h-auto py-1.5" : ""}`}
     >
       {option.icon ?? (option.dot && <span className={`ods-menu-dot ${option.dot} ${option.description ? "mt-1.5" : ""}`} />)}
@@ -273,7 +273,7 @@ export function MenuRow({
           <span className="ods-menu-desc">{option.description}</span>
         </span>
       ) : (
-        <span className="flex-1 truncate">{option.label}</span>
+        <span className="flex-1 min-w-0 line-clamp-2 break-words">{option.label}</span>
       )}
       {option.hint !== undefined && <span className="ods-menu-hint">{option.hint}</span>}
       {selected && <Check className="ods-menu-icon" />}

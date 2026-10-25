@@ -47,6 +47,7 @@ import musicRouter from "./routes/music/index.js";
 import adminRoutes from "./routes/admin/index.js";
 import { createLogger } from "./lib/logger/index.js";
 import { clientIp } from "./lib/clientIp/index.js";
+import { runAsLive } from "./lib/twenty/throttle/index.js";
 
 const log = createLogger('server');
 const app = express();
@@ -146,6 +147,11 @@ app.use(express.json({
     req.rawBody = buf;
   },
 }));
+
+// Operator actions (every non-GET: claiming a number, logging a call, saving a
+// disposition) get Twenty requests ahead of list loads and refreshes. After the
+// body parser, whose stream callbacks would otherwise drop the lane.
+app.use("/api/", (req, _res, next) => (req.method === "GET" ? next() : runAsLive(next)));
 
 app.get("/api/health", (_req, res) => {
   const oauth = loadOAuthConfig();

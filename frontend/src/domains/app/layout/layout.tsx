@@ -7,7 +7,6 @@ import { api } from '@/domains/api/client';
 import { leadDetailKey } from '@/domains/contact/data';
 import { Skeleton } from '@/domains/ui/skeleton';
 import { usePersistedState } from '@/domains/app/persistedState';
-import { PowerDialerProvider } from '@/domains/campaigns/powerDialer';
 import { AudioBridgeProvider } from '@/domains/dialer/audio';
 import { DialerProvider } from '@/domains/dialer/provider';
 import { MusicPlayerProvider } from '@/domains/music/player';
@@ -172,7 +171,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <AudioBridgeProvider>
     <DialerProvider>
     <MusicPlayerProvider>
-    <PowerDialerProvider>
     <div className="flex h-screen overflow-hidden bg-[var(--ods-bg-secondary,#fafafb)] text-[var(--ods-text-primary,#18181b)] font-sans antialiased">
       {/* always-visible sidebar: every section as an icon + label row */}
       {narrow && overlayOpen && <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setOverlayOpen(false)} aria-hidden="true" />}
@@ -303,7 +301,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
     <DialerDock />
-    </PowerDialerProvider>
     </MusicPlayerProvider>
     </DialerProvider>
     </AudioBridgeProvider>

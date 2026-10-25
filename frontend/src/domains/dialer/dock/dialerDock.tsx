@@ -28,8 +28,6 @@ import {
   Save,
   Search,
   Settings,
-  SkipForward,
-  Square,
   Trash2,
   User,
   Users,
@@ -44,12 +42,9 @@ import { useExperimental } from "@/domains/app/experimental";
 import { CountryFlag } from "@/domains/country/badge";
 import { DispositionBadge, DispositionIcon } from "@/domains/calls/disposition";
 import { AudioSourceSettings } from "@/domains/dialer/audio";
-import { DialingModeSettings, VoicemailSettings } from "@/domains/dialer/dialingSettings";
-import { MODE_INFO } from "@/domains/dialer/dialing";
-import { Notice } from "@/domains/ui/notice";
 import { CallScriptViewer } from "@/domains/scripts/viewer";
-import { usePowerDialer, contactDisplayName } from "@/domains/campaigns/powerDialer";
 import { usePersistedState } from "@/domains/app/persistedState";
+import { DEFAULT_UNANSWERED_TIMEOUT_SECONDS, UNANSWERED_TIMEOUT_CHOICES, getUnansweredTimeoutSeconds, setUnansweredTimeoutSeconds } from "@/domains/app/config";
 import { useCalls } from "@/domains/calls/data";
 import { contactsApi, contactName, memberOptions, resolveMember, useContactFacets, useProspectLookup, type ContactRow } from "@/domains/contact/list";
 import { lineCountry, lineRegion, pickCallLine } from "@/domains/dialer/route";
@@ -401,44 +396,27 @@ function IncomingBanner() {
 
 // ---------------------------------------------------------------- idle
 
-type IdleTab = "recents" | "contacts" | "keypad" | "music" | "queue";
+type IdleTab = "recents" | "contacts" | "keypad" | "music";
 
 function IdleView() {
-  const { cooldownNotice, dialAnyway, discardSummary, target } = useDialer();
-  const { queue } = usePowerDialer();
   const [tab, setTab] = usePersistedState<IdleTab>("dialer-tab", "recents");
   // The music player is experimental (Settings > Experimental).
   const [music] = useExperimental("musicPlayer");
-  const shown = (tab === "queue" && !queue) || (tab === "music" && !music) ? "recents" : tab;
   const tabs = [
     { key: "recents" as const, label: "Recents", icon: Clock },
     { key: "contacts" as const, label: "Contacts", icon: Users },
     { key: "keypad" as const, label: "Keypad", icon: Keyboard },
     ...(music ? [{ key: "music" as const, label: "Music", icon: Music }] : []),
-    ...(queue ? [{ key: "queue" as const, label: "Queue", icon: SkipForward, badge: `${queue.position}/${queue.total}` }] : []),
   ];
+  // A tab that is no longer offered (Music switched off, or the old Queue tab) falls back to Recents.
+  const shown = tabs.some((t) => t.key === tab) ? tab : "recents";
   return (
     <>
-      {cooldownNotice && target && (
-        <div className="m-3 mb-0 p-3 rounded-[10px] border border-amber-500/30 bg-amber-500/10 text-[13px]">
-          <div className="font-semibold">{target.name}</div>
-          <p className="text-[var(--ods-text-secondary)] mt-0.5">{cooldownNotice}</p>
-          <div className="mt-2 flex gap-2">
-            <button onClick={dialAnyway} className={BTN_PRIMARY}>
-              <Phone className="w-3.5 h-3.5" /> Dial anyway
-            </button>
-            <button onClick={discardSummary} className={BTN_SECONDARY}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {shown === "recents" && <RecentsTab />}
         {shown === "contacts" && <ContactsTab />}
         {shown === "keypad" && <KeypadTab />}
         {shown === "music" && <MusicTab />}
-        {shown === "queue" && <QueueTab />}
       </div>
       {shown !== "music" && <NowPlaying compact />}
       <div className="p-2 border-t border-[var(--ods-border)] shrink-0">
@@ -616,7 +594,7 @@ function DockFilter({ label, value, options, onChange }: { label: string; value:
       width={260}
       searchable={options.length > 8}
       sections={[{ title: label, options: [{ value: "all", label: "All" }, ...options] }]}
-      triggerTitle={`Filter by ${label.toLowerCase()}`}
+      triggerTitle={active && current ? `${label}: ${current.label}` : `Filter by ${label.toLowerCase()}`}
       triggerClassName={`h-7 min-w-0 max-w-[140px] px-2 inline-flex items-center gap-1 rounded-md border text-[12px] font-medium ${
         active
           ? "border-[color-mix(in_srgb,var(--ods-brand-600)_40%,transparent)] bg-[color-mix(in_srgb,var(--ods-brand-600)_10%,transparent)] text-[var(--ods-brand-700)] dark:text-[var(--ods-brand-300)]"
@@ -1013,57 +991,6 @@ function KeypadTab() {
   );
 }
 
-function QueueTab() {
-  const { queue } = usePowerDialer();
-  const { state } = useDialer();
-  if (!queue) return <Empty text="No power-dialer session. Start one from a campaign." />;
-  return (
-    <div className="p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[12px] text-[var(--ods-text-tertiary)]">Campaign</div>
-          <div className="text-[15px] font-semibold truncate">{queue.campaignName}</div>
-        </div>
-        <Chip dot="bg-[var(--ods-brand-600)]">
-          {queue.position} of {queue.total}
-        </Chip>
-      </div>
-      <div className="flex items-center gap-2 text-[12px] text-[var(--ods-text-secondary)]">
-        <Chip dot="bg-[var(--ods-brand-600)]">{MODE_INFO[queue.mode].label}</Chip>
-        <span className="truncate">{MODE_INFO[queue.mode].short}</span>
-      </div>
-      <QueueCard label="Now" contact={queue.current} />
-      <QueueCard label="Next" contact={queue.next} empty="Last contact in this campaign" />
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={queue.skip} disabled={isLive(state)} className={BTN_SECONDARY}>
-          <SkipForward className="w-3.5 h-3.5" /> {queue.next ? "Next call" : "Finish"}
-        </button>
-        <button onClick={queue.end} disabled={isLive(state)} className={BTN_SECONDARY}>
-          <Square className="w-3.5 h-3.5" /> End session
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function QueueCard({ label, contact, empty }: { label: string; contact: ContactRow | null; empty?: string }) {
-  return (
-    <div className="rounded-[10px] border border-[var(--ods-border)] p-3">
-      <div className="text-[12px] text-[var(--ods-text-tertiary)]">{label}</div>
-      {contact ? (
-        <>
-          <div className="text-[14px] font-semibold truncate">{contactDisplayName(contact)}</div>
-          <div className="text-[12px] tabular-nums text-[var(--ods-text-secondary)] truncate">
-            {[contact.phone, contact.company].filter(Boolean).join(" · ")}
-          </div>
-        </>
-      ) : (
-        <div className="text-[13px] text-[var(--ods-text-secondary)]">{empty ?? "Loading…"}</div>
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- in call
 
 function Avatar({ name }: { name: string }) {
@@ -1075,15 +1002,8 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-/** What Answer Boost is doing while it checks who picked up. */
-const SCREEN_LABEL = {
-  listening: "Checking who answered",
-  "waiting-beep": "Voicemail: waiting for the beep",
-  leaving: "Leaving your voicemail",
-} as const;
-
 function CallHeader() {
-  const { target, state, duration, direction, screen } = useDialer();
+  const { target, state, duration, direction } = useDialer();
   const name = target?.name || target?.phone || "Unknown";
   return (
     <div className="px-4 pt-4 pb-3 flex flex-col items-center text-center gap-1.5">
@@ -1091,9 +1011,7 @@ function CallHeader() {
       <div className="text-[15px] font-semibold truncate max-w-full">{name}</div>
       {target?.phone && name !== target.phone && <div className="text-[13px] tabular-nums text-[var(--ods-text-secondary)]">{target.phone}</div>}
       <div className="flex items-center gap-2">
-        <Chip dot={screen ? "bg-amber-500" : STATE_DOT[state]}>
-          {screen ? SCREEN_LABEL[screen] : direction === "inbound" && state !== "ended" ? `Inbound · ${STATE_LABEL[state]}` : STATE_LABEL[state]}
-        </Chip>
+        <Chip dot={STATE_DOT[state]}>{direction === "inbound" && state !== "ended" ? `Inbound · ${STATE_LABEL[state]}` : STATE_LABEL[state]}</Chip>
         <Chip icon={Clock}>
           <span className="tabular-nums">{formatDuration(duration)}</span>
         </Chip>
@@ -1145,18 +1063,6 @@ function InCallView({ scriptOpen, onToggleScript }: { scriptOpen: boolean; onTog
       <CallHeader />
       {d.recWarning && (
         <p className="mx-4 mb-2 p-2 rounded-[8px] bg-amber-500/10 text-[12px] text-amber-700">{d.recWarning}. Audio works, but this call will not be recorded.</p>
-      )}
-      {d.screen === "listening" && (
-        <div className="mx-4 mb-2">
-          <Notice tone="info">Someone picked up. You will be connected as soon as it is a person, and machines are skipped.</Notice>
-        </div>
-      )}
-      {d.suspectVoicemail && d.state === "active" && (
-        <div className="mx-4 mb-2">
-          <Notice tone="warning" title="This may be a voicemail">
-            A beep was heard just after connecting. End the call if no one is there.
-          </Notice>
-        </div>
       )}
       <div className="px-4 grid grid-cols-3 gap-2">
         <ControlButton
@@ -1373,11 +1279,44 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
           Caller ID is the <b className="text-[var(--ods-text-primary)]">Calling from</b> number at the top. Audio below applies to every call on
           this browser.
         </p>
-        <DialingModeSettings stacked />
+        <RingTimeSetting />
         <AutoQueueSwitch />
-        <VoicemailSettings />
         <AudioSourceSettings />
       </div>
+    </div>
+  );
+}
+
+/** How long a call rings before the dialer logs No answer and stops it. */
+function RingTimeSetting() {
+  const [seconds, setSeconds] = useState(getUnansweredTimeoutSeconds);
+  return (
+    <div>
+      <div className="text-[12px] font-semibold text-[var(--ods-text-secondary)] mb-1">Ring for</div>
+      <SelectMenu
+        value={String(seconds)}
+        onChange={(v) => {
+          const n = Number(v);
+          setUnansweredTimeoutSeconds(n);
+          setSeconds(n);
+        }}
+        width={220}
+        sections={[
+          {
+            title: "Give up after",
+            options: UNANSWERED_TIMEOUT_CHOICES.map((n) => ({ value: String(n), label: `${n} seconds of ringing`, hint: n === DEFAULT_UNANSWERED_TIMEOUT_SECONDS ? "default" : undefined })),
+          },
+        ]}
+        triggerTitle="How long a call rings before it is logged as No answer"
+        triggerClassName="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-[var(--ods-border)] text-[13px] text-[var(--ods-text-primary)] hover:bg-[var(--ods-hover)]"
+        trigger={
+          <>
+            {seconds} seconds of ringing
+            <ChevronDown className="w-3 h-3 opacity-60" />
+          </>
+        }
+      />
+      <p className="mt-1 text-[12px] text-[var(--ods-text-tertiary)]">Counted from the first ring. Most businesses answer within 4 to 6 rings (20 to 30 seconds).</p>
     </div>
   );
 }

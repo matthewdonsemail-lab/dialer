@@ -1,10 +1,8 @@
 import React, { useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { BarChart3, Check, Clock, FlaskConical, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, SkipForward, Sun, Timer, User, Voicemail, type IconComponent } from "@/domains/ui/icons";
+import { BarChart3, Check, Clock, FlaskConical, Headphones, LogOut, Monitor, Moon, Palette, PhoneOutgoing, SkipForward, Sun, Timer, User, type IconComponent } from "@/domains/ui/icons";
 import { InfoTip, TipCard, type TipSpec } from "@/domains/ui/infoTip";
 import { AudioSourceSettings } from "@/domains/dialer/audio";
-import { DialingModeSettings, VoicemailSettings } from "@/domains/dialer/dialingSettings";
-import { MODE_INFO, useDialingSettings } from "@/domains/dialer/dialing";
 import { SectionTitle } from "@/domains/ui/sectionTitle";
 import { TabBar, type TabDef } from "@/domains/ui/tabBar";
 import { ReportCard } from "@/domains/reports/parts";
@@ -184,7 +182,6 @@ export function SettingsPage() {
   const { mode, setMode } = useTheme();
   const { dailyCallGoal, setDailyCallGoal, conversationSeconds, setConversationSeconds } = useReportSettings();
   const { user } = useAuth();
-  const { mode: dialingMode } = useDialingSettings();
   const navigate = useNavigate();
   const [tab, setTab] = usePersistedState<SettingsTab>("settings-tab", "appearance");
   // Same key as the dialer dock's switch, so both stay in step.
@@ -206,7 +203,7 @@ export function SettingsPage() {
           as="h1"
           title="Settings"
           pill="Saved on this browser"
-          info={{ title: "Settings", icon: Palette, what: "Appearance, dialing mode and voicemail, audio source, report goals and your account.", use: "Changes save as you make them." }}
+          info={{ title: "Settings", icon: Palette, what: "Appearance, audio source, report goals and your account.", use: "Changes save as you make them." }}
         />
       </div>
 
@@ -262,46 +259,19 @@ export function SettingsPage() {
         )}
 
         {tab === "calling" && (
-          <>
-            <ReportCard
-              title="Calling"
-              unit="Dialer dock"
-              tip={{ title: "Calling", icon: PhoneOutgoing, what: "How the dialer dock moves through a list of contacts.", use: "Also in the dock's settings and on the call summary. Applies to this browser." }}
-            >
-              <SettingSwitch
-                on={autoQueue}
-                setOn={setAutoQueue}
-                label="Auto-queue next call"
-                description="Picking a disposition saves the call and dials the next contact in the dock's Contacts list straight away."
-                icon={SkipForward}
-              />
-            </ReportCard>
-            <ReportCard
-              title="Dialing mode"
-              unit={MODE_INFO[dialingMode].label}
-              tip={{
-                title: "Dialing mode",
-                icon: PhoneOutgoing,
-                what: "How the power dialer moves through a campaign.",
-                formula: ["Standard", "→", "Advanced", "→", "Answer Boost"],
-                use: "Standard stops after every call. Advanced skips unanswered calls. Answer Boost also skips answering machines. Machine detection is not perfect: it can occasionally connect you to a machine, and when it cannot tell it connects you rather than risk dropping a person.",
-              }}
-            >
-              <DialingModeSettings />
-            </ReportCard>
-            <ReportCard
-              title="Outbound voicemail"
-              unit="Answer Boost"
-              tip={{
-                title: "Outbound voicemail",
-                icon: Voicemail,
-                what: "The message Answer Boost leaves when an answering machine picks up. Recorded here, kept on this browser.",
-                use: "Without one, machines are skipped without leaving a message.",
-              }}
-            >
-              <VoicemailSettings />
-            </ReportCard>
-          </>
+          <ReportCard
+            title="Calling"
+            unit="Dialer dock"
+            tip={{ title: "Calling", icon: PhoneOutgoing, what: "How the dialer dock moves through a list of contacts.", use: "Also in the dock's settings and on the call summary. Applies to this browser." }}
+          >
+            <SettingSwitch
+              on={autoQueue}
+              setOn={setAutoQueue}
+              label="Auto-queue next call"
+              description="Picking a disposition saves the call and dials the next contact in the dock's Contacts list straight away."
+              icon={SkipForward}
+            />
+          </ReportCard>
         )}
 
         {tab === "audio" && (
