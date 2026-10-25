@@ -11,6 +11,7 @@ import { AudioBridgeProvider } from '@/domains/dialer/audio';
 import { DialerProvider } from '@/domains/dialer/provider';
 import { MusicPlayerProvider } from '@/domains/music/player';
 import { DialerDock, DialerTopButton } from '@/domains/dialer/dock';
+import { useInboundSmsNotifications } from '@/domains/messaging/notifications';
 import {
   BarChart3,
   Users,
@@ -103,6 +104,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const collapsed = narrow ? !overlayOpen : savedCollapsed;
   const setCollapsed = (next: boolean) => (narrow ? setOverlayOpen(!next) : setSavedCollapsed(next));
   const { user } = useAuth();
+  useInboundSmsNotifications(Boolean(user));
   const navigate = useNavigate();
   const location = useLocation();
 

@@ -5,6 +5,7 @@ import { pickCallLine } from "./callRoute";
 const us = { id: "us", phoneNumber: "+15125550100", countryCode: "US", callState: "IDLE" };
 const ca = { id: "ca", phoneNumber: "+16045550100", countryCode: "CA", callState: "IDLE" };
 const ie = { id: "ie", phoneNumber: "+35315550100", countryCode: "IE", callState: "IDLE" };
+const au = { id: "au", phoneNumber: "+61291234567", countryCode: "AU", callState: "IDLE" };
 
 test("a contact in the line's country keeps the selected line", () => {
   const r = pickCallLine([us, ie], us, { number: "+15125550123", country: "United States" });
@@ -24,6 +25,14 @@ test("a contact abroad switches to a free line in their country", () => {
   const r = pickCallLine([us, ie], us, { number: "+35315550148", country: "IE" });
   assert.equal(r.line?.id, "ie");
   assert.equal(r.switched, true);
+});
+
+test("an Australian contact switches to a free Australian line", () => {
+  const r = pickCallLine([us, au], us, { number: "+61291234567", country: "Australia" });
+  assert.equal(r.line?.id, "au");
+  assert.equal(r.switched, true);
+  assert.equal(r.abroad, false);
+  assert.equal(r.toName, "Australia");
 });
 
 test("with no local line the call is marked international", () => {

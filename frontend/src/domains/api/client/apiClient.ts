@@ -342,6 +342,9 @@ export const api = {
       request<{ numbers: string[]; messages: TextMessage[] }>(`/api/messages?contactType=${contactType}&contactId=${encodeURIComponent(contactId)}`),
     send: (data: { contactType: "prospect" | "lead"; contactId: string; fromPhoneId: string; body: string }) =>
       request<{ message: TextMessage; failed: boolean }>("/api/messages/send", { method: "POST", body: JSON.stringify(data) }),
+    recentInbound: () => request<TextMessage[]>("/api/messages/recent-inbound"),
+    simulateInbound: (data: { from?: string; to?: string; body?: string }) =>
+      request<{ ok: boolean; outcome: string; message: any }>("/api/messages/simulate-inbound", { method: "POST", body: JSON.stringify(data) }),
   },
 
   calls: {

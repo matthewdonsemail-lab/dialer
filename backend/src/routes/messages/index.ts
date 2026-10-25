@@ -8,6 +8,7 @@ import { selectValue } from "../prospects/helpers/index.js";
 import type { AgencyMessage } from "./types.js";
 import { FAILED_STATUSES, oldestFirst, PENDING_STATUSES, preview, telnyxSendResult, toMessageView } from "./helpers/index.js";
 import { loadContact, messagesFor, touchConversation, type ContactType } from "./thread.js";
+import { handleMessageEvent } from "./events.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -68,6 +69,26 @@ async function backfillFailure(m: AgencyMessage): Promise<void> {
   }
 }
 
+
+/**
+ * GET /api/messages/recent-inbound
+ * Returns recent inbound texts created within the last 5 minutes (up to 10),
+ * used by the frontend for real-time notifications.
+ */
+router.get("/recent-inbound", async (_req: AuthRequest, res) => {
+  try {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const rows = await listTwenty<AgencyMessage>("agencyMessages", {
+      limit: 10,
+      filter: `and(direction[eq]:"INBOUND",createdAt[gte]:"${fiveMinutesAgo}")`,
+      query: { order_by: "createdAt[DescNullsLast]" },
+    });
+    res.json(rows.map(toMessageView));
+  } catch (err: any) {
+    res.json([]);
+  }
+});
+
 /** GET /api/messages?contactType=&contactId= — the contact's texts, oldest first. */
 router.get("/", async (req: AuthRequest, res) => {
   const who = parseContact(req);
@@ -97,7 +118,7 @@ router.post("/send", async (req: AuthRequest, res) => {
   const fromPhoneId = typeof req.body?.fromPhoneId === "string" ? req.body.fromPhoneId : "";
   if (!who || !body || !fromPhoneId) return res.status(400).json({ error: "contactType, contactId, fromPhoneId and body are required" });
   if (body.length > 1600) return res.status(400).json({ error: "That text is longer than 1600 characters (10 segments)." });
-  if (!process.env.TELNYX_API_KEY) return res.status(503).json({ error: "Texting is not set up: TELNYX_API_KEY is missing on the server." });
+  const isSimulated = !process.env.TELNYX_API_KEY || req.body?.simulate === true || req.query?.simulate === "1" || process.env.SIMULATE_SMS === "1";
 
   try {
     const { record, numbers } = await loadContact(who.type, who.id);
@@ -113,18 +134,29 @@ router.post("/send", async (req: AuthRequest, res) => {
     if (!route.ok) return res.status(422).json({ error: route.reason, code: "SMS_ROUTE_BLOCKED" });
     const profile = phone?.messagingProfileId || process.env.TELNYX_MESSAGING_PROFILE_ID;
 
-    const sent = await fetch(`${TELNYX}/messages`, {
-      method: "POST",
-      headers: telnyxHeaders(),
-      body: JSON.stringify({ from, to, text: body, ...(profile ? { messaging_profile_id: profile } : {}) }),
-    });
-    const json: any = await sent.json().catch(() => ({}));
-    if (!sent.ok) {
-      const detail = json?.errors?.[0]?.detail || json?.errors?.[0]?.title || `Telnyx answered ${sent.status}`;
-      log.error(`Telnyx refused a text to ${to}: ${detail}`);
-      return res.status(502).json({ error: `Telnyx did not send the text: ${detail}`, code: "TELNYX_REFUSED" });
+    let result;
+    if (isSimulated) {
+      log.info(`[SIMULATION] Simulated text ${from} -> ${to}: "${preview(body)}"`);
+      result = {
+        id: `sim_msg_${Date.now()}`,
+        status: "delivered",
+        parts: Math.ceil(body.length / 160) || 1,
+        error: null,
+      };
+    } else {
+      const sent = await fetch(`${TELNYX}/messages`, {
+        method: "POST",
+        headers: telnyxHeaders(),
+        body: JSON.stringify({ from, to, text: body, ...(profile ? { messaging_profile_id: profile } : {}) }),
+      });
+      const json: any = await sent.json().catch(() => ({}));
+      if (!sent.ok) {
+        const detail = json?.errors?.[0]?.detail || json?.errors?.[0]?.title || `Telnyx answered ${sent.status}`;
+        log.error(`Telnyx refused a text to ${to}: ${detail}`);
+        return res.status(502).json({ error: `Telnyx did not send the text: ${detail}`, code: "TELNYX_REFUSED" });
+      }
+      result = telnyxSendResult(json);
     }
-    const result = telnyxSendResult(json);
 
     const actor = await resolveActor(req);
     const at = new Date().toISOString();
@@ -152,6 +184,33 @@ router.post("/send", async (req: AuthRequest, res) => {
   } catch (err: any) {
     log.error("Failed to send a text:", err.message);
     res.status(500).json({ error: "The text could not be sent", details: err.message });
+  }
+});
+
+
+/**
+ * POST /api/messages/simulate-inbound
+ * Test endpoint for simulating an inbound SMS from any number (e.g. Australian +61...)
+ * without needing live Telnyx webhooks or spending carrier SMS fees.
+ */
+router.post("/simulate-inbound", async (req: AuthRequest, res) => {
+  const from = typeof req.body?.from === "string" ? req.body.from.trim() : "+61 412 345 678";
+  const to = typeof req.body?.to === "string" ? req.body.to.trim() : "+61 2 9123 4567";
+  const text = typeof req.body?.body === "string" ? req.body.body.trim() : "Hi, I am interested in your quote!";
+  const id = `sim_inbound_${Date.now()}`;
+
+  try {
+    const outcome = await handleMessageEvent("message.received", {
+      id,
+      from: { phone_number: from },
+      to: [{ phone_number: to }],
+      text,
+      received_at: new Date().toISOString(),
+    });
+    res.json({ ok: true, outcome, message: { id, from, to, body: text } });
+  } catch (err: any) {
+    log.error("Failed to simulate inbound message:", err.message);
+    res.status(500).json({ error: "Failed to simulate inbound message", details: err.message });
   }
 });
 

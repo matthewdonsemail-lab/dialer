@@ -9,3 +9,4 @@ export * from "./video/index.js";
 export * from "./call/index.js";
 export * from "./callCampaign/index.js";
 export * from "./offer/index.js";
+export * from "./treg/index.js";
