@@ -26,18 +26,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `./scripts/setup.sh`: install, env files, schema check, `--apply`, `--seed`
 - AST commit checks (naming, layout, dead buttons, toggle state, pipeline
   values), Conventional Commits, branch names, and a full pre-push gate
-- Dialing modes (Standard, Advanced, Answer Boost) in Settings → Dialing:
-  Answer Boost listens to who answers, skips answering machines or leaves your
-  recorded voicemail, and connects you only to a person; a voicemail recorder
-  (see [docs/dialing-modes.md](docs/dialing-modes.md))
 - Contacts table: pages of 20, 50 or 100 contacts with Prev, Next and page
-  numbers, and a sortable Last activity column (newest or oldest call first)
+  numbers, a sortable Last activity column (newest or oldest call first), and
+  Select all for every contact matching the filters
+
+### Removed (October 2026)
+- Call campaigns on the Contacts page (the Campaigns button, Dial N selected)
+  and the dock's Queue tab: the dock's own Contacts list with auto-queue is the
+  one way to power dial. Saved campaigns stay listed on the Admin page
+- Dialing modes (Standard, Advanced, Answer Boost) and the outbound voicemail
+  recorder, until power dialing is reworked
+- The "Dial anyway" prompt: a contact called in the last 24 hours, or in a
+  country you have no number in, is dialled at once (single calls, redial and
+  parallel lines). International calls go out from your current number; the
+  globe icon on a contact still marks them
 
 ### Changed (October 2026)
 - Whole repo moved to a camelCase `domains/<domain>/<primitive>` layout
 - README rewritten around the screenshots and the open-source setup
 
 ### Fixed (October 2026)
+- Dialling no longer starts several calls at once: the dock shows Calling
+  from the click, and further clicks wait until that call ends
+- Auto-queue no longer stalls after a few calls: dialling gets Twenty requests
+  ahead of list refreshes (30 a minute kept for calls), lists refresh after a
+  pause in dialling, and End call while a number is still being reserved
+  shows the summary so the next contact follows
+- The dock's saved filters are written only when they change, not after
+  every call
 - The contacts list showed Interested, Callback and Not Interested as New
 - Semi-transparent brand tints written as `bg-[var(--x)]/NN` never rendered
 

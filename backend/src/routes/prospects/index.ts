@@ -346,8 +346,7 @@ router.get("/ids", async (req, res) => {
     if (resolved === "none") return res.json({ ids: [], truncated: false });
     const client: any = twentyGraphqlClient();
     const { contacts, truncated } = await matchingContacts(client, await contactQueries(client, params, resolved), MAX_SELECT_ALL);
-    // A person carries their company: campaigns dial the company.
-    res.json({ ids: contacts, truncated });
+    res.json({ ids: contacts.map(({ id, type }) => ({ id, type })), truncated });
   } catch (err: any) {
     log.error("Failed to list contact ids:", err.message);
     res.status(500).json({ error: "Failed to list contacts from Twenty", details: err.message });

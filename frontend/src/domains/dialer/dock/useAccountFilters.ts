@@ -10,6 +10,13 @@ import { api, type SavedFilterView } from "@/domains/api/client";
 const appliedScopes = new Set<string>();
 
 /**
+ * What the account holds per scope, shared by every mounted copy of a list. Kept per
+ * component it started empty on each remount, so every call rewrote the same filters
+ * (several times when the list was mounted twice), using up Twenty's request limit.
+ */
+const syncedScopes = new Map<string, string>();
+
+/**
  * Keeps a filter set on the signed-in member's account (dialerFilterView in
  * Twenty) as well as in this browser. On load the account's copy wins, so
  * the filters follow the user to any browser; every change is written back
@@ -20,8 +27,6 @@ export function useAccountFilters<T extends Record<string, string>>(scope: strin
   const key = ["filter-views", scope];
   const { data, isSuccess } = useQuery({ queryKey: key, queryFn: () => api.filterViews.list(scope), staleTime: 5 * 60_000, retry: false });
 
-  // What the account holds right now, so a change only writes when it differs.
-  const synced = useRef<string | null>(null);
   const loaded = useRef(appliedScopes.has(scope));
   useEffect(() => {
     if (!isSuccess || loaded.current) return;
@@ -29,21 +34,24 @@ export function useAccountFilters<T extends Record<string, string>>(scope: strin
     appliedScopes.add(scope);
     if (data?.current) {
       const merged = { ...defaults, ...data.current } as T;
-      synced.current = JSON.stringify(merged);
-      if (synced.current !== JSON.stringify(value)) setValue(merged);
+      const json = JSON.stringify(merged);
+      syncedScopes.set(scope, json);
+      if (json !== JSON.stringify(value)) setValue(merged);
     }
   }, [isSuccess, data, defaults, value, setValue]);
 
   const json = JSON.stringify(value);
   useEffect(() => {
-    if (!loaded.current || json === synced.current) return;
+    if (!loaded.current || json === syncedScopes.get(scope)) return;
     const t = setTimeout(() => {
-      synced.current = json;
+      // Another mounted copy may have written it in the meantime.
+      if (json === syncedScopes.get(scope)) return;
+      syncedScopes.set(scope, json);
       // The cached account copy follows, so nothing reads back the older one.
       queryClient.setQueryData(key, (d: typeof data) => (d ? { ...d, current: value } : d));
       api.filterViews.saveCurrent(scope, value).catch(() => {
         // Not saved to the account (offline, or not set up): this browser still has it.
-        synced.current = null;
+        if (syncedScopes.get(scope) === json) syncedScopes.delete(scope);
       });
     }, 800);
     return () => clearTimeout(t);
