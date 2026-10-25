@@ -13,6 +13,8 @@ import { classifyFailure, getSipConfig, isSipConfigured, sipLog, type Classified
 import { CallLifecycle } from "@/domains/dialer/lifecycle";
 import { attachRemoteMedia, getMicStream, loadSip, sendSessionDtmf, startAgent, type SipAgent } from "@/domains/dialer/sip";
 import { pickCallLine } from "@/domains/dialer/route";
+import { startRingtone, stopRingtone } from "@/domains/dialer/audio";
+import { showCallNotification, dismissCallNotification, requestNotificationPermission } from "@/domains/dialer/notifications";
 
 /** Explicit opt-in only (?simulate=1): simulated calls never happen silently. */
 export const SIMULATE_CALLS =
@@ -145,6 +147,7 @@ interface DialerValue {
   /** Saves the call; `outcome` saves that disposition without waiting for it to be set first. */
   saveSummary: (outcome?: string) => Promise<void>;
   discardSummary: () => void;
+  simulateIncomingCall: (contact?: { number?: string; name?: string }) => void;
 }
 
 const DialerContext = createContext<DialerValue | null>(null);
@@ -1088,18 +1091,20 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     sessionRef.current = call.session;
     setCallState("connecting");
     const { SessionState } = await loadSip();
-    call.session.stateChange.addListener((s: string) => {
+    call.session?.stateChange?.addListener?.((s: string) => {
       // As for outbound: a late event from a call already saved changes nothing.
       if (lifecycleRef.current !== lc) return;
-      if (s === SessionState.Established) onEstablished(call.session);
-      if (s === SessionState.Terminated && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
+      if (s === SessionState?.Established || s === "Established") onEstablished(call.session);
+      if ((s === SessionState?.Terminated || s === "Terminated") && stateRef.current !== "ended") finishCall(establishedRef.current ? outcomeRef.current : "no_answer");
     });
     try {
-      await call.session.accept({
-        sessionDescriptionHandlerOptions: {
-          constraints: { audio: microphoneId ? { deviceId: { exact: microphoneId } } : true, video: false },
-        },
-      });
+      if (call.session?.accept) {
+        await call.session.accept({
+          sessionDescriptionHandlerOptions: {
+            constraints: { audio: microphoneId ? { deviceId: { exact: microphoneId } } : true, video: false },
+          },
+        });
+      }
       void lc.ensureRow();
     } catch (err: any) {
       sipLog.error("session", `accept failed: ${err?.message || err}`);
@@ -1108,7 +1113,7 @@ export function DialerProvider({ children }: { children: ReactNode }) {
   }, [incoming, line, member, microphoneId, onEstablished, finishCall, resetCall, setCallState]);
 
   const decline = useCallback(() => {
-    try { incoming?.session.reject({ statusCode: 486 }); } catch { /* gone */ }
+    try { incoming?.session?.reject?.({ statusCode: 486 }); } catch { /* gone */ }
     setIncoming(null);
   }, [incoming]);
 
@@ -1167,6 +1172,57 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("pagehide", onHide);
   }, []);
 
+  // Inbound call alerts: audible ringtone chime and desktop notification
+  useEffect(() => {
+    if (incoming) {
+      startRingtone();
+      void requestNotificationPermission().then((granted) => {
+        if (granted) {
+          showCallNotification({
+            callerName: incoming.name,
+            callerNumber: incoming.number,
+            onClick: () => {
+              setIsOpen(true);
+            },
+          });
+        }
+      });
+    } else {
+      stopRingtone();
+      dismissCallNotification();
+    }
+    return () => {
+      stopRingtone();
+      dismissCallNotification();
+    };
+  }, [incoming]);
+
+  const simulateIncomingCall = useCallback((contact?: { number?: string; name?: string }) => {
+    const number = contact?.number || "+61 2 9123 4567";
+    const name = contact?.name || "Sydney Auto Detailing";
+    const listeners: ((s: string) => void)[] = [];
+    const mockSession = {
+      remoteIdentity: { displayName: name, uri: { user: number } },
+      stateChange: {
+        addListener: (fn: (s: string) => void) => { listeners.push(fn); },
+      },
+      accept: async () => {
+        setTimeout(() => {
+          listeners.forEach((fn) => fn("Established"));
+        }, 200);
+      },
+      reject: () => {
+        listeners.forEach((fn) => fn("Terminated"));
+        setIncoming((cur) => (cur?.session === mockSession ? null : cur));
+      },
+      bye: () => {
+        listeners.forEach((fn) => fn("Terminated"));
+      },
+    };
+    setIncoming({ session: mockSession, number, name });
+    setIsOpen(true);
+  }, []);
+
   const value = useMemo<DialerValue>(() => ({
     isOpen,
     open: () => setIsOpen(true),
@@ -1214,9 +1270,10 @@ export function DialerProvider({ children }: { children: ReactNode }) {
     decline,
     saveSummary,
     discardSummary,
+    simulateIncomingCall,
   }), [isOpen, pinned, setPinned, lines, line, setLineId, registered, phoneAudio, state, target, direction, duration, muted, held,
     outcome, notes, setNotes, notesSaved, notesError, failure, recWarning, incoming, options.saveLabel, saving,
-    legs, maxLines, dial, dialMany, hangup, mute, hold, sendDtmf, accept, decline, saveSummary, discardSummary]);
+    legs, maxLines, dial, dialMany, hangup, mute, hold, sendDtmf, accept, decline, saveSummary, discardSummary, simulateIncomingCall]);
 
   return (
     <DialerContext.Provider value={value}>

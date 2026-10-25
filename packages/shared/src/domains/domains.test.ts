@@ -8,6 +8,7 @@ import {
   outreachMachine,
   regionOfNumber,
   toE164,
+  toAustralianE164,
   toContactStatus,
   videoMachine,
   type Machine,
@@ -76,4 +77,12 @@ test("phones become dialable E.164 and refusals read correctly", () => {
   assert.equal(toE164({ primaryPhoneNumber: "" }), null);
   const r = checkSmsRoute({ number: "+12724470148" }, { number: "+35315550148" });
   assert.match(r.ok ? "" : r.reason, /^A US \/ Canada number .* Send from an Irish number\.$/);
+});
+
+test("Australian phone numbers format cleanly to E.164", () => {
+  assert.equal(toAustralianE164("02 9123 4567"), "+61291234567");
+  assert.equal(toAustralianE164("(03) 9123 4567"), "+61391234567");
+  assert.equal(toAustralianE164("0412 345 678"), "+61412345678");
+  assert.equal(toAustralianE164("+61 2 9123 4567"), "+61291234567");
+  assert.equal(regionOfNumber(toAustralianE164("02 9123 4567")), "AU");
 });

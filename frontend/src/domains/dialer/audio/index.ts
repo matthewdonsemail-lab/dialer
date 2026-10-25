@@ -2,3 +2,4 @@
 export * from "./audioBridge";
 export * from "./audioSourceSettings";
 export * from "./useAudioSettings";
+export * from "./ringtone";
