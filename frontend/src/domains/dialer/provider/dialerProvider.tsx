@@ -16,11 +16,44 @@ import { pickCallLine } from "@/domains/dialer/route";
 import { startRingtone, stopRingtone } from "@/domains/dialer/audio";
 import { showCallNotification, dismissCallNotification, requestNotificationPermission } from "@/domains/dialer/notifications";
 
-/** Explicit opt-in only (?simulate=1): simulated calls never happen silently. */
+/** Explicit opt-in only (?simulate=1 or sessionStorage): simulated calls never happen silently. */
 export const SIMULATE_CALLS =
-  typeof window !== "undefined" && new URLSearchParams(window.location.search).get("simulate") === "1";
+  typeof window !== "undefined" &&
+  (() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("simulate");
+      if (fromUrl === "1") {
+        sessionStorage.setItem("dialer_simulate", "1");
+        return true;
+      }
+      if (fromUrl === "0") {
+        sessionStorage.removeItem("dialer_simulate");
+        return false;
+      }
+      return sessionStorage.getItem("dialer_simulate") === "1";
+    } catch {
+      return false;
+    }
+  })();
 /** ?simulate=1&nobody=1: simulated parallel lines all ring out, to try the no-answer path. */
-const SIMULATE_NOBODY = SIMULATE_CALLS && new URLSearchParams(window.location.search).get("nobody") === "1";
+const SIMULATE_NOBODY =
+  SIMULATE_CALLS &&
+  (() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("nobody");
+      if (fromUrl === "1") {
+        sessionStorage.setItem("dialer_nobody", "1");
+        return true;
+      }
+      if (fromUrl === "0") {
+        sessionStorage.removeItem("dialer_nobody");
+        return false;
+      }
+      return sessionStorage.getItem("dialer_nobody") === "1";
+    } catch {
+      return false;
+    }
+  })();
 
 /**
  * Most numbers one member dials at once. Each line is its own outbound call
