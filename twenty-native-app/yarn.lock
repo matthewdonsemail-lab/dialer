@@ -1557,6 +1557,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dialer-twenty-app@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "dialer-twenty-app@workspace:."
+  dependencies:
+    "@types/node": "npm:^24.7.2"
+    "@types/react": "npm:^19.0.0"
+    "@typescript/native-preview": "npm:^7.0.0-dev.20260116.1"
+    monaco-editor: "npm:^0.56.0"
+    oxlint: "npm:^0.16.0"
+    react: "npm:^19.0.0"
+    react-dom: "npm:^19.0.0"
+    twenty-client-sdk: "npm:2.41.0"
+    twenty-sdk: "npm:2.41.0"
+    twenty-ui: "npm:2.41.0"
+    typescript: "npm:^5.9.3"
+    vite-tsconfig-paths: "npm:^4.2.1"
+    vitest: "npm:^4.0.0"
+  languageName: unknown
+  linkType: soft
+
 "dompurify@npm:3.4.8":
   version: 3.4.8
   resolution: "dompurify@npm:3.4.8"
@@ -2445,26 +2465,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dialer-twenty-app@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "dialer-twenty-app@workspace:."
-  dependencies:
-    "@types/node": "npm:^24.7.2"
-    "@types/react": "npm:^19.0.0"
-    "@typescript/native-preview": "npm:^7.0.0-dev.20260116.1"
-    monaco-editor: "npm:^0.56.0"
-    oxlint: "npm:^0.16.0"
-    react: "npm:^19.0.0"
-    react-dom: "npm:^19.0.0"
-    twenty-client-sdk: "npm:2.41.0"
-    twenty-sdk: "npm:2.41.0"
-    twenty-ui: "npm:2.41.0"
-    typescript: "npm:^5.9.3"
-    vite-tsconfig-paths: "npm:^4.2.1"
-    vitest: "npm:^4.0.0"
-  languageName: unknown
-  linkType: soft
-
 "oxlint@npm:^0.16.0":
   version: 0.16.12
   resolution: "oxlint@npm:0.16.12"
@@ -3214,9 +3214,9 @@ __metadata:
   linkType: hard
 
 "undici@npm:^8.4.1":
-  version: 8.10.2
-  resolution: "undici@npm:8.10.2"
-  checksum: 10c0/66d7fc69149207cab570d6abbc9e965b6afe1ae889a7d46945b431165c973d6a56f3dd8b70a856e7ae1e550b6366a1cde6f06e68640587f0dadca38de72995ee
+  version: 8.12.3
+  resolution: "undici@npm:8.12.3"
+  checksum: 10c0/714919e62b4160eea195fb35c7f5c4907235741e47bfde8a014ac58f6d24df13434e23400d7f48e2c455fd2b259d27f07fce514f04a5b4e99936ba62cbc4bb71
   languageName: node
   linkType: hard
 
